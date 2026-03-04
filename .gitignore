@@ -1,0 +1,188 @@
+# ============================================================
+# CREDENCIAIS E INFORMAÇÕES SENSÍVEIS
+# ============================================================
+
+# Arquivos de ambiente (contêm senhas, API keys, etc.)
+/.env
+/.env.*
+!/.env.example
+
+# Chaves de credenciais Rails (master.key, etc.)
+/config/*.key
+/config/credentials/*.key
+
+# Segredos do Kamal
+/.kamal/secrets
+
+# Certificados e chaves privadas
+*.pem
+*.key
+*.p12
+*.pfx
+*.cert
+*.crt
+*.csr
+
+# ============================================================
+# DEPENDÊNCIAS
+# ============================================================
+
+# Bundler
+/.bundle
+/vendor/bundle
+
+# Node modules (se usar npm/yarn futuramente)
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# ============================================================
+# ARQUIVOS DE BUILD E ASSETS COMPILADOS
+# ============================================================
+
+/public/assets
+/public/packs
+/public/packs-test
+/app/assets/builds/*
+!/app/assets/builds/.keep
+
+# Tailwind CSS output
+/app/assets/stylesheets/application.css
+
+# ============================================================
+# BANCO DE DADOS
+# ============================================================
+
+# SQLite (não usamos, mas por precaução)
+*.sqlite3
+*.sqlite3-journal
+*.sqlite3-wal
+*.sqlite3-shm
+/db/*.sqlite3
+/db/*.sqlite3-journal
+
+# Schema dump gerado — versionamos o schema.rb
+# (mantemos no git)
+
+# ============================================================
+# ARMAZENAMENTO E UPLOADS
+# ============================================================
+
+/storage/*
+!/storage/.keep
+/tmp/storage/*
+!/tmp/storage/
+!/tmp/storage/.keep
+
+# ============================================================
+# LOGS E ARQUIVOS TEMPORÁRIOS
+# ============================================================
+
+/log/*
+!/log/.keep
+/tmp/*
+!/tmp/.keep
+!/tmp/pids/
+!/tmp/pids/.keep
+
+# Pidfiles
+*.pid
+*.pid.lock
+
+# ============================================================
+# SISTEMA OPERACIONAL
+# ============================================================
+
+# macOS
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+.AppleDouble
+.LSOverride
+Icon
+
+# Linux
+*~
+.fuse_hidden*
+.directory
+.Trash-*
+.nfs*
+
+# Windows
+Thumbs.db
+Thumbs.db:encryptable
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+*.lnk
+
+# ============================================================
+# EDITORES E IDEs
+# ============================================================
+
+# VS Code
+.vscode/
+!.vscode/extensions.json
+
+# JetBrains (RubyMine, etc.)
+.idea/
+*.iml
+*.iws
+*.ipr
+.idea_modules/
+
+# Vim
+*.swp
+*.swo
+*~
+.netrwhist
+
+# Emacs
+*~
+\#*\#
+/.emacs.desktop
+/.emacs.desktop.lock
+*.elc
+auto-save-list
+tramp
+.\#*
+
+# Sublime Text
+*.sublime-project
+*.sublime-workspace
+
+# ============================================================
+# TESTES E COBERTURA
+# ============================================================
+
+/coverage/
+/.byebug_history
+/spec/examples.txt
+
+# ============================================================
+# DOCKER
+# ============================================================
+
+# Não ignorar docker-compose.yml (é configuração do projeto)
+# Ignorar overrides locais
+docker-compose.override.yml
+docker-compose.local.yml
+
+# ============================================================
+# RAILS ESPECÍFICO
+# ============================================================
+
+# Yarn integrity
+/.yarn-integrity
+
+# Spring (process pre-loader)
+/spring/*.pid
+
+# Bootsnap cache
+/tmp/cache/
+
+# Kamal deploy artifacts
+/.kamal/

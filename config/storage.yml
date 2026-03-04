@@ -1,0 +1,31 @@
+test:
+  service: Disk
+  root: <%= Rails.root.join("tmp/storage") %>
+
+local:
+  service: Disk
+  root: <%= Rails.root.join("storage") %>
+
+# Alternativas futuras — descomentar e ajustar conforme necessário:
+#
+# amazon:
+#   service: S3
+#   access_key_id: <%= Rails.application.credentials.dig(:aws, :access_key_id) %>
+#   secret_access_key: <%= Rails.application.credentials.dig(:aws, :secret_access_key) %>
+#   region: us-east-1
+#   bucket: neuamd-<%= Rails.env %>
+#
+# minio:
+#   service: S3
+#   access_key_id: <%= ENV["MINIO_ACCESS_KEY"] %>
+#   secret_access_key: <%= ENV["MINIO_SECRET_KEY"] %>
+#   endpoint: <%= ENV.fetch("MINIO_ENDPOINT", "http://minio:9000") %>
+#   bucket: neuamd-<%= Rails.env %>
+#   region: us-east-1
+#   force_path_style: true
+#
+# google:
+#   service: GCS
+#   project: your_project
+#   credentials: <%= Rails.root.join("path/to/gcs.keyfile") %>
+#   bucket: neuamd-<%= Rails.env %>
