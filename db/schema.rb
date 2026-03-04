@@ -1,0 +1,168 @@
+# This file is auto-generated from the current state of the database. Instead
+# of editing this file, please use the migrations feature of Active Record to
+# incrementally modify your database, and then regenerate this schema definition.
+#
+# This file is the source Rails uses to define your schema when running `bin/rails
+# db:schema:load`. When creating a new database, `bin/rails db:schema:load` tends to
+# be faster and is potentially less error prone than running all of your
+# migrations from scratch. Old migrations may fail to apply correctly if those
+# migrations use external dependencies or application code.
+#
+# It's strongly recommended that you check this file into your version control system.
+
+ActiveRecord::Schema[8.1].define(version: 2026_03_04_000012) do
+  # These are extensions that must be enabled in order to support this database
+  enable_extension "pg_catalog.plpgsql"
+  enable_extension "pg_trgm"
+  enable_extension "pgcrypto"
+  enable_extension "unaccent"
+
+  create_table "ai_providers", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.string "base_url"
+    t.jsonb "config", default: {}
+    t.datetime "created_at", null: false
+    t.string "default_model_text"
+    t.boolean "enabled", default: false, null: false
+    t.string "name", null: false
+    t.datetime "updated_at", null: false
+    t.index ["name"], name: "index_ai_providers_on_name", unique: true
+  end
+
+  create_table "ai_requests", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.string "capability", null: false
+    t.decimal "cost_estimate", precision: 10, scale: 6
+    t.datetime "created_at", null: false
+    t.uuid "note_revision_id", null: false
+    t.text "prompt_summary"
+    t.string "provider", null: false
+    t.string "request_hash"
+    t.text "response_summary"
+    t.integer "tokens_in"
+    t.integer "tokens_out"
+    t.datetime "updated_at", null: false
+    t.index ["created_at"], name: "index_ai_requests_on_created_at"
+    t.index ["note_revision_id"], name: "index_ai_requests_on_note_revision_id"
+  end
+
+  create_table "link_tags", id: false, force: :cascade do |t|
+    t.datetime "created_at", default: -> { "CURRENT_TIMESTAMP" }, null: false
+    t.uuid "note_link_id", null: false
+    t.uuid "tag_id", null: false
+    t.index ["note_link_id", "tag_id"], name: "index_link_tags_on_note_link_id_and_tag_id", unique: true
+    t.index ["note_link_id"], name: "index_link_tags_on_note_link_id"
+    t.index ["tag_id"], name: "index_link_tags_on_tag_id"
+  end
+
+  create_table "note_links", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.jsonb "context", default: {}
+    t.datetime "created_at", null: false
+    t.uuid "created_in_revision_id", null: false
+    t.uuid "dst_note_id", null: false
+    t.string "hier_role"
+    t.uuid "src_note_id", null: false
+    t.datetime "updated_at", null: false
+    t.index ["created_in_revision_id"], name: "index_note_links_on_created_in_revision_id"
+    t.index ["dst_note_id"], name: "index_note_links_on_dst_note_id"
+    t.index ["hier_role"], name: "index_note_links_on_hier_role"
+    t.index ["src_note_id", "dst_note_id"], name: "index_note_links_on_src_note_id_and_dst_note_id", unique: true
+    t.index ["src_note_id"], name: "index_note_links_on_src_note_id"
+  end
+
+  create_table "note_revisions", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.boolean "ai_generated", default: false, null: false
+    t.uuid "author_id"
+    t.uuid "base_revision_id"
+    t.string "change_summary"
+    t.text "content_markdown", null: false
+    t.text "content_plain"
+    t.datetime "created_at", null: false
+    t.uuid "note_id", null: false
+    t.datetime "updated_at", null: false
+    t.index "to_tsvector('simple'::regconfig, COALESCE(content_plain, ''::text))", name: "index_note_revisions_on_content_plain_tsvector", using: :gin
+    t.index ["author_id"], name: "index_note_revisions_on_author_id"
+    t.index ["created_at"], name: "index_note_revisions_on_created_at"
+    t.index ["note_id"], name: "index_note_revisions_on_note_id"
+  end
+
+  create_table "note_tags", id: false, force: :cascade do |t|
+    t.datetime "created_at", default: -> { "CURRENT_TIMESTAMP" }, null: false
+    t.uuid "note_id", null: false
+    t.uuid "tag_id", null: false
+    t.index ["note_id", "tag_id"], name: "index_note_tags_on_note_id_and_tag_id", unique: true
+    t.index ["note_id"], name: "index_note_tags_on_note_id"
+    t.index ["tag_id"], name: "index_note_tags_on_tag_id"
+  end
+
+  create_table "note_tts_assets", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.datetime "created_at", null: false
+    t.integer "duration_ms"
+    t.string "format", default: "mp3", null: false
+    t.boolean "is_active", default: true, null: false
+    t.string "language", null: false
+    t.string "model"
+    t.uuid "note_revision_id", null: false
+    t.string "provider", null: false
+    t.string "settings_hash", null: false
+    t.string "text_sha256", null: false
+    t.datetime "updated_at", null: false
+    t.string "voice", null: false
+    t.index ["note_revision_id"], name: "index_note_tts_assets_on_note_revision_id"
+    t.index ["text_sha256", "language", "voice", "provider", "model", "settings_hash", "is_active"], name: "index_note_tts_assets_on_cache_key"
+  end
+
+  create_table "notes", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.datetime "created_at", null: false
+    t.datetime "deleted_at"
+    t.string "detected_language"
+    t.uuid "head_revision_id"
+    t.string "note_kind", default: "markdown", null: false
+    t.string "slug", null: false
+    t.string "title", null: false
+    t.datetime "updated_at", null: false
+    t.index ["deleted_at"], name: "index_notes_on_deleted_at"
+    t.index ["head_revision_id"], name: "index_notes_on_head_revision_id"
+    t.index ["slug"], name: "index_notes_on_slug", unique: true
+    t.index ["title"], name: "index_notes_on_title", opclass: :gin_trgm_ops, using: :gin
+  end
+
+  create_table "tags", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.string "color_hex"
+    t.datetime "created_at", null: false
+    t.string "icon"
+    t.string "name", null: false
+    t.string "tag_scope", default: "both", null: false
+    t.datetime "updated_at", null: false
+    t.index ["name"], name: "index_tags_on_name", unique: true
+  end
+
+  create_table "users", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.datetime "created_at", null: false
+    t.datetime "current_sign_in_at"
+    t.string "current_sign_in_ip"
+    t.string "email", default: "", null: false
+    t.string "encrypted_password", default: "", null: false
+    t.datetime "last_sign_in_at"
+    t.string "last_sign_in_ip"
+    t.datetime "remember_created_at"
+    t.datetime "reset_password_sent_at"
+    t.string "reset_password_token"
+    t.integer "sign_in_count", default: 0, null: false
+    t.datetime "updated_at", null: false
+    t.index ["email"], name: "index_users_on_email", unique: true
+    t.index ["reset_password_token"], name: "index_users_on_reset_password_token", unique: true
+  end
+
+  add_foreign_key "ai_requests", "note_revisions"
+  add_foreign_key "link_tags", "note_links"
+  add_foreign_key "link_tags", "tags"
+  add_foreign_key "note_links", "note_revisions", column: "created_in_revision_id"
+  add_foreign_key "note_links", "notes", column: "dst_note_id"
+  add_foreign_key "note_links", "notes", column: "src_note_id"
+  add_foreign_key "note_revisions", "note_revisions", column: "base_revision_id", on_delete: :nullify
+  add_foreign_key "note_revisions", "notes"
+  add_foreign_key "note_revisions", "users", column: "author_id"
+  add_foreign_key "note_tags", "notes"
+  add_foreign_key "note_tags", "tags"
+  add_foreign_key "note_tts_assets", "note_revisions"
+  add_foreign_key "notes", "note_revisions", column: "head_revision_id", on_delete: :nullify
+end
