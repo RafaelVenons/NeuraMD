@@ -1,0 +1,56 @@
+@import "tailwindcss";
+
+@theme {
+  /* CJK font fallback stack — Mandarim, Japonês, Coreano */
+  --font-sans:
+    ui-sans-serif,
+    system-ui,
+    -apple-system,
+    BlinkMacSystemFont,
+    "Segoe UI",
+    Roboto,
+    "Noto Sans CJK SC",
+    "Noto Sans CJK JP",
+    "Noto Sans CJK KR",
+    "Source Han Sans SC",
+    "Source Han Sans JP",
+    "Source Han Sans KR",
+    "PingFang SC",
+    "PingFang TC",
+    "Hiragino Sans",
+    "Hiragino Kaku Gothic ProN",
+    "Malgun Gothic",
+    "Microsoft YaHei",
+    "WenQuanYi Micro Hei",
+    sans-serif;
+
+  --font-mono:
+    ui-monospace,
+    SFMono-Regular,
+    Menlo,
+    Monaco,
+    Consolas,
+    "Liberation Mono",
+    "Courier New",
+    monospace;
+}
+
+@layer base {
+  html {
+    @apply text-gray-900 antialiased;
+  }
+
+  /* Ensure IME composition works correctly for CJK input */
+  [lang],
+  [lang="zh"],
+  [lang="zh-CN"],
+  [lang="zh-TW"],
+  [lang="ja"],
+  [lang="ja-JP"],
+  [lang="ko"],
+  [lang="ko-KR"] {
+    word-break: normal;
+    overflow-wrap: break-word;
+    line-break: strict;
+  }
+}
