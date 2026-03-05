@@ -46,6 +46,9 @@
 # Ignore development files
 /.devcontainer
 
+# Ignore Claude Code local config (memory, session context, etc.)
+/.claude
+
 # Ignore Docker-related files
 /.dockerignore
 /Dockerfile*

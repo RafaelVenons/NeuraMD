@@ -186,3 +186,14 @@ docker-compose.local.yml
 
 # Kamal deploy artifacts
 /.kamal/
+
+# ============================================================
+# CLAUDE CODE
+# ============================================================
+
+# Memória e configurações locais do Claude Code (contém contexto de sessão,
+# paths de máquina, etc. — não deve ser compartilhado)
+.claude/
+
+# Spec/instruções locais do Claude Code — contém paths e contexto de máquina
+CLAUDE.md
