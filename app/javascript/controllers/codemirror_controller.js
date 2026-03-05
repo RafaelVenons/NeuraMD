@@ -33,6 +33,10 @@ export default class extends Controller {
       scroll: () => { this._dispatchScroll() }
     })
 
+    const keydownListener = EditorView.domEventHandlers({
+      keydown: (event) => { this._dispatchKeydown(event) }
+    })
+
     const state = EditorState.create({
       doc: this.initialValueValue || "",
       extensions: [
@@ -56,6 +60,7 @@ export default class extends Controller {
         markdown({ base: markdownLanguage, codeLanguages: languages }),
         updateListener,
         scrollListener,
+        keydownListener,
         EditorView.lineWrapping,
       ]
     })
@@ -63,6 +68,11 @@ export default class extends Controller {
     this._view = new EditorView({
       state,
       parent: this.hostTarget
+    })
+
+    // Listen for wiki-link insertion requests from wikilink_controller
+    this.element.addEventListener("wikilink:insert", (e) => {
+      this._insertWikilink(e.detail.markup, e.detail.insertStart)
     })
 
     // Notify other controllers editor is ready
@@ -152,10 +162,23 @@ export default class extends Controller {
 
   get view() { return this._view }
 
+  // Replace text from insertStart to current cursor with the wiki-link markup.
+  // insertStart is the absolute offset where [[ was typed.
+  _insertWikilink(markup, insertStart) {
+    if (!this._view) return
+    const cursorPos = this._view.state.selection.main.head
+    this._view.dispatch({
+      changes: { from: insertStart, to: cursorPos, insert: markup },
+      selection: { anchor: insertStart + markup.length }
+    })
+    this._view.focus()
+  }
+
   // Private
   _dispatchChange() {
+    const cursorPos = this._view?.state.selection.main.head ?? 0
     this.dispatch("change", {
-      detail: { value: this.getValue() },
+      detail: { value: this.getValue(), cursorPos, cm: this },
       bubbles: true
     })
   }
@@ -171,6 +194,13 @@ export default class extends Controller {
   _dispatchScroll() {
     this.dispatch("scroll", {
       detail: { ratio: this.getScrollRatio() },
+      bubbles: true
+    })
+  }
+
+  _dispatchKeydown(event) {
+    this.dispatch("keydown", {
+      detail: { key: event.key, preventDefault: () => event.preventDefault() },
       bubbles: true
     })
   }

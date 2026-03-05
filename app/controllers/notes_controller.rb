@@ -1,6 +1,6 @@
 class NotesController < ApplicationController
-  before_action :set_note, only: [:show, :edit, :update, :destroy, :autosave, :revisions]
-  layout "editor", only: [:show]
+  before_action :set_note, only: [:show, :edit, :update, :destroy, :autosave, :draft, :checkpoint, :revisions, :show_revision, :restore_revision]
+  layout "editor", only: [:show, :show_revision]
 
   def index
     @notes = policy_scope(Note).order(updated_at: :desc)
@@ -24,7 +24,8 @@ class NotesController < ApplicationController
 
   def show
     authorize @note
-    @revision = @note.head_revision
+    # Load draft for crash recovery if one exists; otherwise use head checkpoint
+    @revision = @note.note_revisions.find_by(revision_kind: :draft) || @note.head_revision
   end
 
   def edit
@@ -46,28 +47,41 @@ class NotesController < ApplicationController
     redirect_to notes_path, notice: "Nota arquivada."
   end
 
+  def search
+    authorize Note.new, :index?
+    notes = Note.search_by_title(params[:q].to_s)
+    render json: notes.map { |n| {id: n.id, title: n.title, slug: n.slug} }
+  end
+
   def autosave
+    # Legacy endpoint — now delegates to draft behaviour
+    draft
+  end
+
+  def draft
     authorize @note, :update?
-    content = params[:content_markdown].to_s
-    result = Notes::CreateRevisionService.call(
+    Notes::DraftService.call(note: @note, content: params[:content_markdown].to_s, author: current_user)
+    render json: {saved: true, kind: "draft"}
+  rescue => e
+    render json: {error: e.message}, status: :unprocessable_entity
+  end
+
+  def checkpoint
+    authorize @note, :update?
+    revision = Notes::CheckpointService.call(
       note: @note,
-      content_markdown: content,
+      content: params[:content_markdown].to_s,
       author: current_user,
       change_summary: params[:change_summary]
     )
-
-    render json: {
-      revision_id: result[:revision]&.id,
-      created: result[:created],
-      message: result[:created] ? "Revisão criada" : "Sem alterações significativas"
-    }
+    render json: {saved: true, kind: "checkpoint", revision_id: revision.id, created_at: revision.created_at.iso8601}
   rescue => e
     render json: {error: e.message}, status: :unprocessable_entity
   end
 
   def revisions
     authorize @note, :show?
-    @revisions = @note.note_revisions.order(created_at: :desc).limit(50)
+    @revisions = @note.note_revisions.where(revision_kind: :checkpoint).order(created_at: :desc)
     render json: @revisions.map { |r|
       {
         id: r.id,
@@ -77,6 +91,25 @@ class NotesController < ApplicationController
         is_head: r.id == @note.head_revision_id
       }
     }
+  end
+
+  def show_revision
+    authorize @note, :show?
+    @revision = @note.note_revisions.where(revision_kind: :checkpoint).find(params[:revision_id])
+  end
+
+  def restore_revision
+    authorize @note, :update?
+    source = @note.note_revisions.where(revision_kind: :checkpoint).find(params[:revision_id])
+    revision = Notes::CheckpointService.call(
+      note: @note,
+      content: source.content_markdown,
+      author: current_user,
+      change_summary: "Restaurado de #{source.created_at.strftime("%d/%m/%Y %H:%M")}"
+    )
+    render json: {saved: true, revision_id: revision.id}
+  rescue => e
+    render json: {error: e.message}, status: :unprocessable_entity
   end
 
   private
