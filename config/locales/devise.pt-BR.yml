@@ -1,0 +1,63 @@
+pt-BR:
+  devise:
+    confirmations:
+      confirmed: "Sua conta foi confirmada. Você agora está conectado."
+      send_instructions: "Você receberá um e-mail com instruções para confirmar sua conta em alguns minutos."
+      send_paranoid_instructions: "Se seu e-mail existir em nosso banco de dados, você receberá um e-mail com instruções para confirmar sua conta em alguns minutos."
+    failure:
+      already_authenticated: "Você já está conectado."
+      inactive: "Sua conta ainda não foi ativada."
+      invalid: "E-mail ou senha inválidos."
+      locked: "Sua conta está bloqueada."
+      last_attempt: "Você tem mais uma tentativa antes de sua conta ser bloqueada."
+      not_found_in_database: "E-mail ou senha inválidos."
+      timeout: "Sua sessão expirou. Por favor, entre novamente para continuar."
+      unauthenticated: "Você precisa entrar ou criar uma conta para continuar."
+      unconfirmed: "Você precisa confirmar seu e-mail antes de continuar."
+    mailer:
+      confirmation_instructions:
+        subject: "Instruções de confirmação"
+      reset_password_instructions:
+        subject: "Instruções para redefinir senha"
+      unlock_instructions:
+        subject: "Instruções para desbloquear conta"
+      email_changed:
+        subject: "E-mail alterado"
+      password_change:
+        subject: "Senha alterada"
+    omniauth_callbacks:
+      failure: "Não foi possível autenticar você com %{kind} porque \"%{reason}\"."
+      success: "Você foi autenticado com sucesso usando %{kind}."
+    passwords:
+      no_token: "Você não pode acessar esta página sem vir por um e-mail de redefinição de senha. Se você veio por um e-mail de redefinição de senha, verifique se a URL é completa."
+      send_instructions: "Você receberá um e-mail com instruções sobre como redefinir sua senha em alguns minutos."
+      send_paranoid_instructions: "Se o seu e-mail existir em nosso banco de dados, você receberá um link para redefinir sua senha em sua caixa de entrada em alguns minutos."
+      updated: "Sua senha foi alterada com sucesso. Você agora está conectado."
+      updated_not_active: "Sua senha foi alterada com sucesso."
+    registrations:
+      destroyed: "Sua conta foi cancelada. Esperamos vê-lo em breve!"
+      signed_up: "Bem-vindo! Sua conta foi criada com sucesso."
+      signed_up_but_inactive: "Sua conta foi criada com sucesso. No entanto, não foi possível entrar porque sua conta ainda não está ativada."
+      signed_up_but_locked: "Sua conta foi criada com sucesso. No entanto, não foi possível entrar porque sua conta está bloqueada."
+      signed_up_but_unconfirmed: "Uma mensagem com um link de confirmação foi enviada para seu e-mail. Por favor, siga o link para ativar sua conta."
+      update_needs_confirmation: "Você atualizou sua conta com sucesso, mas precisamos verificar seu novo e-mail. Por favor, verifique seu e-mail e clique no link de confirmação."
+      updated: "Sua conta foi atualizada com sucesso."
+      updated_but_not_signed_in: "Sua conta foi atualizada com sucesso, mas como sua senha foi alterada, você precisa entrar novamente."
+    sessions:
+      signed_in: "Bem-vindo!"
+      signed_out: "Você saiu da sua conta com sucesso."
+      already_signed_out: "Você já saiu da sua conta."
+    unlocks:
+      send_instructions: "Você receberá um e-mail com instruções sobre como desbloquear sua conta em alguns minutos."
+      send_paranoid_instructions: "Se sua conta existir, você receberá um e-mail com instruções para desbloqueá-la em alguns minutos."
+      unlocked: "Sua conta foi desbloqueada. Por favor, entre para continuar."
+  errors:
+    messages:
+      already_confirmed: "já foi confirmada. Por favor, tente entrar."
+      confirmation_period_expired: "precisa ser confirmada dentro de %{period}. Por favor, solicite uma nova."
+      expired: "expirou. Por favor solicite uma nova."
+      not_found: "não encontrado"
+      not_locked: "não estava bloqueada"
+      not_saved:
+        one: "1 erro impediu que este(a) %{resource} fosse salvo(a):"
+        other: "%{count} erros impediram que este(a) %{resource} fosse salvo(a):"
