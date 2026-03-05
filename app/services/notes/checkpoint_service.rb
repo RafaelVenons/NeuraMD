@@ -1,0 +1,46 @@
+module Notes
+  # Creates a permanent checkpoint revision and synchronises wiki-links.
+  # Checkpoints appear in the revision history and trigger link sync.
+  # Also deletes any existing draft for this note (checkpoint supersedes draft).
+  #
+  # Returns the new NoteRevision checkpoint.
+  class CheckpointService
+    def self.call(note:, content:, author: nil, change_summary: nil)
+      new(note:, content:, author:, change_summary:).call
+    end
+
+    def initialize(note:, content:, author:, change_summary:)
+      @note = note
+      @content = content
+      @author = author
+      @change_summary = change_summary
+    end
+
+    def call
+      ActiveRecord::Base.transaction do
+        # Remove draft — checkpoint supersedes it
+        @note.note_revisions.where(revision_kind: :draft).destroy_all
+
+        # Resolve latest checkpoint from DB (head_revision_id may be stale if it pointed to a draft)
+        latest_checkpoint_id = @note.note_revisions
+          .where(revision_kind: :checkpoint)
+          .order(created_at: :desc)
+          .pick(:id)
+
+        revision = @note.note_revisions.create!(
+          content_markdown: @content,
+          revision_kind: :checkpoint,
+          author: @author,
+          change_summary: @change_summary,
+          base_revision_id: latest_checkpoint_id
+        )
+
+        @note.update!(head_revision_id: revision.id)
+
+        Links::SyncService.call(src_note: @note, revision: revision, content: @content)
+
+        revision
+      end
+    end
+  end
+end
