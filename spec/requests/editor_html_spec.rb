@@ -17,13 +17,16 @@ RSpec.describe "Editor HTML structure", type: :request do
       expect(response.body).to include('data-controller="editor autosave"')
     end
 
-    it "passes autosave URL to autosave controller" do
-      expect(response.body).to include("data-autosave-url-value")
-      expect(response.body).to include(autosave_note_path(note.slug))
+    it "passes draft and checkpoint URLs to autosave controller" do
+      expect(response.body).to include("data-autosave-draft-url-value")
+      expect(response.body).to include(draft_note_path(note.slug))
+      expect(response.body).to include("data-autosave-checkpoint-url-value")
+      expect(response.body).to include(checkpoint_note_path(note.slug))
     end
 
-    it "sets 60s debounce on autosave controller" do
-      expect(response.body).to include('data-autosave-debounce-ms-value="60000"')
+    it "sets 60s draft debounce and 3s local debounce on autosave controller" do
+      expect(response.body).to include('data-autosave-draft-ms-value="60000"')
+      expect(response.body).to include('data-autosave-local-ms-value="3000"')
     end
 
     # ── Regression: _getPreviewController() used querySelector on previewPaneTarget
