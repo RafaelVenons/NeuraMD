@@ -126,34 +126,42 @@ note_revisions
 Links semânticos são escritos diretamente no texto da nota como wiki-links de duplo colchete:
 
 ```
-[[Título da Nota Destino|uuid-da-nota-destino]]
+[[Display Text|uuid]]          → referência simples (hier_role = NULL)
+[[Display Text|f:uuid]]        → Father  — dst está ACIMA na hierarquia (target_is_parent)
+[[Display Text|c:uuid]]        → Child   — dst está ABAIXO na hierarquia (target_is_child)
+[[Display Text|b:uuid]]        → Brother — dst está no mesmo nível     (same_level)
 ```
 
-- **Visível para o usuário:** apenas o título (parte antes do `|`)
-- **Referência real:** UUID da nota (parte depois do `|`) — robusto a renomear títulos
-- **Inserção:** via autocomplete ao digitar `[[` no editor
-- **Atualização de título:** quando a nota destino é renomeada, o título no markup é atualizado
-  automaticamente em todos os links que a referenciam (background job)
+**Separação de responsabilidades:**
+- **Display Text** (antes do `|`) — texto livre escolhido pelo autor; pode ser alterado a qualquer momento sem quebrar o link; não precisa ser o título da nota destino
+- **UUID** (depois do `|`) — referência imutável à nota destino; nunca muda mesmo se a nota for renomeada
+- **Prefixo de role** (`f:`, `c:`, `b:`) — embutido antes do UUID; ausência = referência simples
 
-**`hier_role` via prefixo no título (opcional):**
-```
-[[Título]]          → hier_role = NULL (referência simples)
-[[^ Título|uuid]]   → hier_role = target_is_parent (dst está acima na hierarquia)
-[[v Título|uuid]]   → hier_role = target_is_child  (dst está abaixo na hierarquia)
-[[= Título|uuid]]   → hier_role = same_level        (dst está no mesmo nível)
-```
+**Fluxo de inserção:**
+1. Usuário digita `[[`
+2. Dropdown abre com sugestões filtradas pelo título da nota (busca em tempo real)
+3. Usuário navega com `↓`/`↑`, seleciona com `Enter` ou `Tab`
+4. Editor insere `[[Título da Nota|uuid]]` — o Display Text inicial é o título atual da nota
+5. Após inserção, o usuário pode editar o Display Text livremente (o UUID permanece intacto)
+6. Para definir `hier_role`, o usuário edita manualmente o prefixo: `|uuid` → `|f:uuid`
 
 **Comportamento no editor (Stimulus + CodeMirror):**
 
 | Situação | Comportamento |
 |---|---|
-| Digita `[[` | Abre dropdown de sugestões por título (busca nas notas existentes) |
-| Continua digitando | Filtra sugestões em tempo real (pg_trgm via JSON endpoint) |
+| Digita `[[` | Abre dropdown de sugestões por título |
+| Continua digitando `[[texto` | Filtra sugestões em tempo real via `GET /notes/search?q=` |
 | `↓` / `↑` | Navega no dropdown |
 | `Enter` ou `Tab` | Insere `[[Título\|uuid]]` no cursor |
 | `Esc` | Fecha dropdown sem inserir |
-| UUID inexistente no DB | Fundo vermelho na marcação no editor e no preview |
-| `[[nota1]]..[[nota1]]` duplicado | Aceito no texto; `note_links` deduplicado por `(src_note_id, dst_note_id)` |
+| UUID não encontrado no DB | Fundo vermelho na marcação (`wikilink-broken`) no editor e no preview |
+| Mesmo UUID repetido no texto | Aceito; `note_links` deduplicado por `(src_note_id, dst_note_id, hier_role)` |
+
+**Preview:**
+- `[[Display Text|uuid]]` → `<a href="/notes/slug" title="Título atual da nota">Display Text</a>`
+- O `title` do `<a>` é buscado do DB pelo UUID — exibe o título real da nota em tooltip
+- UUID inexistente → `<span class="wikilink-broken" title="Nota não encontrada">Display Text</span>`
+- `TitleSyncService` **não é necessário** — Display Text é livre; sem propagação automática
 
 **Backlinks no preview:**
 - Seção no rodapé do preview listando todas as notas que linkam para esta
@@ -532,7 +540,7 @@ spec/
 - [ ] `GET /notes/search?q=:query` — endpoint JSON `{id, title, slug}` para autocomplete
 - [ ] `Links::ExtractService` — extrai `[[Título|uuid]]` do markdown, retorna array de UUIDs
 - [ ] `Links::SyncService` — diff entre links extraídos e `note_links` existentes; cria/deleta; sem duplicatas por `(src_note_id, dst_note_id)`; só roda em checkpoints
-- [ ] `Links::TitleSyncService` — atualiza `[[Título antigo|uuid]]` → `[[Título novo|uuid]]` em todas as notas quando uma nota é renomeada
+- [ ] ~~`Links::TitleSyncService`~~ — não necessário; Display Text é livre e não rastreia o título da nota
 - [ ] CodeMirror extension: detecta `[[`, abre dropdown Stimulus com sugestões via fetch, navega com `↑`/`↓`, insere com `Enter`/`Tab`, fecha com `Esc`
 - [ ] Decoração de link quebrado: UUID não encontrado no DB → classe CSS `wikilink-broken` (fundo vermelho) no editor via CodeMirror ViewPlugin
 - [ ] Preview: render `[[Título|uuid]]` como `<a href="/notes/slug">Título</a>` (server-side no `RenderService`)
@@ -615,8 +623,10 @@ spec/
 | `revision_kind (draft/checkpoint)` | Separar salvamento automático de versionamento real; evitar explosão de revisões |
 | Draft = upsert (1 por nota) | Horas editando a mesma nota geram 1 draft, não centenas |
 | Links sincronizados apenas em checkpoints | Evitar churn no DB; links refletem versões consolidadas |
-| UUID como referência do link, título como display | Robustez a renomear notas; título é atualizado, UUID não muda |
-| `TitleSyncService` ao renomear | Manter marcações `[[Título\|uuid]]` consistentes em todo o grafo |
+| UUID como referência do link, Display Text livre | Robustez a renomear notas; usuário controla texto exibido; UUID nunca muda |
+| `f:/c:/b:` prefixos de hier_role no UUID | Sem sintaxe extra no Display Text; role embutida no campo de referência |
+| Tooltip no preview = título real da nota | Display Text pode divergir do título; tooltip sempre mostra o título atual do DB |
+| Sem TitleSyncService | Display Text é livre — não há título para propagar; simplifica drasticamente |
 
 ---
 
