@@ -196,4 +196,4 @@ docker-compose.local.yml
 .claude/
 
 # Spec/instruções locais do Claude Code — contém paths e contexto de máquina
-CLAUDE.md
+# CLAUDE.md é o spec principal do projeto — incluído no repo intencionalmente
