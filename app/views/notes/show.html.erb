@@ -1,0 +1,221 @@
+<% content_for :title, "#{@note.title} — NeuraMD" %>
+
+<div id="editor-root"
+     class="flex flex-col"
+     style="height: 100dvh; background: var(--theme-bg-primary);"
+     data-controller="editor autosave"
+     data-editor-autosave-url-value="<%= autosave_note_path(@note.slug) %>"
+     data-editor-slug-value="<%= @note.slug %>"
+     data-editor-title-value="<%= @note.title %>"
+     data-editor-language-value="<%= @note.detected_language %>"
+     data-autosave-url-value="<%= autosave_note_path(@note.slug) %>"
+     data-autosave-debounce-ms-value="3000"
+     data-autosave-force-interval-ms-value="30000">
+
+  <%# ── Toolbar ─────────────────────────────────────────── %>
+  <div id="editor-toolbar"
+       class="flex items-center gap-2 border-b border-gray-800 bg-gray-900 px-3 py-2 flex-shrink-0">
+
+    <%# Back link %>
+    <%= link_to notes_path,
+        class: "flex-shrink-0 rounded p-1.5 text-gray-400 hover:bg-gray-800 hover:text-gray-200",
+        title: "Voltar para lista",
+        "data-turbo-prefetch": "false" do %>
+      <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18"/>
+      </svg>
+    <% end %>
+
+    <%# Editable title %>
+    <input type="text"
+           value="<%= @note.title %>"
+           class="flex-1 min-w-0 bg-transparent text-sm font-medium text-gray-200 placeholder-gray-500 outline-none border-b border-transparent focus:border-gray-600 py-0.5"
+           data-editor-target="titleInput"
+           placeholder="Título da nota">
+
+    <%# Language badge %>
+    <span class="flex-shrink-0 rounded bg-gray-800 px-2 py-0.5 text-xs font-mono text-gray-400"
+          data-editor-target="langBadge">
+      <%= @note.detected_language || "auto" %>
+    </span>
+
+    <%# Format buttons %>
+    <div class="flex items-center gap-0.5 flex-shrink-0">
+      <button title="Negrito (Ctrl+B)"
+              class="toolbar-btn"
+              data-action="click->text-format#bold">
+        <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+          <path d="M6 12h8a4 4 0 000-8H6v8zm0 0h9a4 4 0 010 8H6v-8z"/>
+        </svg>
+      </button>
+      <button title="Itálico (Ctrl+I)"
+              class="toolbar-btn"
+              data-action="click->text-format#italic">
+        <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+          <line x1="19" y1="4" x2="10" y2="4"/><line x1="14" y1="20" x2="5" y2="20"/>
+          <line x1="15" y1="4" x2="9" y2="20"/>
+        </svg>
+      </button>
+      <button title="Código (Ctrl+`)"
+              class="toolbar-btn"
+              data-action="click->text-format#inlineCode">
+        <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/>
+        </svg>
+      </button>
+      <button title="Link (Ctrl+K)"
+              class="toolbar-btn"
+              data-action="click->text-format#link">
+        <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M10 13a5 5 0 007.54.54l3-3a5 5 0 00-7.07-7.07l-1.72 1.71"/>
+          <path d="M14 11a5 5 0 00-7.54-.54l-3 3a5 5 0 007.07 7.07l1.71-1.71"/>
+        </svg>
+      </button>
+    </div>
+
+    <%# Divider %>
+    <div class="w-px h-5 bg-gray-700 flex-shrink-0"></div>
+
+    <%# Preview toggle %>
+    <button title="Toggle Preview (Ctrl+P)"
+            class="toolbar-btn"
+            data-action="click->editor#togglePreview"
+            data-editor-target="previewToggleBtn">
+      <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+        <circle cx="12" cy="12" r="3"/>
+      </svg>
+    </button>
+
+    <%# Typewriter mode toggle %>
+    <button title="Modo Typewriter"
+            class="toolbar-btn"
+            data-action="click->typewriter#toggle"
+            data-editor-target="typewriterBtn">
+      <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <rect x="2" y="4" width="20" height="16" rx="2"/>
+        <line x1="8" y1="12" x2="16" y2="12"/>
+      </svg>
+    </button>
+
+    <%# Divider %>
+    <div class="w-px h-5 flex-shrink-0" style="background: var(--toolbar-border)"></div>
+
+    <%# Autosave status %>
+    <span class="save-status flex-shrink-0" style="color: var(--theme-text-faint)"
+          data-editor-target="saveStatus">
+      —
+    </span>
+  </div>
+
+  <%# ── Main editor area ──────────────────────────────────── %>
+  <div class="flex flex-1 min-h-0"
+       data-editor-target="mainArea">
+
+    <%# Editor pane %>
+    <div id="editor-pane"
+         class="flex-1 min-w-0 flex flex-col"
+         data-controller="codemirror text-format stats-panel typewriter jump-to-line"
+         data-codemirror-initial-value-value="<%= @revision&.content_markdown.to_s.html_safe %>"
+         data-editor-target="editorPane">
+      <div id="codemirror-host"
+           class="flex-1 min-h-0 overflow-hidden"
+           data-codemirror-target="host"
+           data-text-format-target="editor"
+           data-typewriter-target="editor"></div>
+
+      <%# Stats bar %>
+      <div class="editor-stats-bar flex items-center gap-4 px-4 py-1 flex-shrink-0"
+           data-stats-panel-target="bar">
+        <span data-stats-panel-target="words">0 palavras</span>
+        <span data-stats-panel-target="lines">0 linhas</span>
+        <span data-stats-panel-target="position">L1, C1</span>
+      </div>
+    </div>
+
+    <%# Divider %>
+    <div class="pane-divider"></div>
+
+    <%# Preview pane %>
+    <div id="preview-pane"
+         class="flex-1 min-w-0 overflow-y-auto"
+         data-controller="preview"
+         data-editor-target="previewPane"
+         data-action="scroll->preview#scroll">
+      <div class="preview-prose"
+           data-preview-target="output">
+        <p style="color: var(--theme-text-faint); font-style: italic;">Comece a digitar para ver o preview...</p>
+      </div>
+    </div>
+  </div>
+
+  <%# ── Connection lost banner ──────────────────────────── %>
+  <div id="offline-banner"
+       class="hidden fixed bottom-0 left-0 right-0 px-4 py-2 text-sm text-center z-50"
+       data-controller="connection-monitor"
+       data-connection-monitor-target="banner">
+    ⚠ Conexão perdida — as alterações serão salvas ao reconectar
+  </div>
+
+  <%# ── Find/Replace dialog ─────────────────────────────── %>
+  <div id="find-replace-dialog"
+       class="hidden fixed top-14 right-4 z-40 w-80 editor-dialog"
+       data-controller="find-replace"
+       data-find-replace-target="dialog">
+    <div class="editor-dialog-header flex items-center justify-between px-4 py-3">
+      <span class="text-sm font-medium">Localizar / Substituir</span>
+      <button class="toolbar-btn !p-0.5" data-action="click->find-replace#close">✕</button>
+    </div>
+    <div class="p-4 space-y-3">
+      <div class="flex gap-2">
+        <input type="text"
+               placeholder="Localizar..."
+               class="editor-dialog-input flex-1 px-3 py-1.5 text-sm"
+               data-find-replace-target="findInput"
+               data-action="input->find-replace#search keydown->find-replace#handleFindKey">
+        <button class="editor-dialog-btn px-2 py-1" data-action="click->find-replace#previous" title="Anterior">↑</button>
+        <button class="editor-dialog-btn px-2 py-1" data-action="click->find-replace#next" title="Próximo">↓</button>
+      </div>
+      <div class="flex gap-3 items-center">
+        <label class="flex items-center gap-1.5 text-xs cursor-pointer" style="color: var(--theme-text-muted)">
+          <input type="checkbox" data-find-replace-target="caseSensitive"> Maiúsc.
+        </label>
+        <label class="flex items-center gap-1.5 text-xs cursor-pointer" style="color: var(--theme-text-muted)">
+          <input type="checkbox" data-find-replace-target="useRegex"> Regex
+        </label>
+        <span class="ml-auto text-xs" style="color: var(--theme-text-faint)" data-find-replace-target="matchCount">—</span>
+      </div>
+      <input type="text"
+             placeholder="Substituir por..."
+             class="editor-dialog-input w-full px-3 py-1.5 text-sm"
+             data-find-replace-target="replaceInput">
+      <div class="flex gap-2">
+        <button class="editor-dialog-btn flex-1 px-3 py-1.5"
+                data-action="click->find-replace#replaceCurrent">Substituir</button>
+        <button class="editor-dialog-btn flex-1 px-3 py-1.5"
+                data-action="click->find-replace#replaceAll">Subst. Tudo</button>
+      </div>
+    </div>
+  </div>
+
+  <%# ── Jump to Line dialog ────────────────────────────── %>
+  <div id="jump-to-line-dialog"
+       class="hidden fixed top-14 right-4 z-40 w-56 editor-dialog"
+       data-jump-to-line-target="dialog">
+    <div class="editor-dialog-header flex items-center justify-between px-4 py-3">
+      <span class="text-sm font-medium">Ir para Linha</span>
+      <button class="toolbar-btn !p-0.5" data-action="click->jump-to-line#close">✕</button>
+    </div>
+    <div class="p-4 flex gap-2">
+      <input type="number" min="1"
+             placeholder="Número..."
+             class="editor-dialog-input flex-1 px-3 py-1.5 text-sm"
+             data-jump-to-line-target="lineInput"
+             data-action="keydown->jump-to-line#handleKey">
+      <button class="rounded px-3 py-1.5 text-xs text-white cursor-pointer"
+              style="background: var(--theme-accent);"
+              data-action="click->jump-to-line#jump">Ir</button>
+    </div>
+  </div>
+
+</div>
