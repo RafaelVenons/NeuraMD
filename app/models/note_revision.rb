@@ -10,8 +10,11 @@ class NoteRevision < ApplicationRecord
 
   encrypts :content_markdown
 
+  enum :revision_kind, {draft: "draft", checkpoint: "checkpoint"}, prefix: false
+
   validates :content_markdown, presence: true
   validates :note_id, presence: true
+  validates :revision_kind, presence: true
 
   before_save :derive_content_plain
 

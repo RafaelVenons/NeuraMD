@@ -17,6 +17,9 @@ class Note < ApplicationRecord
 
   scope :active, -> { where(deleted_at: nil) }
   scope :deleted, -> { where.not(deleted_at: nil) }
+  scope :search_by_title, ->(query) {
+    active.where("title ILIKE ?", "%#{sanitize_sql_like(query)}%").order(:title).limit(10)
+  }
 
   def soft_delete!
     update!(deleted_at: Time.current)
