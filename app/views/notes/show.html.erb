@@ -143,7 +143,7 @@
     <div id="editor-pane"
          class="flex-1 min-w-0 flex flex-col relative"
          data-controller="codemirror text-format stats-panel typewriter jump-to-line wikilink"
-         data-codemirror-initial-value-value="<%= @revision&.content_markdown.to_s.html_safe %>"
+         data-codemirror-initial-value-value="<%= @revision&.content_markdown.to_s %>"
          data-wikilink-search-url-value="<%= search_notes_path %>"
          data-editor-target="editorPane">
       <div id="codemirror-host"

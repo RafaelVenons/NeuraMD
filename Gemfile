@@ -32,6 +32,7 @@ gem "pg_search"
 
 # StandardRB (replaces rubocop-omakase)
 gem "standard", require: false
+gem "rubocop-rails-omakase", require: false
 
 group :development, :test do
   gem "debug", platforms: %i[mri windows], require: "debug/prelude"
