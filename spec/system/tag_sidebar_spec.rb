@@ -219,6 +219,18 @@ RSpec.describe "Tag sidebar", type: :system do
       expect(name_input.value).to eq("")
     end
 
+    it "reuses an existing tag instead of failing silently on duplicate names" do
+      create(:tag, name: "duplicada")
+      visit current_path
+      expect(page).to have_css(".cm-editor", wait: 5)
+
+      name_input.fill_in with: "Duplicada"
+      name_input.send_keys(:enter)
+
+      expect(page).to have_css(".tag-item", text: "duplicada", count: 1, wait: 3)
+      expect(name_input.value).to eq("")
+    end
+
     it "suggests a next color far from the dominant hues in the note" do
       dominant = create(:tag, name: "Dominante", color_hex: "#ef4444")
       secondary = create(:tag, name: "Secundaria", color_hex: "#f97316")
@@ -401,6 +413,26 @@ RSpec.describe "Tag sidebar", type: :system do
         link = fresh_note.outgoing_links.find_by(dst_note_id: dst_note.id)
         expect(link).to be_present
         expect(link.tags).to include(created_tag)
+      end
+
+      it "reuses and associates an existing tag when the same name is entered" do
+        existing_tag = create(:tag, name: "reaproveitar", color_hex: "#10b981")
+        visit note_path(fresh_note.slug)
+        expect(page).to have_css(".cm-editor", wait: 5)
+
+        find(".cm-content").click
+        find(".cm-content").send_keys("[[Destino|#{dst_note.id}]]")
+        find(".cm-content").send_keys([:control, :home])
+        expect(page).to have_css("[data-tag-sidebar-target='modeLabel']", text: /link/i, wait: 4)
+
+        find("[data-tag-sidebar-target='nameInput']").fill_in with: "Reaproveitar"
+        find("[data-tag-sidebar-target='nameInput']").send_keys(:enter)
+
+        expect(page).to have_css(".tag-item--active", text: "reaproveitar", wait: 4)
+
+        link = fresh_note.outgoing_links.find_by(dst_note_id: dst_note.id)
+        expect(link).to be_present
+        expect(link.tags).to include(existing_tag)
       end
 
       context "when there are no existing tags yet" do

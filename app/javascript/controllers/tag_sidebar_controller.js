@@ -30,6 +30,7 @@ export default class extends Controller {
 
   connect() {
     this._collapsed        = false
+    this._creatingTag      = false
     this._tags             = []
     this._focusedLink      = null
     this._activatedTagId   = null
@@ -130,24 +131,45 @@ export default class extends Controller {
     const name = this.nameInputTarget.value.trim()
     if (!name) { this.nameInputTarget.focus(); return }
 
-    const csrf = document.querySelector("meta[name='csrf-token']")?.content
-    const res  = await fetch("/tags", {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "X-CSRF-Token": csrf, Accept: "application/json" },
-      body: JSON.stringify({ tag: { name, color_hex: this._newColor, tag_scope: "both" } })
-    })
-    if (!res.ok) return
-    const tag = await res.json()
-
-    this._tags.push(tag)
-
-    if (this._focusedLink) {
-      await this._attachTagToFocusedLink(tag.id, tag)
+    const existingTag = this._findTagByName(name)
+    if (existingTag) {
+      await this._useExistingTag(existingTag)
+      return
     }
+    if (this._creatingTag) return
 
-    this.nameInputTarget.value = ""
-    this._setSuggestedNewColor()
-    this._renderList()
+    this._creatingTag = true
+
+    try {
+      const res  = await fetch("/tags", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "X-CSRF-Token": this._csrfToken(), Accept: "application/json" },
+        body: JSON.stringify({ tag: { name, color_hex: this._newColor, tag_scope: "both" } })
+      })
+
+      if (!res.ok) {
+        if (res.status === 422) {
+          await this._loadTags()
+          const conflictingTag = this._findTagByName(name)
+          if (conflictingTag) await this._useExistingTag(conflictingTag)
+        }
+        return
+      }
+
+      const tag = await res.json()
+
+      this._tags.push(tag)
+
+      if (this._focusedLink) {
+        await this._attachTagToFocusedLink(tag.id, tag)
+      }
+
+      this.nameInputTarget.value = ""
+      this._setSuggestedNewColor()
+      this._renderList()
+    } finally {
+      this._creatingTag = false
+    }
   }
 
   async deleteTag(tagId) {
@@ -386,6 +408,21 @@ export default class extends Controller {
 
   _csrfToken() {
     return document.querySelector("meta[name='csrf-token']")?.content
+  }
+
+  _findTagByName(name) {
+    const normalizedName = name.trim().toLowerCase()
+    return this._tags.find(tag => tag.name.trim().toLowerCase() === normalizedName) || null
+  }
+
+  async _useExistingTag(tag) {
+    if (this._focusedLink) {
+      await this._attachTagToFocusedLink(tag.id, tag)
+    }
+
+    this.nameInputTarget.value = ""
+    this._setSuggestedNewColor()
+    this._renderList()
   }
 
   // ── Global-mode: single-tag highlight ───────────────────
