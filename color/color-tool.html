@@ -1,0 +1,1533 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Chroma — Color Tool</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@300;400;500&family=Syne:wght@400;600;800&display=swap" rel="stylesheet">
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg: #0a0a0f;
+    --surface: #13131a;
+    --surface2: #1c1c27;
+    --border: #2a2a3a;
+    --text: #e8e8f0;
+    --muted: #6b6b88;
+    --accent: #7c6fff;
+  }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'DM Mono', monospace;
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  header {
+    padding: 24px 40px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .logo {
+    font-family: 'Syne', sans-serif;
+    font-weight: 800;
+    font-size: 22px;
+    letter-spacing: -0.5px;
+  }
+
+  .logo span { color: var(--accent); }
+
+  .tabs {
+    display: flex;
+    gap: 4px;
+    background: var(--surface);
+    padding: 4px;
+    border-radius: 10px;
+    border: 1px solid var(--border);
+  }
+
+  .tab {
+    padding: 8px 20px;
+    border-radius: 7px;
+    border: none;
+    background: transparent;
+    color: var(--muted);
+    font-family: 'DM Mono', monospace;
+    font-size: 12px;
+    cursor: pointer;
+    transition: all 0.2s;
+    letter-spacing: 0.5px;
+  }
+
+  .tab.active {
+    background: var(--surface2);
+    color: var(--text);
+    border: 1px solid var(--border);
+  }
+
+  .tab:hover:not(.active) { color: var(--text); }
+
+  .main {
+    display: grid;
+    grid-template-columns: 1fr 380px;
+    gap: 0;
+    height: calc(100vh - 73px);
+  }
+
+  .canvas-area {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 40px;
+    position: relative;
+  }
+
+  .wheel-wrap {
+    position: relative;
+    width: 420px;
+    height: 420px;
+  }
+
+  #wheelCanvas {
+    cursor: crosshair;
+    border-radius: 50%;
+    filter: drop-shadow(0 0 40px rgba(124,111,255,0.15));
+  }
+
+  .center-preview {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 80px;
+    height: 80px;
+    border-radius: 50%;
+    border: 3px solid var(--bg);
+    box-shadow: 0 0 0 1px var(--border), 0 8px 24px rgba(0,0,0,0.5);
+    transition: background 0.2s;
+    pointer-events: none;
+  }
+
+  .sidebar {
+    border-left: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  .sidebar-section {
+    padding: 24px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .section-label {
+    font-size: 10px;
+    letter-spacing: 2px;
+    color: var(--muted);
+    text-transform: uppercase;
+    margin-bottom: 16px;
+  }
+
+  /* Controls */
+  .sliders { display: flex; flex-direction: column; gap: 12px; }
+
+  .slider-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+
+  .slider-name {
+    font-size: 11px;
+    color: var(--muted);
+    width: 24px;
+    flex-shrink: 0;
+  }
+
+  input[type=range] {
+    -webkit-appearance: none;
+    flex: 1;
+    height: 4px;
+    border-radius: 2px;
+    outline: none;
+    cursor: pointer;
+  }
+
+  input[type=range]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    background: var(--text);
+    border: 2px solid var(--bg);
+    box-shadow: 0 0 0 1px var(--border);
+  }
+
+  #satRange { background: linear-gradient(to right, #888, hsl(var(--cur-h, 270), 100%, 50%)); }
+  #briRange { background: linear-gradient(to right, #000, #fff); }
+
+  .slider-val {
+    font-size: 11px;
+    color: var(--text);
+    width: 32px;
+    text-align: right;
+  }
+
+  /* Palette */
+  .palette-grid {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    flex: 1;
+    overflow-y: auto;
+    padding: 24px;
+  }
+
+  .palette-grid::-webkit-scrollbar { width: 4px; }
+  .palette-grid::-webkit-scrollbar-track { background: transparent; }
+  .palette-grid::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+  .color-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 10px;
+    border-radius: 8px;
+    border: 1px solid transparent;
+    cursor: pointer;
+    transition: all 0.15s;
+    position: relative;
+  }
+
+  .color-row:hover { background: var(--surface); border-color: var(--border); }
+
+  .color-swatch {
+    width: 36px;
+    height: 36px;
+    border-radius: 6px;
+    flex-shrink: 0;
+    border: 1px solid rgba(255,255,255,0.08);
+    position: relative;
+  }
+
+  .color-swatch.selected::after {
+    content: '✓';
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 14px;
+    color: rgba(255,255,255,0.9);
+    text-shadow: 0 1px 3px rgba(0,0,0,0.5);
+  }
+
+  .color-info { flex: 1; min-width: 0; }
+
+  .color-hex {
+    font-size: 12px;
+    color: var(--text);
+    letter-spacing: 0.5px;
+  }
+
+  .color-label {
+    font-size: 10px;
+    color: var(--muted);
+    margin-top: 2px;
+  }
+
+  .color-contrast {
+    font-size: 10px;
+    padding: 2px 6px;
+    border-radius: 4px;
+    border: 1px solid var(--border);
+    color: var(--muted);
+  }
+
+  .color-contrast.good { color: #4ade80; border-color: rgba(74,222,128,0.3); }
+  .color-contrast.warn { color: #fbbf24; border-color: rgba(251,191,36,0.3); }
+  .color-contrast.fail { color: #f87171; border-color: rgba(248,113,113,0.3); }
+
+  .remove-btn {
+    background: none;
+    border: none;
+    color: var(--muted);
+    cursor: pointer;
+    font-size: 14px;
+    padding: 2px 4px;
+    border-radius: 4px;
+    opacity: 0;
+    transition: opacity 0.15s, color 0.15s;
+  }
+
+  .color-row:hover .remove-btn { opacity: 1; }
+  .remove-btn:hover { color: #f87171; }
+
+  /* harmony badges */
+  .harmony-row {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+    margin-bottom: 16px;
+  }
+
+  .harmony-btn {
+    padding: 5px 12px;
+    border-radius: 20px;
+    border: 1px solid var(--border);
+    background: transparent;
+    color: var(--muted);
+    font-family: 'DM Mono', monospace;
+    font-size: 10px;
+    letter-spacing: 0.5px;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+
+  .harmony-btn.active, .harmony-btn:hover {
+    background: var(--surface2);
+    color: var(--text);
+    border-color: var(--accent);
+  }
+
+  /* Selected palette strip */
+  .selected-strip {
+    display: flex;
+    gap: 0;
+    height: 48px;
+    border-radius: 8px;
+    overflow: hidden;
+    border: 1px solid var(--border);
+    margin-bottom: 12px;
+  }
+
+  .strip-swatch {
+    flex: 1;
+    transition: flex 0.3s;
+    cursor: pointer;
+    position: relative;
+  }
+
+  .strip-swatch:hover { flex: 2; }
+
+  .export-btn {
+    width: 100%;
+    padding: 10px;
+    border-radius: 8px;
+    border: 1px solid var(--border);
+    background: var(--surface);
+    color: var(--text);
+    font-family: 'DM Mono', monospace;
+    font-size: 11px;
+    cursor: pointer;
+    letter-spacing: 1px;
+    transition: all 0.2s;
+    text-transform: uppercase;
+  }
+
+  .export-btn:hover { background: var(--surface2); border-color: var(--accent); color: var(--accent); }
+
+  /* Shades tab */
+  .shades-panel { display: none; flex-direction: column; height: 100%; }
+  .shades-panel.visible { display: flex; }
+  .harmony-panel { display: none; flex-direction: column; height: 100%; }
+  .harmony-panel.visible { display: flex; }
+
+  .shade-canvas-area {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 40px;
+    flex-direction: column;
+    gap: 32px;
+  }
+
+  .hue-selector {
+    width: 420px;
+    height: 40px;
+    border-radius: 20px;
+    cursor: crosshair;
+    position: relative;
+  }
+
+  #hueCanvas { border-radius: 20px; }
+
+  .shade-grid {
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 12px;
+    width: 420px;
+  }
+
+  .shade-cell {
+    aspect-ratio: 1;
+    border-radius: 10px;
+    cursor: pointer;
+    border: 2px solid transparent;
+    transition: all 0.15s;
+    position: relative;
+    display: flex;
+    align-items: flex-end;
+    justify-content: center;
+    padding-bottom: 6px;
+  }
+
+  .shade-cell:hover { transform: scale(1.05); border-color: rgba(255,255,255,0.3); }
+  .shade-cell.picked { border-color: rgba(255,255,255,0.8); }
+
+  .shade-hex-label {
+    font-size: 9px;
+    font-family: 'DM Mono', monospace;
+    color: rgba(255,255,255,0.7);
+    text-shadow: 0 1px 3px rgba(0,0,0,0.8);
+    letter-spacing: 0.5px;
+  }
+
+  .cursor-dot {
+    position: absolute;
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    border: 2px solid white;
+    box-shadow: 0 0 0 1px rgba(0,0,0,0.5);
+    pointer-events: none;
+    transform: translate(-50%, -50%);
+    display: none;
+  }
+
+  .toast {
+    position: fixed;
+    bottom: 24px;
+    left: 50%;
+    transform: translateX(-50%) translateY(80px);
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    color: var(--text);
+    padding: 10px 20px;
+    border-radius: 8px;
+    font-size: 12px;
+    transition: transform 0.3s ease;
+    z-index: 100;
+    letter-spacing: 0.5px;
+  }
+
+  .toast.show { transform: translateX(-50%) translateY(0); }
+
+  /* Conflict indicator on wheel */
+  .wheel-hint {
+    position: absolute;
+    bottom: -32px;
+    left: 50%;
+    transform: translateX(-50%);
+    font-size: 10px;
+    color: var(--muted);
+    white-space: nowrap;
+    letter-spacing: 0.5px;
+  }
+
+  /* ——————————————————————————————————
+     TAGS NEURAMED TAB
+  —————————————————————————————————— */
+  .tags-panel { display: none; flex-direction: column; height: 100%; }
+  .tags-panel.visible { display: flex; }
+
+  .tags-sidebar {
+    border-left: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    overflow-y: auto;
+  }
+  .tags-sidebar::-webkit-scrollbar { width: 4px; }
+  .tags-sidebar::-webkit-scrollbar-track { background: transparent; }
+  .tags-sidebar::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+  .tag-input-row {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    margin-bottom: 12px;
+  }
+
+  .tag-hex-input {
+    flex: 1;
+    min-width: 0;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    color: var(--text);
+    padding: 8px 10px;
+    border-radius: 6px;
+    font-family: 'DM Mono', monospace;
+    font-size: 12px;
+    outline: none;
+  }
+  .tag-hex-input:focus { border-color: var(--accent); }
+
+  .tag-kind-select {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    color: var(--muted);
+    padding: 8px 6px;
+    border-radius: 6px;
+    font-family: 'DM Mono', monospace;
+    font-size: 10px;
+    outline: none;
+    cursor: pointer;
+    flex-shrink: 0;
+  }
+
+  .tag-add-btn {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    color: var(--text);
+    padding: 8px 14px;
+    border-radius: 6px;
+    font-family: 'DM Mono', monospace;
+    font-size: 11px;
+    cursor: pointer;
+    transition: all 0.15s;
+    flex-shrink: 0;
+  }
+  .tag-add-btn:hover { border-color: var(--accent); color: var(--accent); }
+
+  .tag-chips { display: flex; flex-direction: column; gap: 6px; }
+
+  .tag-chip {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 10px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    font-size: 11px;
+  }
+  .tag-chip.session { border-color: rgba(255,220,50,0.35); }
+
+  .tag-chip-swatch {
+    width: 20px;
+    height: 20px;
+    border-radius: 4px;
+    border: 1px solid rgba(255,255,255,0.1);
+    flex-shrink: 0;
+  }
+  .tag-chip-kind {
+    color: var(--muted);
+    font-size: 9px;
+    letter-spacing: 0.5px;
+  }
+  .tag-chip button {
+    background: none;
+    border: none;
+    color: var(--muted);
+    cursor: pointer;
+    font-size: 12px;
+    margin-left: auto;
+    padding: 0 2px;
+  }
+  .tag-chip button:hover { color: #f87171; }
+
+  /* Suggestion block */
+  .suggest-main {
+    display: flex;
+    gap: 14px;
+    align-items: center;
+    margin-bottom: 10px;
+  }
+  .suggest-swatch {
+    width: 52px;
+    height: 52px;
+    border-radius: 10px;
+    flex-shrink: 0;
+    border: 1px solid rgba(255,255,255,0.1);
+    cursor: pointer;
+    transition: transform 0.15s;
+    background: var(--surface2);
+  }
+  .suggest-swatch:hover { transform: scale(1.05); }
+
+  .harmony-badge {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 20px;
+    font-size: 9px;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    border: 1px solid var(--border);
+    color: var(--muted);
+    margin-top: 4px;
+  }
+  .harmony-badge.active {
+    border-color: var(--accent);
+    color: var(--accent);
+  }
+
+  /* Role rows */
+  .role-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 7px 8px;
+    border-radius: 6px;
+    border: 1px solid transparent;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  .role-row:hover { background: var(--surface); border-color: var(--border); }
+
+  .role-swatch {
+    width: 26px;
+    height: 26px;
+    border-radius: 5px;
+    flex-shrink: 0;
+    border: 1px solid rgba(255,255,255,0.08);
+  }
+  .role-info { flex: 1; min-width: 0; }
+  .role-label {
+    font-size: 9px;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.8px;
+    margin-bottom: 2px;
+  }
+  .role-sample {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    font-family: 'DM Mono', monospace;
+    letter-spacing: 0.2px;
+  }
+  .role-meta {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 2px;
+    flex-shrink: 0;
+  }
+  .role-hex { font-size: 9px; color: var(--text); }
+  .role-sl  { font-size: 9px; color: var(--muted); }
+
+  /* Alternative chips */
+  .alt-chips { display: flex; gap: 8px; flex-wrap: wrap; }
+
+  .alt-chip {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 10px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.15s;
+    flex: 1;
+    min-width: 90px;
+  }
+  .alt-chip:hover { border-color: var(--accent); background: var(--surface2); }
+  .alt-swatch {
+    width: 22px;
+    height: 22px;
+    border-radius: 5px;
+    border: 1px solid rgba(255,255,255,0.1);
+    flex-shrink: 0;
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">chroma<span>.</span></div>
+  <div class="tabs">
+    <button class="tab active" onclick="switchTab('harmony')">Harmonia de Cores</button>
+    <button class="tab" onclick="switchTab('shades')">Tons &amp; Sombras</button>
+    <button class="tab" onclick="switchTab('tags')">Tags NeuraMD</button>
+  </div>
+  <div style="font-size:10px;color:var(--muted);letter-spacing:1px;">COLOR TOOL</div>
+</header>
+
+<!-- HARMONY TAB -->
+<div class="harmony-panel visible" id="harmonyPanel">
+  <div class="main">
+    <div class="canvas-area">
+      <div class="wheel-wrap">
+        <canvas id="wheelCanvas" width="420" height="420"></canvas>
+        <div class="center-preview" id="centerPreview"></div>
+        <div class="cursor-dot" id="cursorDot"></div>
+        <div class="wheel-hint">Clique para adicionar • Arraste para explorar</div>
+      </div>
+    </div>
+    <div class="sidebar">
+      <div class="sidebar-section">
+        <div class="section-label">Harmonia</div>
+        <div class="harmony-row">
+          <button class="harmony-btn active" onclick="setHarmony('complementar')">Complementar</button>
+          <button class="harmony-btn" onclick="setHarmony('triádica')">Triádica</button>
+          <button class="harmony-btn" onclick="setHarmony('análoga')">Análoga</button>
+          <button class="harmony-btn" onclick="setHarmony('split')">Split-Comp</button>
+          <button class="harmony-btn" onclick="setHarmony('tetrádica')">Tetrádica</button>
+        </div>
+        <div class="section-label" style="margin-top:16px;">Saturação / Brilho base</div>
+        <div class="sliders">
+          <div class="slider-row">
+            <span class="slider-name">SAT</span>
+            <input type="range" id="satRange" min="10" max="100" value="75" oninput="updateSB()">
+            <span class="slider-val" id="satVal">75%</span>
+          </div>
+          <div class="slider-row">
+            <span class="slider-name">BRI</span>
+            <input type="range" id="briRange" min="20" max="95" value="60" oninput="updateSB()">
+            <span class="slider-val" id="briVal">60%</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="sidebar-section">
+        <div class="section-label">Paleta selecionada</div>
+        <div class="selected-strip" id="selectedStrip"></div>
+        <div style="display:flex;gap:8px;">
+          <button class="export-btn" onclick="exportCSS()">Exportar CSS</button>
+          <button class="export-btn" onclick="clearPalette()" style="flex:0 0 auto;padding:10px 14px;">✕</button>
+        </div>
+      </div>
+
+      <div class="palette-grid" id="paletteGrid">
+        <div style="color:var(--muted);font-size:11px;text-align:center;padding:20px 0;">
+          Clique no círculo cromático<br>para adicionar cores
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- SHADES TAB -->
+<div class="shades-panel" id="shadesPanel">
+  <div class="main">
+    <div class="shade-canvas-area">
+      <div>
+        <div class="section-label" style="text-align:center;margin-bottom:12px;">Selecione o matiz base</div>
+        <canvas id="hueCanvas" width="420" height="40" style="cursor:crosshair;"></canvas>
+      </div>
+      <div class="shade-grid" id="shadeGrid"></div>
+    </div>
+    <div class="sidebar">
+      <div class="sidebar-section">
+        <div class="section-label">Cor base</div>
+        <div style="display:flex;gap:12px;align-items:center;margin-bottom:16px;">
+          <div id="shadeBasePreview" style="width:56px;height:56px;border-radius:10px;background:#7c6fff;border:1px solid rgba(255,255,255,0.1);"></div>
+          <div>
+            <div style="font-size:13px;" id="shadeBaseHex">#7C6FFF</div>
+            <div style="font-size:10px;color:var(--muted);margin-top:4px;">HSL(256, 100%, 71%)</div>
+          </div>
+        </div>
+        <div class="sliders">
+          <div class="slider-row">
+            <span class="slider-name">SAT</span>
+            <input type="range" id="shadeSatRange" min="0" max="100" value="100" oninput="updateShades()">
+            <span class="slider-val" id="shadeSatVal">100%</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="palette-grid" id="shadePaletteGrid">
+        <div style="color:var(--muted);font-size:11px;text-align:center;padding:20px 0;">
+          Clique em um tom<br>para adicionar à paleta
+        </div>
+      </div>
+
+      <div class="sidebar-section" style="margin-top:auto;">
+        <button class="export-btn" onclick="exportShadeCSS()">Exportar escala CSS</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- TAGS NEURAMED TAB -->
+<div class="tags-panel" id="tagsPanel">
+  <div class="main">
+    <div class="canvas-area">
+      <div class="wheel-wrap">
+        <canvas id="tagsWheelCanvas" width="420" height="420"></canvas>
+        <div class="center-preview" id="tagsCenterPreview" style="background:transparent;border-color:transparent;box-shadow:none;"></div>
+        <div class="wheel-hint">Tags da nota · sugestão marcada em branco ·  amarelo = sessão</div>
+      </div>
+    </div>
+    <div class="tags-sidebar" style="width:380px;flex-shrink:0;">
+
+      <!-- Input -->
+      <div class="sidebar-section">
+        <div class="section-label">Tags da nota atual</div>
+        <div class="tag-input-row">
+          <input type="text" id="tagHexInput" class="tag-hex-input" placeholder="#RRGGBB" maxlength="7"
+                 onkeydown="if(event.key==='Enter') addTagInput()">
+          <select id="tagKindSelect" class="tag-kind-select">
+            <option value="used">usada</option>
+            <option value="session">sessão</option>
+          </select>
+          <button class="tag-add-btn" onclick="addTagInput()">+ Add</button>
+        </div>
+        <div class="tag-chips" id="tagChips">
+          <div style="color:var(--muted);font-size:11px;">Nenhuma tag adicionada</div>
+        </div>
+      </div>
+
+      <!-- Suggestion -->
+      <div class="sidebar-section">
+        <div class="section-label">Sugestão para nova tag</div>
+        <div class="suggest-main">
+          <div class="suggest-swatch" id="tagSuggestSwatch"
+               onclick="copyHex(document.getElementById('tagSuggestHex').textContent)"></div>
+          <div>
+            <div id="tagSuggestHex" style="font-size:15px;letter-spacing:1px;cursor:pointer;"
+                 onclick="copyHex(this.textContent)">—</div>
+            <div id="tagSuggestHSL" style="font-size:10px;color:var(--muted);margin-top:3px;">—</div>
+            <div id="tagSuggestHarmony" class="harmony-badge">—</div>
+          </div>
+        </div>
+        <div style="font-size:10px;color:var(--muted);line-height:1.6;" id="tagSuggestNote">
+          Adicione tags acima para receber sugestões contextuais.
+        </div>
+      </div>
+
+      <!-- Role preview -->
+      <div class="sidebar-section">
+        <div class="section-label">Prévia por hierarquia · clique para copiar</div>
+        <div id="tagRolesGrid" style="display:flex;flex-direction:column;gap:3px;">
+          <div style="color:var(--muted);font-size:11px;">Aguardando sugestão…</div>
+        </div>
+      </div>
+
+      <!-- Alternatives -->
+      <div class="sidebar-section">
+        <div class="section-label">Sugestões alternativas</div>
+        <div class="alt-chips" id="tagAlternatives">
+          <div style="color:var(--muted);font-size:11px;">Aguardando sugestão…</div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+// ——————————————————————————————————
+// STATE
+// ——————————————————————————————————
+let harmony = 'complementar';
+let sat = 75, bri = 60;
+let palette = []; // [{h, s, l, hex, label}]
+let hoveredHue = 270;
+let currentH = 270;
+let shadeHue = 256;
+let shadeSat = 100;
+let shadeColors = [];
+
+// ——————————————————————————————————
+// UTILS
+// ——————————————————————————————————
+function hslToHex(h, s, l) {
+  s /= 100; l /= 100;
+  const a = s * Math.min(l, 1 - l);
+  const f = n => {
+    const k = (n + h / 30) % 12;
+    return l - a * Math.max(-1, Math.min(k - 3, 9 - k, 1));
+  };
+  return '#' + [f(0), f(8), f(4)].map(x =>
+    Math.round(x * 255).toString(16).padStart(2, '0')
+  ).join('').toUpperCase();
+}
+
+function hexToHSL(hex) {
+  let r = parseInt(hex.slice(1,3),16)/255;
+  let g = parseInt(hex.slice(3,5),16)/255;
+  let b = parseInt(hex.slice(5,7),16)/255;
+  const max = Math.max(r,g,b), min = Math.min(r,g,b);
+  let h, s, l = (max+min)/2;
+  if(max===min){ h=s=0; } else {
+    const d=max-min;
+    s = l>0.5 ? d/(2-max-min) : d/(max+min);
+    switch(max){
+      case r: h=(g-b)/d+(g<b?6:0); break;
+      case g: h=(b-r)/d+2; break;
+      case b: h=(r-g)/d+4; break;
+    }
+    h/=6;
+  }
+  return [Math.round(h*360), Math.round(s*100), Math.round(l*100)];
+}
+
+function contrastRatio(hex1, hex2) {
+  function lum(hex) {
+    const rgb = [1,3,5].map(i => {
+      const c = parseInt(hex.slice(i,i+2),16)/255;
+      return c <= 0.03928 ? c/12.92 : Math.pow((c+0.055)/1.055, 2.4);
+    });
+    return 0.2126*rgb[0]+0.7152*rgb[1]+0.0722*rgb[2];
+  }
+  const l1=lum(hex1), l2=lum(hex2);
+  return (Math.max(l1,l2)+0.05)/(Math.min(l1,l2)+0.05);
+}
+
+function getHarmonyAngles(type) {
+  switch(type) {
+    case 'complementar': return [0, 180];
+    case 'triádica':     return [0, 120, 240];
+    case 'análoga':      return [0, 30, 60];
+    case 'split':        return [0, 150, 210];
+    case 'tetrádica':    return [0, 90, 180, 270];
+    default:             return [0, 180];
+  }
+}
+
+// ——————————————————————————————————
+// WHEEL CANVAS
+// ——————————————————————————————————
+const wCanvas = document.getElementById('wheelCanvas');
+const wCtx = wCanvas.getContext('2d');
+const CX = 210, CY = 210, R = 200, IR = 70;
+
+function drawWheel() {
+  wCtx.clearRect(0, 0, 420, 420);
+
+  // Draw hue ring
+  for(let angle = 0; angle < 360; angle += 0.5) {
+    const rad = angle * Math.PI / 180;
+    const rad2 = (angle + 0.6) * Math.PI / 180;
+    wCtx.beginPath();
+    wCtx.moveTo(CX + IR * Math.cos(rad), CY + IR * Math.sin(rad));
+    wCtx.lineTo(CX + R * Math.cos(rad), CY + R * Math.sin(rad));
+    wCtx.lineTo(CX + R * Math.cos(rad2), CY + R * Math.sin(rad2));
+    wCtx.lineTo(CX + IR * Math.cos(rad2), CY + IR * Math.sin(rad2));
+    wCtx.closePath();
+    wCtx.fillStyle = `hsl(${angle}, ${sat}%, ${bri}%)`;
+    wCtx.fill();
+  }
+
+  // Harmony indicators
+  const angles = getHarmonyAngles(harmony);
+  angles.forEach((offset, i) => {
+    const hue = (hoveredHue + offset) % 360;
+    const rad = (hue - 90) * Math.PI / 180;
+    const midR = (R + IR) / 2;
+    const x = CX + midR * Math.cos(rad);
+    const y = CY + midR * Math.sin(rad);
+
+    wCtx.beginPath();
+    wCtx.arc(x, y, i === 0 ? 12 : 9, 0, Math.PI * 2);
+    wCtx.fillStyle = hslToHex(hue, sat, bri);
+    wCtx.fill();
+    wCtx.strokeStyle = 'white';
+    wCtx.lineWidth = 2;
+    wCtx.stroke();
+
+    if(i > 0) {
+      const x0 = CX + midR * Math.cos((hoveredHue - 90) * Math.PI / 180);
+      const y0 = CY + midR * Math.sin((hoveredHue - 90) * Math.PI / 180);
+      wCtx.beginPath();
+      wCtx.moveTo(x0, y0);
+      wCtx.lineTo(x, y);
+      wCtx.strokeStyle = 'rgba(255,255,255,0.2)';
+      wCtx.lineWidth = 1;
+      wCtx.setLineDash([4, 4]);
+      wCtx.stroke();
+      wCtx.setLineDash([]);
+    }
+  });
+
+  // Palette dots
+  palette.forEach(c => {
+    const rad = (c.h - 90) * Math.PI / 180;
+    const midR = (R + IR) / 2;
+    const x = CX + midR * Math.cos(rad);
+    const y = CY + midR * Math.sin(rad);
+    wCtx.beginPath();
+    wCtx.arc(x, y, 7, 0, Math.PI * 2);
+    wCtx.fillStyle = c.hex;
+    wCtx.fill();
+    wCtx.strokeStyle = 'rgba(255,255,255,0.6)';
+    wCtx.lineWidth = 1.5;
+    wCtx.stroke();
+  });
+}
+
+function getHueFromEvent(e) {
+  const rect = wCanvas.getBoundingClientRect();
+  const x = e.clientX - rect.left - CX;
+  const y = e.clientY - rect.top - CY;
+  const dist = Math.sqrt(x*x + y*y);
+  if(dist < IR || dist > R) return null;
+  let angle = Math.atan2(y, x) * 180 / Math.PI + 90;
+  if(angle < 0) angle += 360;
+  return angle;
+}
+
+wCanvas.addEventListener('mousemove', e => {
+  const hue = getHueFromEvent(e);
+  if(hue !== null) {
+    hoveredHue = hue;
+    currentH = hue;
+    document.getElementById('centerPreview').style.background =
+      `hsl(${hue}, ${sat}%, ${bri}%)`;
+    wCanvas.style.cursor = 'crosshair';
+  } else {
+    wCanvas.style.cursor = 'default';
+  }
+  drawWheel();
+});
+
+wCanvas.addEventListener('click', e => {
+  const hue = getHueFromEvent(e);
+  if(hue === null) return;
+  const angles = getHarmonyAngles(harmony);
+  angles.forEach((offset, i) => {
+    const h = Math.round((hue + offset) % 360);
+    const hex = hslToHex(h, sat, bri);
+    addColor(h, sat, bri, hex, i === 0 ? 'base' : `harmonia ${i}`);
+  });
+});
+
+wCanvas.addEventListener('mouseleave', () => {
+  document.getElementById('cursorDot').style.display = 'none';
+});
+
+// ——————————————————————————————————
+// PALETTE
+// ——————————————————————————————————
+const harmonylabels = {
+  'complementar': ['Base', 'Complementar'],
+  'triádica': ['Base', 'Triádica 1', 'Triádica 2'],
+  'análoga': ['Base', 'Análoga +30', 'Análoga +60'],
+  'split': ['Base', 'Split 1', 'Split 2'],
+  'tetrádica': ['Base', 'Tetrádica 90', 'Tetrádica 180', 'Tetrádica 270'],
+};
+
+function addColor(h, s, l, hex, label) {
+  if(palette.length >= 12) { showToast('Máximo de 12 cores'); return; }
+  const exists = palette.find(c => c.hex === hex);
+  if(exists) { showToast('Cor já adicionada'); return; }
+  palette.push({ h, s, l, hex, label });
+  renderPalette();
+  drawWheel();
+}
+
+function removeColor(hex) {
+  palette = palette.filter(c => c.hex !== hex);
+  renderPalette();
+  drawWheel();
+}
+
+function renderPalette() {
+  const grid = document.getElementById('paletteGrid');
+  const strip = document.getElementById('selectedStrip');
+
+  if(palette.length === 0) {
+    grid.innerHTML = '<div style="color:var(--muted);font-size:11px;text-align:center;padding:20px 0;">Clique no círculo cromático<br>para adicionar cores</div>';
+    strip.innerHTML = '';
+    return;
+  }
+
+  strip.innerHTML = palette.map(c =>
+    `<div class="strip-swatch" style="background:${c.hex}" title="${c.hex}"></div>`
+  ).join('');
+
+  grid.innerHTML = palette.map((c, i) => {
+    const cr = contrastRatio(c.hex, '#0a0a0f');
+    const crLabel = cr >= 7 ? 'AAA' : cr >= 4.5 ? 'AA' : cr >= 3 ? 'AA lg' : 'FAIL';
+    const crClass = cr >= 4.5 ? 'good' : cr >= 3 ? 'warn' : 'fail';
+    return `
+      <div class="color-row" onclick="copyHex('${c.hex}')">
+        <div class="color-swatch" style="background:${c.hex}"></div>
+        <div class="color-info">
+          <div class="color-hex">${c.hex}</div>
+          <div class="color-label">HSL(${c.h}°, ${c.s}%, ${c.l}%) · ${c.label}</div>
+        </div>
+        <span class="color-contrast ${crClass}">${crLabel}</span>
+        <button class="remove-btn" onclick="event.stopPropagation();removeColor('${c.hex}')">✕</button>
+      </div>
+    `;
+  }).join('');
+}
+
+function clearPalette() {
+  palette = [];
+  renderPalette();
+  drawWheel();
+}
+
+// ——————————————————————————————————
+// SHADES TAB
+// ——————————————————————————————————
+const hueCanvas = document.getElementById('hueCanvas');
+const hueCtx = hueCanvas.getContext('2d');
+
+function drawHueBar() {
+  const grad = hueCtx.createLinearGradient(0,0,420,0);
+  for(let i=0;i<=360;i+=10) grad.addColorStop(i/360, `hsl(${i},80%,55%)`);
+  hueCtx.fillStyle = grad;
+  hueCtx.fillRect(0,0,420,40);
+
+  // marker
+  const x = (shadeHue / 360) * 420;
+  hueCtx.beginPath();
+  hueCtx.arc(x, 20, 10, 0, Math.PI*2);
+  hueCtx.strokeStyle = 'white';
+  hueCtx.lineWidth = 3;
+  hueCtx.stroke();
+  hueCtx.fillStyle = `hsl(${shadeHue},${shadeSat}%,55%)`;
+  hueCtx.fill();
+}
+
+function updateShades() {
+  shadeSat = parseInt(document.getElementById('shadeSatRange').value);
+  document.getElementById('shadeSatVal').textContent = shadeSat + '%';
+  renderShades();
+  drawHueBar();
+}
+
+function renderShades() {
+  const grid = document.getElementById('shadeGrid');
+  shadeColors = [];
+
+  // 5 columns: varying lightness (from dark to light)
+  // 5 rows: varying hue offset (-15 to +15 in steps of 7.5)
+  const lightnesses = [20, 35, 50, 65, 80];
+  const hueOffsets = [-15, -7, 0, 7, 15];
+
+  let cells = '';
+  hueOffsets.forEach(hOff => {
+    lightnesses.forEach(l => {
+      const h = Math.round((shadeHue + hOff + 360) % 360);
+      const hex = hslToHex(h, shadeSat, l);
+      shadeColors.push({ h, s: shadeSat, l, hex });
+      cells += `
+        <div class="shade-cell" style="background:${hex}" 
+             onclick="addShadeColor('${hex}',${h},${shadeSat},${l})"
+             title="${hex}">
+          <span class="shade-hex-label">${hex.slice(1)}</span>
+        </div>`;
+    });
+  });
+
+  grid.innerHTML = cells;
+
+  const baseHex = hslToHex(shadeHue, shadeSat, 55);
+  document.getElementById('shadeBasePreview').style.background = baseHex;
+  document.getElementById('shadeBaseHex').textContent = baseHex;
+}
+
+function addShadeColor(hex, h, s, l) {
+  const existing = document.getElementById('shadePaletteGrid');
+  const item = { h, s, l, hex, label: `H${h} S${s} L${l}` };
+  
+  let shadeList = window._shadeList || [];
+  if(shadeList.find(c => c.hex === hex)) { showToast('Cor já adicionada'); return; }
+  shadeList.push(item);
+  window._shadeList = shadeList;
+  renderShadeList();
+  showToast('Cor adicionada');
+}
+
+function renderShadeList() {
+  const grid = document.getElementById('shadePaletteGrid');
+  const list = window._shadeList || [];
+  if(!list.length) {
+    grid.innerHTML = '<div style="color:var(--muted);font-size:11px;text-align:center;padding:20px 0;">Clique em um tom<br>para adicionar à paleta</div>';
+    return;
+  }
+  grid.innerHTML = list.map(c => `
+    <div class="color-row" onclick="copyHex('${c.hex}')">
+      <div class="color-swatch" style="background:${c.hex}"></div>
+      <div class="color-info">
+        <div class="color-hex">${c.hex}</div>
+        <div class="color-label">HSL(${c.h}°, ${c.s}%, ${c.l}%)</div>
+      </div>
+      <button class="remove-btn" onclick="event.stopPropagation();removeShade('${c.hex}')">✕</button>
+    </div>
+  `).join('');
+}
+
+function removeShade(hex) {
+  window._shadeList = (window._shadeList||[]).filter(c => c.hex !== hex);
+  renderShadeList();
+}
+
+hueCanvas.addEventListener('click', e => {
+  const rect = hueCanvas.getBoundingClientRect();
+  const x = e.clientX - rect.left;
+  shadeHue = Math.round((x / 420) * 360);
+  updateShades();
+});
+
+hueCanvas.addEventListener('mousemove', e => {
+  const rect = hueCanvas.getBoundingClientRect();
+  const x = e.clientX - rect.left;
+  const hue = Math.round((x / 420) * 360);
+  hueCtx.clearRect(0,0,420,40);
+  drawHueBar();
+});
+
+// ——————————————————————————————————
+// EXPORT
+// ——————————————————————————————————
+function exportCSS() {
+  if(!palette.length) { showToast('Adicione cores primeiro'); return; }
+  const lines = [':root {'];
+  palette.forEach((c, i) => {
+    lines.push(`  --color-${i+1}: ${c.hex}; /* ${c.label} HSL(${c.h},${c.s}%,${c.l}%) */`);
+  });
+  lines.push('}');
+  navigator.clipboard.writeText(lines.join('\n'));
+  showToast('CSS copiado para clipboard!');
+}
+
+function exportShadeCSS() {
+  const list = window._shadeList || [];
+  if(!list.length) { showToast('Adicione tons primeiro'); return; }
+  const lines = [':root {'];
+  list.forEach((c, i) => {
+    lines.push(`  --shade-${i+1}: ${c.hex}; /* H${c.h} S${c.s} L${c.l} */`);
+  });
+  lines.push('}');
+  navigator.clipboard.writeText(lines.join('\n'));
+  showToast('CSS copiado para clipboard!');
+}
+
+function copyHex(hex) {
+  navigator.clipboard.writeText(hex);
+  showToast(`${hex} copiado!`);
+}
+
+// ——————————————————————————————————
+// UI CONTROLS
+// ——————————————————————————————————
+function setHarmony(type) {
+  harmony = type;
+  document.querySelectorAll('.harmony-btn').forEach(b => {
+    b.classList.toggle('active', b.textContent.toLowerCase().includes(type.toLowerCase()) || 
+                                  b.textContent.toLowerCase() === type);
+  });
+  drawWheel();
+}
+
+function updateSB() {
+  sat = parseInt(document.getElementById('satRange').value);
+  bri = parseInt(document.getElementById('briRange').value);
+  document.getElementById('satVal').textContent = sat + '%';
+  document.getElementById('briVal').textContent = bri + '%';
+  document.getElementById('centerPreview').style.background =
+    `hsl(${currentH}, ${sat}%, ${bri}%)`;
+  drawWheel();
+}
+
+function switchTab(tab) {
+  document.querySelectorAll('.tab').forEach((t,i) => {
+    t.classList.toggle('active',
+      (i===0 && tab==='harmony') || (i===1 && tab==='shades') || (i===2 && tab==='tags'));
+  });
+  document.getElementById('harmonyPanel').classList.toggle('visible', tab==='harmony');
+  document.getElementById('shadesPanel').classList.toggle('visible', tab==='shades');
+  document.getElementById('tagsPanel').classList.toggle('visible', tab==='tags');
+
+  if(tab === 'shades') { drawHueBar(); renderShades(); }
+  if(tab === 'tags')   { drawTagsWheel(); }
+}
+
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 2000);
+}
+
+// ——————————————————————————————————
+// TAGS NEURAMED ADVISOR
+// ——————————————————————————————————
+
+let tagsList = []; // [{hex, h, s, l, kind: 'used'|'session'}]
+
+// Role presets: deltas applied over the suggested base S/L
+// hier_role NULL gets low saturation (subtle reference)
+// Highlight abuses S+L for maximum vivid presence + larger font
+const ROLE_PRESETS = [
+  { key: 'null',      label: 'Null — sem role',   sDelta: -22, lDelta: +7,  fontSize: '12px', fontWeight: '400', note: 'Referência simples · saturação reduzida' },
+  { key: 'father',    label: 'Father ↑',           sDelta:  +2, lDelta: -10, fontSize: '12px', fontWeight: '500', note: 'Hierarquia acima · tom mais profundo' },
+  { key: 'brother',   label: 'Brother ↔',          sDelta:   0, lDelta:   0, fontSize: '12px', fontWeight: '400', note: 'Mesmo nível · padrão equilibrado' },
+  { key: 'child',     label: 'Child ↓',            sDelta:  +2, lDelta: +10, fontSize: '12px', fontWeight: '400', note: 'Hierarquia abaixo · tom mais claro' },
+  { key: 'highlight', label: 'Highlight ★',        sDelta: +28, lDelta:  +8, fontSize: '14px', fontWeight: '600', note: 'Destaque · vivid · font +2px' },
+];
+
+// Harmony decision based on tag count
+const HARMONY_RULES = [
+  { maxTags: 0, type: 'livre',        label: 'livre',        note: 'Nenhuma tag existente — posição inicial otimizada pelo ângulo áureo.' },
+  { maxTags: 1, type: 'complementar', label: 'complementar', note: '1 tag existente — harmonia complementar (180°) para máximo contraste.' },
+  { maxTags: 2, type: 'triádica',     label: 'triádica',     note: '2 tags existentes — harmonia triádica, posicionando no maior gap angular.' },
+  { maxTags: Infinity, type: 'tetrádica', label: 'tetrádica',note: 'N tags — harmonia tetrádica, cor posicionada no maior gap angular disponível.' },
+];
+
+let tagsWheelCtx = null;
+
+function initTagsWheel() {
+  const canvas = document.getElementById('tagsWheelCanvas');
+  tagsWheelCtx = canvas.getContext('2d');
+  drawTagsWheel();
+}
+
+function drawTagsWheel(suggestH, baseS, baseL) {
+  if (!tagsWheelCtx) return;
+  const ctx = tagsWheelCtx;
+  const SIZE = 420, CX = 210, CY = 210, R = 200, IR = 70;
+  ctx.clearRect(0, 0, SIZE, SIZE);
+
+  // Hue ring (slightly dimmer than main wheel to keep tags prominent)
+  for (let angle = 0; angle < 360; angle += 0.5) {
+    const r1 = angle * Math.PI / 180;
+    const r2 = (angle + 0.6) * Math.PI / 180;
+    ctx.beginPath();
+    ctx.moveTo(CX + IR * Math.cos(r1), CY + IR * Math.sin(r1));
+    ctx.lineTo(CX + R  * Math.cos(r1), CY + R  * Math.sin(r1));
+    ctx.lineTo(CX + R  * Math.cos(r2), CY + R  * Math.sin(r2));
+    ctx.lineTo(CX + IR * Math.cos(r2), CY + IR * Math.sin(r2));
+    ctx.closePath();
+    ctx.fillStyle = `hsl(${angle}, 60%, 52%)`;
+    ctx.fill();
+  }
+  // Dim overlay
+  ctx.beginPath();
+  ctx.arc(CX, CY, R,  0, Math.PI * 2);
+  ctx.arc(CX, CY, IR, 0, Math.PI * 2, true);
+  ctx.fillStyle = 'rgba(10,10,15,0.30)';
+  ctx.fill();
+
+  const midR = (R + IR) / 2;
+
+  // Existing tag dots
+  tagsList.forEach(tag => {
+    const rad = (tag.h - 90) * Math.PI / 180;
+    const x = CX + midR * Math.cos(rad);
+    const y = CY + midR * Math.sin(rad);
+
+    ctx.beginPath();
+    ctx.arc(x, y, 11, 0, Math.PI * 2);
+    ctx.fillStyle = tag.hex;
+    ctx.fill();
+    ctx.strokeStyle = tag.kind === 'session' ? 'rgba(255,220,50,0.95)' : 'rgba(255,255,255,0.85)';
+    ctx.lineWidth = tag.kind === 'session' ? 2.5 : 2;
+    ctx.stroke();
+
+    ctx.font = '9px DM Mono, monospace';
+    ctx.fillStyle = 'rgba(255,255,255,0.65)';
+    ctx.textAlign = 'center';
+    ctx.fillText(tag.hex.slice(1, 4), x, y + 20);
+  });
+
+  // Suggestion dot
+  if (suggestH != null && baseS != null) {
+    const rad = (suggestH - 90) * Math.PI / 180;
+    const x = CX + midR * Math.cos(rad);
+    const y = CY + midR * Math.sin(rad);
+    const sugHex = hslToHex(suggestH, baseS, baseL);
+
+    // Glow halo
+    const grd = ctx.createRadialGradient(x, y, 5, x, y, 22);
+    grd.addColorStop(0, sugHex + 'bb');
+    grd.addColorStop(1, 'transparent');
+    ctx.beginPath();
+    ctx.arc(x, y, 22, 0, Math.PI * 2);
+    ctx.fillStyle = grd;
+    ctx.fill();
+
+    ctx.beginPath();
+    ctx.arc(x, y, 14, 0, Math.PI * 2);
+    ctx.fillStyle = sugHex;
+    ctx.fill();
+    ctx.strokeStyle = '#ffffff';
+    ctx.lineWidth = 3;
+    ctx.stroke();
+
+    ctx.font = 'bold 9px DM Mono, monospace';
+    ctx.fillStyle = 'rgba(255,255,255,0.95)';
+    ctx.textAlign = 'center';
+    ctx.fillText('NEW', x, y + 24);
+  }
+}
+
+function computeTagSuggestion() {
+  const n = tagsList.length;
+
+  // Pick harmony rule
+  const rule = HARMONY_RULES.find(r => n <= r.maxTags) || HARMONY_RULES[HARMONY_RULES.length - 1];
+
+  // Compute best hue — maximize angular distance from all existing tags
+  const hues = tagsList.map(t => t.h).sort((a, b) => a - b);
+  let bestH;
+
+  if (hues.length === 0) {
+    bestH = 195; // pleasant teal-blue as starting point
+  } else if (hues.length === 1) {
+    bestH = Math.round((hues[0] + 180) % 360);
+  } else {
+    // Largest gap between consecutive hues (including wrap-around)
+    let maxGap = 0, gapMid = 0;
+    for (let i = 0; i < hues.length; i++) {
+      const h1 = hues[i];
+      const h2 = hues[(i + 1) % hues.length];
+      const gap = i === hues.length - 1 ? (360 - h1 + h2) : (h2 - h1);
+      if (gap > maxGap) {
+        maxGap = gap;
+        gapMid = (h1 + gap / 2) % 360;
+      }
+    }
+    bestH = Math.round(gapMid);
+  }
+
+  // Base S/L: mirror the existing tag palette's average (keeps visual cohesion)
+  // with gentle clamping so the suggestion isn't too pale or too dark
+  const avgS = tagsList.length
+    ? Math.round(tagsList.reduce((a, t) => a + t.s, 0) / tagsList.length)
+    : 70;
+  const avgL = tagsList.length
+    ? Math.round(tagsList.reduce((a, t) => a + t.l, 0) / tagsList.length)
+    : 55;
+
+  const baseS = Math.max(55, Math.min(85, avgS));
+  const baseL = Math.max(40, Math.min(65, avgL));
+
+  // Build per-role variants
+  const roles = ROLE_PRESETS.map(r => {
+    const s = Math.max(18, Math.min(100, baseS + r.sDelta));
+    const l = Math.max(28, Math.min(80,  baseL + r.lDelta));
+    return { ...r, s, l, h: bestH, hex: hslToHex(bestH, s, l) };
+  });
+
+  // Candidate alternatives: diverse angles filtered for minimum separation
+  const MIN_DIFF = 25;
+  const candidates = [
+    { h: (bestH + 30)  % 360, label: 'Análoga +30°' },
+    { h: (bestH - 30 + 360) % 360, label: 'Análoga −30°' },
+    { h: (bestH + 60)  % 360, label: 'Análoga +60°' },
+    { h: (bestH + 150) % 360, label: 'Split-Comp' },
+    { h: (bestH + 210) % 360, label: 'Split-Comp 2' },
+    { h: (bestH + 120) % 360, label: 'Triádica' },
+  ];
+
+  const alts = candidates
+    .filter(c => {
+      // Must differ from suggestion itself
+      const dSug = Math.abs(c.h - bestH);
+      if (Math.min(dSug, 360 - dSug) < MIN_DIFF) return false;
+      // Must differ from all existing tags
+      return !tagsList.some(t => {
+        const d = Math.abs(t.h - c.h);
+        return Math.min(d, 360 - d) < MIN_DIFF;
+      });
+    })
+    .slice(0, 3)
+    .map(c => ({ ...c, s: baseS, l: baseL, hex: hslToHex(c.h, baseS, baseL) }));
+
+  renderTagSuggestion(bestH, baseS, baseL, rule, roles, alts);
+  drawTagsWheel(bestH, baseS, baseL);
+}
+
+function renderTagSuggestion(bestH, baseS, baseL, rule, roles, alts) {
+  const sugHex = hslToHex(bestH, baseS, baseL);
+
+  // Main suggestion block
+  document.getElementById('tagSuggestSwatch').style.background = sugHex;
+  document.getElementById('tagSuggestHex').textContent  = sugHex;
+  document.getElementById('tagSuggestHSL').textContent  = `HSL(${bestH}°, ${baseS}%, ${baseL}%)`;
+  const harmEl = document.getElementById('tagSuggestHarmony');
+  harmEl.textContent  = rule.label;
+  harmEl.className    = tagsList.length > 0 ? 'harmony-badge active' : 'harmony-badge';
+  document.getElementById('tagSuggestNote').textContent = rule.note;
+
+  // Role rows
+  document.getElementById('tagRolesGrid').innerHTML = roles.map(r => {
+    const cr      = contrastRatio(r.hex, '#0a0a0f');
+    const crLabel = cr >= 4.5 ? 'AA' : cr >= 3 ? 'AA lg' : '—';
+    const crClass = cr >= 4.5 ? 'good' : cr >= 3 ? 'warn' : 'fail';
+    const glow    = r.key === 'highlight' ? `box-shadow:0 0 8px ${r.hex}99;` : '';
+    return `
+      <div class="role-row" onclick="copyHex('${r.hex}')">
+        <div class="role-swatch" style="background:${r.hex};${glow}"></div>
+        <div class="role-info">
+          <div class="role-label">${r.label}</div>
+          <div class="role-sample"
+               style="color:${r.hex};font-size:${r.fontSize};font-weight:${r.fontWeight};">
+            [[Nota Exemplo|uuid]]
+          </div>
+        </div>
+        <div class="role-meta">
+          <span class="color-contrast ${crClass}">${crLabel}</span>
+          <span class="role-hex">${r.hex}</span>
+          <span class="role-sl">S${r.s} L${r.l}</span>
+        </div>
+      </div>`;
+  }).join('');
+
+  // Alternative chips
+  const altsEl = document.getElementById('tagAlternatives');
+  if (!alts.length) {
+    altsEl.innerHTML = '<div style="color:var(--muted);font-size:11px;">Sem alternativas com dist. ≥25° das tags existentes.</div>';
+    return;
+  }
+  altsEl.innerHTML = alts.map(a => `
+    <div class="alt-chip" onclick="copyHex('${a.hex}')" title="${a.label}">
+      <div class="alt-swatch" style="background:${a.hex}"></div>
+      <div>
+        <div style="font-size:11px;">${a.hex}</div>
+        <div style="font-size:9px;color:var(--muted);">${a.label}</div>
+      </div>
+    </div>`).join('');
+}
+
+function addTagInput() {
+  const hexInput  = document.getElementById('tagHexInput');
+  const kindSel   = document.getElementById('tagKindSelect');
+  let hex = hexInput.value.trim().toUpperCase();
+  if (!hex.startsWith('#')) hex = '#' + hex;
+  if (!/^#[0-9A-F]{6}$/.test(hex)) { showToast('Hex inválido — use #RRGGBB'); return; }
+  if (tagsList.find(t => t.hex === hex)) { showToast('Tag já adicionada'); return; }
+  const [h, s, l] = hexToHSL(hex);
+  tagsList.push({ hex, h, s, l, kind: kindSel.value });
+  hexInput.value = '';
+  renderTagChips();
+  computeTagSuggestion();
+}
+
+function removeTag(hex) {
+  tagsList = tagsList.filter(t => t.hex !== hex);
+  renderTagChips();
+  computeTagSuggestion();
+}
+
+function renderTagChips() {
+  const el = document.getElementById('tagChips');
+  if (!tagsList.length) {
+    el.innerHTML = '<div style="color:var(--muted);font-size:11px;">Nenhuma tag adicionada</div>';
+    return;
+  }
+  el.innerHTML = tagsList.map(t => `
+    <div class="tag-chip ${t.kind === 'session' ? 'session' : ''}">
+      <div class="tag-chip-swatch" style="background:${t.hex}"></div>
+      <span>${t.hex}</span>
+      <span class="tag-chip-kind">${t.kind === 'session' ? 'sessão' : 'usada'}</span>
+      <button onclick="removeTag('${t.hex}')">✕</button>
+    </div>`).join('');
+}
+
+// ——————————————————————————————————
+// INIT
+// ——————————————————————————————————
+drawWheel();
+document.getElementById('centerPreview').style.background =
+  `hsl(${hoveredHue}, ${sat}%, ${bri}%)`;
+initTagsWheel();
+</script>
+</body>
+</html>

@@ -1,5 +1,5 @@
 class NotesController < ApplicationController
-  before_action :set_note, only: [:show, :edit, :update, :destroy, :autosave, :draft, :checkpoint, :revisions, :show_revision, :restore_revision]
+  before_action :set_note, only: [:show, :edit, :update, :destroy, :autosave, :draft, :checkpoint, :revisions, :show_revision, :restore_revision, :link_info]
   layout "editor", only: [:show, :show_revision]
 
   def index
@@ -24,6 +24,10 @@ class NotesController < ApplicationController
 
   def show
     authorize @note
+    # UUID-based URLs (from client-side wiki-link preview) → redirect to slug URL
+    if params[:slug] != @note.slug
+      redirect_to note_path(@note.slug), status: :moved_permanently and return
+    end
     # Load draft for crash recovery if one exists; otherwise use head checkpoint
     @revision = @note.note_revisions.find_by(revision_kind: :draft) || @note.head_revision
   end
@@ -98,6 +102,19 @@ class NotesController < ApplicationController
     @revision = @note.note_revisions.where(revision_kind: :checkpoint).find(params[:revision_id])
   end
 
+  def link_info
+    authorize @note, :show?
+    link = @note.outgoing_links.includes(:tags).find_by(dst_note_id: params[:dst_uuid])
+    if link
+      render json: {
+        link_id: link.id,
+        tags: link.tags.map { |t| {id: t.id, name: t.name, color_hex: t.color_hex || "#3b82f6"} }
+      }
+    else
+      render json: {link_id: nil, tags: []}
+    end
+  end
+
   def restore_revision
     authorize @note, :update?
     source = @note.note_revisions.where(revision_kind: :checkpoint).find(params[:revision_id])
@@ -115,7 +132,8 @@ class NotesController < ApplicationController
   private
 
   def set_note
-    @note = Note.active.find_by!(slug: params[:slug])
+    @note = Note.active.find_by(slug: params[:slug]) ||
+      Note.active.find_by!(id: params[:slug])
   end
 
   def note_params

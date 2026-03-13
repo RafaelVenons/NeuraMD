@@ -36,8 +36,7 @@ module Notes
     end
 
     def call
-      preprocessed = resolve_wikilinks(@content_markdown)
-      html = Commonmarker.to_html(preprocessed, options: {
+      html = Commonmarker.to_html(@content_markdown, options: {
         render: {unsafe: false},
         extension: {
           strikethrough: true,
@@ -50,30 +49,46 @@ module Notes
         }
       })
 
-      Sanitize.fragment(html,
+      sanitized = Sanitize.fragment(html,
         elements: ALLOWED_TAGS,
         attributes: ALLOWED_ATTRIBUTES,
         protocols: {
           "a" => {"href" => ["http", "https", "mailto", :relative]},
           "img" => {"src" => ["http", "https", :relative]}
         })
+
+      # Resolve wiki-links after sanitization so that [[Display|uuid]] literal
+      # text (which CommonMarker passes through unchanged) is converted to
+      # proper anchor/broken-link markup. We inject HTML directly so it bypasses
+      # Sanitize — we control every byte of what is injected (display text is
+      # always CGI-escaped).
+      resolve_wikilinks(sanitized)
     end
 
     private
 
-    # Converts [[Display|uuid]] → markdown link or broken-link span before parsing.
-    def resolve_wikilinks(content)
+    # Converts [[Display|uuid]] and [[Display|role:uuid]] to anchor tags or
+    # broken-link spans. Operates on already-rendered HTML.
+    ROLE_CLASS = {
+      "f" => "wikilink-father",
+      "c" => "wikilink-child",
+      "b" => "wikilink-brother"
+    }.freeze
+
+    def resolve_wikilinks(html)
       note_cache = {}
 
-      content.gsub(WIKILINK_RE) do
-        display = $~[:display].strip
-        uuid = $~[:uuid].downcase
+      html.gsub(WIKILINK_RE) do
+        display    = $~[:display].strip
+        uuid       = $~[:uuid].downcase
+        role_key   = $~[:role]&.chomp(":")
+        role_class = ROLE_CLASS[role_key] || "wikilink-null"
 
         note = note_cache[uuid] ||= Note.active.select(:id, :slug, :title).find_by(id: uuid)
 
         if note
           title_attr = note.title == display ? "" : " title=\"#{CGI.escapeHTML(note.title)}\""
-          "<a href=\"/notes/#{note.slug}\"#{title_attr}>#{CGI.escapeHTML(display)}</a>"
+          "<a href=\"/notes/#{note.slug}\" class=\"wikilink #{role_class}\" data-uuid=\"#{uuid}\"#{title_attr}>#{CGI.escapeHTML(display)}</a>"
         else
           "<span class=\"wikilink-broken\" title=\"Nota não encontrada\">#{CGI.escapeHTML(display)}</span>"
         end

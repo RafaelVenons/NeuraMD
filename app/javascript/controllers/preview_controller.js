@@ -1,12 +1,12 @@
 import { Controller } from "@hotwired/stimulus"
 import { marked } from "marked"
-import { emojiExtension, superscriptExtension, subscriptExtension, highlightExtension } from "lib/marked_extensions"
+import { emojiExtension, superscriptExtension, subscriptExtension, highlightExtension, wikilinkExtension } from "lib/marked_extensions"
 
 export default class extends Controller {
   static targets = ["output"]
 
   connect() {
-    marked.use({ extensions: [emojiExtension, superscriptExtension, subscriptExtension, highlightExtension] })
+    marked.use({ extensions: [wikilinkExtension, emojiExtension, superscriptExtension, subscriptExtension, highlightExtension] })
     marked.setOptions({ gfm: true, breaks: false })
 
     this._debounceTimer = null

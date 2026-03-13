@@ -230,6 +230,44 @@ RSpec.describe "Notes", type: :request do
     end
   end
 
+  # Fix: UUID-based note lookup so client-side wiki-link previews work.
+  # The client renders [[Display|uuid]] as <a href="/notes/uuid">. Previously
+  # set_note only matched by slug, returning 404 for UUID paths.
+  describe "GET /notes/:uuid (UUID fallback)" do
+    let!(:note) { create(:note, :with_head_revision) }
+
+    it "redirects UUID-based URL to the slug-based URL (301)" do
+      get note_path(note.id)
+      expect(response).to have_http_status(:moved_permanently)
+      expect(response).to redirect_to(note_path(note.slug))
+    end
+
+    it "still finds note by slug as before" do
+      get note_path(note.slug)
+      expect(response).to have_http_status(:ok)
+    end
+  end
+
+  # Fix: backlinks panel must NOT include the "Referenciado por" heading.
+  describe "GET /notes/:slug — backlinks panel" do
+    let!(:src_note) { create(:note, :with_head_revision, title: "Origem") }
+    let!(:dst_note) { create(:note, :with_head_revision, title: "Destino") }
+
+    before do
+      create(:note_link, src_note: src_note, dst_note: dst_note)
+    end
+
+    it "does NOT include 'Referenciado por' heading in the backlinks panel" do
+      get note_path(dst_note.slug)
+      expect(response.body).not_to include("Referenciado por")
+    end
+
+    it "still renders backlinks list with linking note titles" do
+      get note_path(dst_note.slug)
+      expect(response.body).to include("Origem")
+    end
+  end
+
   describe "GET /notes/:slug/revisions" do
     let(:note) { create(:note, :with_head_revision) }
 

@@ -23,12 +23,18 @@ RSpec.configure do |config|
   config.include Devise::Test::ControllerHelpers, type: :controller
 
   config.before(:suite) do
-    DatabaseCleaner.strategy = :transaction
     DatabaseCleaner.clean_with(:truncation)
   end
 
-  config.around(:each) do |example|
-    DatabaseCleaner.cleaning { example.run }
+  # System specs use truncation so the browser thread sees committed rows.
+  # All other specs use the faster transaction rollback strategy.
+  config.before(:each) do |example|
+    DatabaseCleaner.strategy = example.metadata[:type] == :system ? :truncation : :transaction
+    DatabaseCleaner.start
+  end
+
+  config.after(:each) do
+    DatabaseCleaner.clean
   end
 end
 

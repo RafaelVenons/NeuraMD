@@ -43,6 +43,8 @@ group :development, :test do
   gem "faker"
   gem "shoulda-matchers"
   gem "database_cleaner-active_record"
+  gem "capybara"
+  gem "cuprite"
 end
 
 group :development do

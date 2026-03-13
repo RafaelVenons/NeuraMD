@@ -23,6 +23,7 @@ export default class extends Controller {
     this._bindKeyboardShortcuts()
     this._bindTitleInput()
     this._bindAutosaveStatus()
+    this._bindNoteNavigation()
   }
 
   disconnect() {
@@ -44,6 +45,14 @@ export default class extends Controller {
 
   // ── Editor events ─────────────────────────────────────────
   _bindEditorEvents() {
+    // Render initial content as soon as the editor is ready (fires once on connect).
+    // Without this, the preview stays blank until the user types something because
+    // codemirror:change only fires on document mutations, not on initial load.
+    this.element.addEventListener("codemirror:ready", (e) => {
+      const initialContent = e.detail.editor.getValue()
+      if (initialContent) this._onContentChange(initialContent)
+    })
+
     // Listen for CodeMirror change events bubbling up
     this.element.addEventListener("codemirror:change", (e) => {
       const content = e.detail.value
@@ -68,6 +77,26 @@ export default class extends Controller {
 
   _onContentChange(content) {
     this._getPreviewController()?.update(content)
+  }
+
+  // ── Note navigation ──────────────────────────────────────
+  // Intercept clicks on wiki-links (preview pane) and backlinks so the current
+  // note is saved as a draft before Turbo navigates to the destination.
+  _bindNoteNavigation() {
+    this.element.addEventListener("click", async (e) => {
+      const link = e.target.closest(".preview-prose a.wikilink, .backlinks-panel a")
+      if (!link) return
+      const href = link.getAttribute("href")
+      if (!href || href.startsWith("#")) return
+
+      e.preventDefault()
+      await this._getAutosaveController()?.saveDraftNow()
+      Turbo.visit(href)
+    })
+  }
+
+  _getAutosaveController() {
+    return this.application.getControllerForElementAndIdentifier(this.element, "autosave")
   }
 
   // The preview pane div itself has data-controller="preview" — use it directly

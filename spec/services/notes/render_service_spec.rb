@@ -111,5 +111,59 @@ RSpec.describe Notes::RenderService do
       html = render(nil)
       expect(html).to be_a(String)
     end
+
+    # Bug fix: wiki-link syntax [[Display|uuid]] must be resolved to <a> tags,
+    # not passed through as raw text. These tests document the expected behaviour.
+    describe "wiki-link rendering" do
+      let!(:target) { create(:note, title: "Nota Destino") }
+
+      it "renders [[Display|uuid]] as an anchor tag for valid note" do
+        html = render("Veja [[Nota Destino|#{target.id}]] para mais.")
+        expect(html).to include("<a ")
+        expect(html).to include("Nota Destino")
+        expect(html).not_to include("[[")
+        expect(html).not_to include("]]")
+      end
+
+      it "does not show raw [[...]] syntax in output" do
+        html = render("Veja [[Minha Nota|#{target.id}]].")
+        expect(html).not_to match(/\[\[.*\]\]/)
+      end
+
+      it "renders broken wiki-link (invalid UUID) as wikilink-broken span" do
+        bad_uuid = "00000000-0000-0000-0000-000000000000"
+        html = render("Veja [[Link Quebrado|#{bad_uuid}]].")
+        expect(html).to include("wikilink-broken")
+        expect(html).to include("Link Quebrado")
+        expect(html).not_to include("[[")
+      end
+
+      it "renders [[Display|f:uuid]] with hier_role prefix" do
+        html = render("Parent: [[Nota Pai|f:#{target.id}]]")
+        expect(html).to include("<a ")
+        expect(html).to include("Nota Pai")
+        expect(html).not_to include("[[")
+      end
+
+      it "renders [[Display|c:uuid]] with child role prefix" do
+        html = render("Child: [[Nota Filha|c:#{target.id}]]")
+        expect(html).to include("<a ")
+        expect(html).to include("Nota Filha")
+        expect(html).not_to include("[[")
+      end
+
+      it "preserves display text separate from note title" do
+        html = render("Veja [[Texto Livre|#{target.id}]] aqui.")
+        expect(html).to include("Texto Livre")
+        # title attribute shows real note title when display differs
+        expect(html).to include('title="Nota Destino"')
+      end
+
+      it "uses display text when it matches note title (no redundant title attr)" do
+        html = render("Veja [[Nota Destino|#{target.id}]] aqui.")
+        # When display == title, no extra title attribute is added
+        expect(html).not_to include('title=')
+      end
+    end
   end
 end

@@ -139,6 +139,73 @@
   <div class="flex flex-1 min-h-0"
        data-editor-target="mainArea">
 
+    <%# ── Tag sidebar ──────────────────────────────────────── %>
+    <%
+      # Preload link→tags map so JS can do highlight without extra fetches
+      link_tags_map = @note.outgoing_links.includes(:tags).each_with_object({}) do |link, h|
+        h[link.dst_note_id.to_s] = link.tags.map(&:id).map(&:to_s)
+      end
+    %>
+    <div id="tag-sidebar"
+         class="tag-sidebar flex-shrink-0"
+         data-controller="tag-sidebar"
+         data-tag-sidebar-note-slug-value="<%= @note.slug %>"
+         data-tag-sidebar-link-tags-data-value="<%= link_tags_map.to_json.html_safe %>">
+
+      <%# Header: collapse button + mode indicator %>
+      <div class="tag-sidebar-header">
+        <button class="tag-sidebar-toggle-btn"
+                title="Toggle painel de tags"
+                data-action="click->tag-sidebar#toggle">
+          <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M7 7l-5 5 5 5M17 7l5 5-5 5"/>
+          </svg>
+        </button>
+        <span class="tag-sidebar-mode" data-tag-sidebar-target="modeLabel">Global</span>
+      </div>
+
+      <%# Tag list — populated and animated by JS; new-tag row appended at end by JS %>
+      <ul class="tag-list" data-tag-sidebar-target="list">
+        <%# New tag row — lives inside the scrollable list (JS re-appends after each render) %>
+        <li class="tag-new-row" data-tag-sidebar-target="newRow">
+          <%# SVG dot — opens custom color picker %>
+          <button class="tag-new-dot-btn"
+                  type="button"
+                  title="Escolher cor"
+                  data-action="click->tag-sidebar#openColorPicker"
+                  data-tag-sidebar-target="newDotBtn">
+          </button>
+          <input type="text"
+                 placeholder="Nome da tag..."
+                 class="tag-new-input"
+                 data-tag-sidebar-target="nameInput"
+                 data-action="keydown->tag-sidebar#onNameKeydown"
+                 autocomplete="off">
+        </li>
+      </ul>
+
+      <%# Custom color picker popup — position:fixed, inside sidebar for Stimulus target scope %>
+      <div class="tag-color-picker" hidden
+           data-tag-sidebar-target="colorPicker">
+        <p class="tcp-label">Sugeridas</p>
+        <div class="tcp-swatches" data-tag-sidebar-target="colorSuggestions"></div>
+
+        <p class="tcp-label">Personalizada</p>
+        <canvas class="tcp-wheel-canvas" width="156" height="156"
+                data-tag-sidebar-target="colorWheel"
+                data-action="click->tag-sidebar#onWheelClick
+                             mousemove->tag-sidebar#onWheelHover"></canvas>
+
+        <div class="tcp-custom-row">
+          <div class="tcp-preview" data-tag-sidebar-target="colorPreview"></div>
+          <span class="tcp-hex" data-tag-sidebar-target="colorHex">#3b82f6</span>
+          <span class="tcp-wcag tcp-wcag--aa" data-tag-sidebar-target="colorWcag">AA</span>
+          <button type="button" class="tcp-confirm"
+                  data-action="click->tag-sidebar#confirmCustomColor">✓</button>
+        </div>
+      </div>
+    </div>
+
     <%# Editor pane %>
     <div id="editor-pane"
          class="flex-1 min-w-0 flex flex-col relative"
@@ -154,8 +221,7 @@
 
       <%# Wiki-link autocomplete dropdown %>
       <div class="wikilink-dropdown" hidden
-           data-wikilink-target="dropdown"
-           style="bottom: 2.5rem; left: 1rem;"></div>
+           data-wikilink-target="dropdown"></div>
 
       <%# Stats bar %>
       <div class="editor-stats-bar flex items-center gap-4 px-4 py-1 flex-shrink-0"
@@ -171,27 +237,64 @@
 
     <%# Preview pane %>
     <div id="preview-pane"
-         class="flex-1 min-w-0 overflow-y-auto"
+         class="flex-1 min-w-0 overflow-y-auto flex flex-col"
          data-controller="preview"
          data-editor-target="previewPane"
          data-action="scroll->preview#scroll">
-      <div class="preview-prose"
+      <div class="preview-prose flex-1"
            data-preview-target="output">
         <p style="color: var(--theme-text-faint); font-style: italic;">Comece a digitar para ver o preview...</p>
       </div>
 
-      <%# Backlinks panel — notes that link TO this note %>
-      <% backlinks = @note.incoming_links.includes(:src_note).map(&:src_note).compact %>
-      <% if backlinks.any? %>
+      <%# Backlinks — grouped by semantic role with inverted colours %>
+      <%
+        incoming = @note.incoming_links.includes(:src_note)
+        fathers  = incoming.select { |l| l.hier_role == "target_is_child"   }.map(&:src_note).compact
+        brothers = incoming.select { |l| l.hier_role == "same_level"        }.map(&:src_note).compact
+        children = incoming.select { |l| l.hier_role == "target_is_parent"  }.map(&:src_note).compact
+        plain    = incoming.select { |l| l.hier_role.nil?                   }.map(&:src_note).compact
+      %>
+      <% if fathers.any? || brothers.any? || children.any? || plain.any? %>
         <div class="backlinks-panel px-6 pb-8">
-          <h3>Referenciado por</h3>
-          <ul class="backlinks-list">
-            <% backlinks.each do |src_note| %>
-              <li>
-                <%= link_to src_note.title, note_path(src_note.slug) %>
-              </li>
-            <% end %>
-          </ul>
+          <% if fathers.any? %>
+            <div class="backlinks-group">
+              <span class="backlinks-group-label">Fathers:</span>
+              <ul class="backlinks-list">
+                <% fathers.each do |n| %>
+                  <li><%= link_to n.title, note_path(n.slug), class: "backlink-child" %></li>
+                <% end %>
+              </ul>
+            </div>
+          <% end %>
+          <% if brothers.any? %>
+            <div class="backlinks-group">
+              <span class="backlinks-group-label">Brothers:</span>
+              <ul class="backlinks-list">
+                <% brothers.each do |n| %>
+                  <li><%= link_to n.title, note_path(n.slug), class: "backlink-brother" %></li>
+                <% end %>
+              </ul>
+            </div>
+          <% end %>
+          <% if children.any? %>
+            <div class="backlinks-group">
+              <span class="backlinks-group-label">Children:</span>
+              <ul class="backlinks-list">
+                <% children.each do |n| %>
+                  <li><%= link_to n.title, note_path(n.slug), class: "backlink-father" %></li>
+                <% end %>
+              </ul>
+            </div>
+          <% end %>
+          <% if plain.any? %>
+            <div class="backlinks-group">
+              <ul class="backlinks-list">
+                <% plain.each do |n| %>
+                  <li><%= link_to n.title, note_path(n.slug), class: "backlink-null" %></li>
+                <% end %>
+              </ul>
+            </div>
+          <% end %>
         </div>
       <% end %>
     </div>

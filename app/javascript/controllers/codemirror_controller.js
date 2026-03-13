@@ -33,10 +33,6 @@ export default class extends Controller {
       scroll: () => { this._dispatchScroll() }
     })
 
-    const keydownListener = EditorView.domEventHandlers({
-      keydown: (event) => { this._dispatchKeydown(event) }
-    })
-
     const state = EditorState.create({
       doc: this.initialValueValue || "",
       extensions: [
@@ -60,7 +56,6 @@ export default class extends Controller {
         markdown({ base: markdownLanguage, codeLanguages: languages }),
         updateListener,
         scrollListener,
-        keydownListener,
         EditorView.lineWrapping,
       ]
     })
@@ -75,8 +70,15 @@ export default class extends Controller {
       this._insertWikilink(e.detail.markup, e.detail.insertStart)
     })
 
-    // Notify other controllers editor is ready
+    // Notify other controllers editor is ready (bubbles to editor_controller)
     this.dispatch("ready", { detail: { editor: this } })
+
+    // Trigger initial preview render. codemirror:change only fires on mutations,
+    // not on initial load, so the preview would stay blank without this.
+    // setTimeout(0) defers the dispatch past the current synchronous connect()
+    // cycle so that preview_controller (later in DOM order) has already connected
+    // and registered its listeners before the event fires.
+    if (this.initialValueValue) setTimeout(() => this._dispatchChange(), 0)
   }
 
   disconnect() {
@@ -152,7 +154,6 @@ export default class extends Controller {
     } else {
       const placeholder = before.replace(/\*|_|`/g, "").trim() || "texto"
       this.replaceSelection(`${before}${placeholder}${after}`)
-      // Select placeholder
       const { from } = this._view.state.selection.main
       const start = from - placeholder.length - after.length
       const end = start + placeholder.length
@@ -163,7 +164,6 @@ export default class extends Controller {
   get view() { return this._view }
 
   // Replace text from insertStart to current cursor with the wiki-link markup.
-  // insertStart is the absolute offset where [[ was typed.
   _insertWikilink(markup, insertStart) {
     if (!this._view) return
     const cursorPos = this._view.state.selection.main.head
@@ -184,9 +184,10 @@ export default class extends Controller {
   }
 
   _dispatchSelectionChange() {
-    const pos = this.getCursorPosition()
+    const pos       = this.getCursorPosition()
+    const cursorPos = this._view?.state.selection.main.head ?? 0
     this.dispatch("selectionchange", {
-      detail: { ...pos, value: this.getValue() },
+      detail: { ...pos, cursorPos, value: this.getValue() },
       bubbles: true
     })
   }
@@ -194,13 +195,6 @@ export default class extends Controller {
   _dispatchScroll() {
     this.dispatch("scroll", {
       detail: { ratio: this.getScrollRatio() },
-      bubbles: true
-    })
-  }
-
-  _dispatchKeydown(event) {
-    this.dispatch("keydown", {
-      detail: { key: event.key, preventDefault: () => event.preventDefault() },
       bubbles: true
     })
   }

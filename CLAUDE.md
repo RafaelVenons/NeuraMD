@@ -201,9 +201,9 @@ Links de saída B = SELECT * FROM note_links WHERE src_note_id = B
 
 **Diagrama visual da semântica:**
 ```
-[src superior] ──→ [Nota em destaque] ──→ [dst superior]
-[src same lvl] ──→        │            ──→ [dst same lvl]
-[src inferior] ──→        └────────────── [dst inferior]
+[src Father ] \→                   /→ [dst Father]
+[src Brother] -→ [Nota em destaque]-→ [dst Brother]
+[src Child  ] /→                   \→ [dst Child]
 ```
 
 **Queries de grafo com CTE recursiva (PostgreSQL):**
@@ -549,11 +549,17 @@ spec/
 - [ ] Specs: ExtractService, SyncService, TitleSyncService, endpoint search, render com links
 
 #### 2c — Tags
-- [ ] UI de chips em notas (criar, remover, buscar tags existentes)
-- [ ] Tags com cor (`color_hex`) e ícone opcional
-- [ ] `tag_scope` controla se tag aparece em notas, links ou ambos
+- [x] API Tags: `GET/POST/DELETE /tags` — JSON, Pundit auth
+- [x] API LinkTags: `POST/DELETE /link_tags` { note_link_id, tag_id } — N:N, idempotent
+- [x] Tag sidebar (colapsável, esquerda do editor) — Stimulus `tag_sidebar_controller`
+- [x] **Link mode** (cursor dentro de `[[Display|uuid]]`): múltiplas tags ativas simultaneamente para o mesmo link (N:N checkboxes); clicar numa tag adiciona/remove; tags checked flutuam ao topo
+- [x] **Global mode** (cursor fora de link): uma tag ativa por vez; clicar destaca NO PREVIEW todos os links com essa tag; clicar de novo desativa
+- [x] `wikilink:cursor` event dispatch: codemirror_controller detecta posição do cursor e emite evento; tag_sidebar_controller reage mudando de modo
+- [x] `GET /notes/:slug/link_info?dst_uuid=` — retorna { link_id, tags } para o link focado
+- [x] `link-tags-data` JSON pré-carregado no `data-` attribute da view — evita request extra para highlight global
+- [x] Specs: tag CRUD, link_tag N:N, idempotência, toggle, highlight semântico
+- [ ] Tags em notas (`note_tags` join) — criar, remover chips na nota
 - [ ] Filtro por tag na listagem de notas
-- [ ] Specs: tag CRUD, note_tags join
 
 - **Entrega:** links semânticos automáticos via markup, histórico de checkpoints navegável, tags em notas
 
@@ -757,5 +763,145 @@ Testar pelo IP real (não `localhost`) expõe o comportamento de rede no DevTool
 
 ---
 
-*Última atualização: 2026-03-05 (Fase 2 refinada)*
+## 16. Política de Testes
+
+### 16.1 Filosofia — TDD Estrito
+
+**Toda funcionalidade nova começa com testes.** Nenhum código de produção é escrito antes que haja pelo menos um teste falhando que descreve o comportamento esperado.
+
+Fluxo obrigatório:
+1. **Red** — escrever o(s) teste(s) que descreve(m) o comportamento desejado; confirmá-los falhando
+2. **Green** — implementar o mínimo necessário para os testes passarem
+3. **Refactor** — limpar o código sem quebrar os testes
+
+**Bugs reportados seguem o mesmo fluxo:** antes de qualquer fix, escrever um teste que reproduz o comportamento indesejado e confirmá-lo falhando. Só então corrigir o bug. O teste que falhou é a garantia de não-regressão.
+
+### 16.2 Pirâmide de Testes
+
+```
+          ┌───────────────────────┐
+          │   E2E / Aceitação     │  Playwright (MCP) — poucos, críticos
+          │   (fluxos completos)  │  Capybara + Cuprite — sistema + JS
+          ├───────────────────────┤
+          │   Integração          │  RSpec request specs, service specs
+          │   (controllers, API)  │  FactoryBot + DatabaseCleaner
+          ├───────────────────────┤
+          │   Unitários           │  RSpec model/service specs
+          │   (models, services)  │  Rápidos, sem browser, sem DB se possível
+          └───────────────────────┘
+```
+
+Princípio: **a maioria dos testes deve ser unitária/integração** (rápida, barata). E2E cobre apenas os fluxos críticos que não podem ser validados sem browser.
+
+### 16.3 Stack de Testes
+
+#### Testes Ruby (backend + integração)
+- **RSpec** — framework principal
+- **FactoryBot** — fixtures declarativas
+- **DatabaseCleaner** — truncation para system specs (browser vê dados commitados), transaction para o resto
+- **Shoulda Matchers** — validações de modelo
+- **Capybara + Cuprite** — system specs com JS real (Chromium via CDP, sem ChromeDriver)
+
+#### Testes E2E (fluxos completos, cross-layer)
+- **Playwright** via `@playwright/mcp` — testes E2E orquestrados pelo Claude Code via MCP
+  - Usado quando: validar fluxo completo de usuário end-to-end (login → criar nota → salvar → verificar)
+  - Vantagem: Claude Code pode inspecionar e interagir com o browser em tempo real durante desenvolvimento
+  - Configurar: `npx @playwright/mcp@latest` (sem instalação permanente necessária)
+- **Capybara + Cuprite** — system specs integrados no RSpec (`spec/system/`)
+  - Usado quando: testar comportamento JS específico em contexto Rails (Stimulus controllers, Hotwire)
+  - Vantagem: acesso direto a factories, helpers Rails, DatabaseCleaner integrado
+  - Driver: `:cuprite` (Ferrum/CDP) — `HEADED=1 bundle exec rspec` para abrir browser visível
+
+#### Escolha entre Playwright MCP e Capybara/Cuprite
+
+| Cenário | Ferramenta |
+|---|---|
+| Novo fluxo de usuário (bug reprodução ou feature) | Playwright MCP — exploração rápida |
+| Teste permanente no CI | Capybara + Cuprite em `spec/system/` |
+| Comportamento JS de Stimulus controller isolado | Capybara + Cuprite |
+| Fluxo multi-página com sessão (login→ação→logout) | Playwright MCP para explorar, depois Cuprite para fixar |
+| Validar comportamento indesejado reportado | Cuprite — escrever spec que falha, depois fixar |
+
+### 16.4 Regras de Escrita de Testes
+
+#### Estrutura de arquivos
+```
+spec/
+  models/           → unitários de modelo (validações, escopos, métodos)
+  services/         → unitários de service (lógica de domínio)
+  requests/         → integração HTTP (controllers, autenticação, JSON API)
+  system/           → E2E com browser (JS, Stimulus, fluxos completos)
+  javascript/       → lógica JS pura portada para Ruby (algoritmos, regex)
+  support/
+    cuprite.rb      → configuração Cuprite
+    ar_encryption.rb → chaves de teste
+    factories/      → FactoryBot factories
+```
+
+#### Nomenclatura e organização
+- Descrever **comportamento**, não implementação: `"salva draft ao perder foco"` não `"chama DraftService"`
+- Um `describe` por conceito/contexto; `it` por caso concreto
+- Usar `let!` para dados que o browser precisa ver (já commitados antes do JS rodar)
+- Evitar `sleep` fixo — usar `have_css(..., wait: N)` e `have_text(..., wait: N)` do Capybara
+
+#### Reprodução de bug (protocolo obrigatório)
+```
+1. Criar spec em spec/system/ ou spec/requests/ que descreve o comportamento indesejado
+2. Rodar e confirmar que FALHA com a mensagem esperada
+3. Commitar o teste falhando (opcional, mas preferível)
+4. Implementar o fix
+5. Confirmar que o teste passa
+6. Rodar suite completa — nenhuma regressão
+```
+
+**Nunca corrigir um bug sem antes ter um teste que o reproduz.**
+
+#### Testes Cuprite — gotchas e boas práticas
+- Teclas de seta: usar `:down`, `:up`, `:left`, `:right` (não `:arrow_down` etc.)
+- Teclas de controle: `[:control, :home]`, `[:control, :end]` (símbolos, não strings)
+- CSS `text-transform: uppercase` → usar regex case-insensitive: `text: /global/i`
+- `let!` (não `let`) para dados que devem existir no DB antes da visita à página
+- Capturar console JS: sobrescrever `console.log` via `page.execute_script` antes da ação; ler com `page.evaluate_script("window.__consoleLogs")`
+- `js_errors: true` no driver para surfaçar erros JS não tratados durante desenvolvimento
+
+#### Diagnóstico de falhas em system specs
+Quando um system spec falha de forma misteriosa (evento disparado mas DOM não atualiza):
+1. Adicionar `console.log` temporários nos Stimulus controllers (fonte JS em `app/javascript/`)
+2. Capturar via `page.execute_script` que instala collector antes da ação
+3. Ler com `page.evaluate_script("window.__consoleLogs")`
+4. Remover logs após identificar e corrigir o problema
+
+### 16.5 Comandos de Teste
+
+```bash
+# Suite completa
+bundle exec rspec
+
+# Apenas system specs (browser)
+bundle exec rspec spec/system/
+
+# System spec com browser visível (debug)
+HEADED=1 bundle exec rspec spec/system/wikilink_editor_spec.rb
+
+# Spec específico
+bundle exec rspec spec/system/wikilink_editor_spec.rb:39
+
+# Playwright MCP (via Claude Code — sem instalação permanente)
+npx @playwright/mcp@latest
+```
+
+### 16.6 Cobertura Mínima por Camada
+
+Antes de considerar uma funcionalidade completa, deve haver:
+
+| Camada | O que cobrir |
+|---|---|
+| Model | Validações, escopos, callbacks, associações críticas |
+| Service | Happy path + casos de erro + edge cases do domínio |
+| Request/Controller | Autenticação (401), autorização (403), sucesso (2xx), erro (422) |
+| System (JS) | Fluxo principal do usuário + regressões reportadas |
+
+---
+
+*Última atualização: 2026-03-06 (Política de testes adicionada)*
 *NeuraMD — Stack: Rails 8 · PostgreSQL 16 · Hotwire · CodeMirror 6 · Docker*
