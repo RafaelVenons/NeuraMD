@@ -2,6 +2,7 @@ require "rails_helper"
 
 RSpec.describe Notes::DraftService do
   let(:note) { create(:note) }
+  let!(:dst_note) { create(:note, title: "Destino") }
 
   describe ".call" do
     it "creates a draft revision" do
@@ -36,6 +37,13 @@ RSpec.describe Notes::DraftService do
 
       described_class.call(note: note, content: "draft")
       expect(note.note_revisions.where(revision_kind: :checkpoint).count).to eq(1)
+    end
+
+    it "syncs note links against the latest draft content" do
+      described_class.call(note: note, content: "[[Destino|#{dst_note.id}]]")
+
+      expect(note.outgoing_links.find_by(dst_note_id: dst_note.id)).to be_present
+      expect(note.outgoing_links.last.created_in_revision.revision_kind).to eq("draft")
     end
   end
 end

@@ -38,10 +38,18 @@ export default class extends Controller {
 
   // Called by the Save button
   async saveCheckpoint() {
-    const content = this._pendingContent || this._loadLocal()
+    const content = this._currentContent()
     if (!content) return
     await this._postSave(this.checkpointUrlValue, content, "checkpoint")
     this._clearLocal()
+  }
+
+  // Called before navigating away — saves pending content as draft immediately.
+  async saveDraftNow() {
+    const content = this._currentContent()
+    if (!content) return
+    clearTimeout(this._draftTimer)
+    await this._saveDraft(content)
   }
 
   // ── Private ─────────────────────────────────────────────
@@ -78,6 +86,17 @@ export default class extends Controller {
   _loadLocal() {
     if (!this.localKeyValue) return null
     try { return localStorage.getItem(this.localKeyValue) } catch (_) { return null }
+  }
+
+  _currentContent() {
+    return this._pendingContent || this._getCodemirrorController()?.getValue() || this._loadLocal()
+  }
+
+  _getCodemirrorController() {
+    const editorPane = this.element.querySelector("[data-controller~='codemirror']")
+    if (!editorPane) return null
+
+    return this.application.getControllerForElementAndIdentifier(editorPane, "codemirror")
   }
 
   _clearLocal() {
