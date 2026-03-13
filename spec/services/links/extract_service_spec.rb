@@ -37,11 +37,11 @@ RSpec.describe Links::ExtractService do
       expect(result.size).to eq(1)
     end
 
-    it "keeps same UUID with different roles as separate links" do
+    it "prefers the explicit role when the same UUID appears multiple times" do
       uuid = SecureRandom.uuid
-      content = "[[Note|#{uuid}]] and [[Parent|f:#{uuid}]]"
+      content = "[[Note|#{uuid}]] and [[Parent|f:#{uuid}]] and [[Sibling|b:#{uuid}]]"
       result = described_class.call(content)
-      expect(result.size).to eq(2)
+      expect(result).to eq([{dst_note_id: uuid, hier_role: "same_level"}])
     end
 
     it "extracts multiple different wiki-links" do

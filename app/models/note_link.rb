@@ -9,7 +9,7 @@ class NoteLink < ApplicationRecord
 
   validates :src_note_id, presence: true
   validates :dst_note_id, presence: true
-  validates :src_note_id, uniqueness: {scope: [:dst_note_id, :hier_role], message: "already links to this note with the same role"}
+  validates :src_note_id, uniqueness: {scope: :dst_note_id, message: "already links to this note"}
   validates :hier_role, inclusion: {in: HIER_ROLES}, allow_nil: true
   validate :no_self_links
 

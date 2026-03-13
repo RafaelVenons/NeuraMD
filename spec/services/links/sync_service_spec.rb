@@ -35,6 +35,23 @@ RSpec.describe Links::SyncService do
       expect { call(content) }.to change(NoteLink, :count).by(1)
     end
 
+    it "updates the existing link role instead of creating a duplicate when the role changes" do
+      call("[[Dest|#{dst_note.id}]]")
+
+      expect {
+        call("[[Dest|b:#{dst_note.id}]]")
+      }.not_to change(NoteLink, :count)
+
+      expect(src_note.outgoing_links.find_by(dst_note_id: dst_note.id).hier_role).to eq("same_level")
+    end
+
+    it "collapses repeated references to the same dst into one link" do
+      content = "[[Dest|#{dst_note.id}]] and [[Dest|b:#{dst_note.id}]]"
+
+      expect { call(content) }.to change(NoteLink, :count).by(1)
+      expect(src_note.outgoing_links.find_by(dst_note_id: dst_note.id).hier_role).to eq("same_level")
+    end
+
     it "is idempotent — calling twice does not create duplicates" do
       content = "[[Dest|#{dst_note.id}]]"
       call(content)

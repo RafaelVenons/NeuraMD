@@ -172,6 +172,28 @@ RSpec.describe "Notes", type: :request do
       expect(note.reload.note_revisions.where(revision_kind: :draft).count).to eq(0)
     end
 
+    it "saves a checkpoint successfully after a draft created wiki-links" do
+      dst_note = create(:note, title: "Destino")
+
+      post draft_note_path(note.slug),
+        params: {content_markdown: "[[Destino|#{dst_note.id}]]"}.to_json,
+        headers: headers
+
+      expect(note.reload.outgoing_links.find_by(dst_note_id: dst_note.id)).to be_present
+
+      post checkpoint_note_path(note.slug),
+        params: {content_markdown: "[[Destino|#{dst_note.id}]]"}.to_json,
+        headers: headers
+
+      expect(response).to have_http_status(:ok), "checkpoint with links failed: #{response.body}"
+      expect(response.parsed_body["kind"]).to eq("checkpoint")
+      expect(note.reload.note_revisions.where(revision_kind: :draft)).to eq([])
+
+      link = note.outgoing_links.find_by(dst_note_id: dst_note.id)
+      expect(link).to be_present
+      expect(link.created_in_revision.revision_kind).to eq("checkpoint")
+    end
+
     it "updates head_revision_id on note" do
       old_head = note.head_revision_id
       post checkpoint_note_path(note.slug),

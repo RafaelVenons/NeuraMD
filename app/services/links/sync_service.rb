@@ -18,10 +18,9 @@ module Links
 
     def call
       desired = extract_desired_links
-      existing = load_existing_links
 
-      create_missing(desired, existing)
-      delete_removed(desired, existing)
+      upsert_links(desired)
+      delete_removed(desired)
     end
 
     private
@@ -32,28 +31,30 @@ module Links
         .select { |link| Note.active.exists?(id: link[:dst_note_id]) }
     end
 
-    def load_existing_links
-      @src_note.outgoing_links.map do |link|
-        {dst_note_id: link.dst_note_id.to_s.downcase, hier_role: link.hier_role}
+    def upsert_links(desired)
+      desired.each do |link|
+        existing_link = @src_note.outgoing_links.find_by(dst_note_id: link[:dst_note_id])
+
+        if existing_link
+          next if existing_link.hier_role == link[:hier_role] && existing_link.created_in_revision_id == @revision.id
+
+          existing_link.update!(
+            hier_role: link[:hier_role],
+            created_in_revision: @revision
+          )
+        else
+          @src_note.outgoing_links.create!(
+            dst_note_id: link[:dst_note_id],
+            hier_role: link[:hier_role],
+            created_in_revision: @revision
+          )
+        end
       end
     end
 
-    def create_missing(desired, existing)
-      (desired - existing).each do |link|
-        @src_note.outgoing_links.create!(
-          dst_note_id: link[:dst_note_id],
-          hier_role: link[:hier_role],
-          created_in_revision: @revision
-        )
-      end
-    end
-
-    def delete_removed(desired, existing)
-      (existing - desired).each do |link|
-        @src_note.outgoing_links
-          .find_by(dst_note_id: link[:dst_note_id], hier_role: link[:hier_role])
-          &.destroy!
-      end
+    def delete_removed(desired)
+      desired_ids = desired.map { |link| link[:dst_note_id] }.uniq
+      @src_note.outgoing_links.where.not(dst_note_id: desired_ids).find_each(&:destroy!)
     end
   end
 end

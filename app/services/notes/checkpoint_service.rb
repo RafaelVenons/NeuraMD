@@ -18,8 +18,7 @@ module Notes
 
     def call
       ActiveRecord::Base.transaction do
-        # Remove draft — checkpoint supersedes it
-        @note.note_revisions.where(revision_kind: :draft).destroy_all
+        draft_ids = @note.note_revisions.where(revision_kind: :draft).pluck(:id)
 
         # Resolve latest checkpoint from DB (head_revision_id may be stale if it pointed to a draft)
         latest_checkpoint_id = @note.note_revisions
@@ -38,6 +37,11 @@ module Notes
         @note.update!(head_revision_id: revision.id)
 
         Links::SyncService.call(src_note: @note, revision: revision, content: @content)
+
+        if draft_ids.any?
+          @note.outgoing_links.where(created_in_revision_id: draft_ids).update_all(created_in_revision_id: revision.id)
+          @note.note_revisions.where(id: draft_ids).destroy_all
+        end
 
         revision
       end

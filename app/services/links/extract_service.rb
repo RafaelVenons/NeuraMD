@@ -7,8 +7,10 @@ module Links
   #   [[Display Text|c:uuid]]      → hier_role: "target_is_child"   (Child)
   #   [[Display Text|b:uuid]]      → hier_role: "same_level"        (Brother)
   #
-  # Returns array of { dst_note_id: uuid, hier_role: string_or_nil }
-  # Deduplicates by (dst_note_id, hier_role) — same UUID with different roles = two links.
+  # Returns array of { dst_note_id: uuid, hier_role: string_or_nil }.
+  # The DB allows only one note_link per destination note, so repeated references to the
+  # same UUID collapse into a single link. If any occurrence has an explicit role prefix,
+  # that semantic role wins over plain references.
   class ExtractService
     ROLE_MAP = {
       "f" => "target_is_parent",
@@ -31,7 +33,13 @@ module Links
       @content
         .scan(WIKILINK_RE)
         .map { |role_prefix, uuid| {dst_note_id: uuid.downcase, hier_role: ROLE_MAP[role_prefix&.chomp(":")]} }
-        .uniq { |link| [link[:dst_note_id], link[:hier_role]] }
+        .each_with_object({}) do |link, by_destination|
+          current = by_destination[link[:dst_note_id]]
+          if current.nil? || link[:hier_role].present? || current[:hier_role].nil?
+            by_destination[link[:dst_note_id]] = link
+          end
+        end
+        .values
     end
   end
 end
