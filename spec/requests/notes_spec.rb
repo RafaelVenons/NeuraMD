@@ -7,44 +7,17 @@ RSpec.describe "Notes", type: :request do
   before { sign_in user }
 
   describe "GET /notes" do
-    it "returns http success" do
+    it "redirects to the graph page" do
       create(:note, :with_head_revision)
       get notes_path
-      expect(response).to have_http_status(:ok)
+      expect(response).to redirect_to(graph_path)
     end
 
-    it "lists only active notes" do
+    it "redirects even when query params are present" do
       active = create(:note, title: "Active")
       deleted = create(:note, title: "Deleted", deleted_at: Time.current)
-      get notes_path
-      expect(response.body).to include("Active")
-      expect(response.body).not_to include("Deleted")
-    end
-
-    it "filters notes by title and content" do
-      titled = create(:note, :with_head_revision, title: "Cardio Guia")
-      content_match = create(:note, title: "Neurologia")
-      content_revision = create(:note_revision, note: content_match, content_markdown: "Paciente com arritmia recorrente")
-      content_match.update_columns(head_revision_id: content_revision.id)
-      other = create(:note, :with_head_revision, title: "Dermatologia")
-
       get notes_path, params: { q: "arritmia" }
-
-      expect(response).to have_http_status(:ok)
-      expect(response.body).to include("Neurologia")
-      expect(response.body).not_to include("Dermatologia")
-      expect(response.body).not_to include("Cardio Guia")
-    end
-
-    it "supports limited regex search" do
-      create(:note, :with_head_revision, title: "ECG 2026")
-      create(:note, :with_head_revision, title: "ECG antigo")
-
-      get notes_path, params: { q: "ECG\\s\\d{4}", regex: "1" }
-
-      expect(response).to have_http_status(:ok)
-      expect(response.body).to include("ECG 2026")
-      expect(response.body).not_to include("ECG antigo")
+      expect(response).to redirect_to(graph_path)
     end
   end
 
@@ -372,8 +345,7 @@ RSpec.describe "Notes", type: :request do
     end
   end
 
-  # Fix: backlinks panel must NOT include the "Referenciado por" heading.
-  describe "GET /notes/:slug — backlinks panel" do
+  describe "GET /notes/:slug — embedded graph panel" do
     let!(:src_note) { create(:note, :with_head_revision, title: "Origem") }
     let!(:dst_note) { create(:note, :with_head_revision, title: "Destino") }
 
@@ -381,14 +353,16 @@ RSpec.describe "Notes", type: :request do
       create(:note_link, src_note: src_note, dst_note: dst_note)
     end
 
-    it "does NOT include 'Referenciado por' heading in the backlinks panel" do
+    it "does NOT include 'Referenciado por' heading in the preview footer" do
       get note_path(dst_note.slug)
       expect(response.body).not_to include("Referenciado por")
     end
 
-    it "still renders backlinks list with linking note titles" do
+    it "renders the embedded graph panel focused on the current note" do
       get note_path(dst_note.slug)
-      expect(response.body).to include("Origem")
+      expect(response.body).to include('data-controller="graph"')
+      expect(response.body).to include(%(data-graph-initial-focused-node-id-value="#{dst_note.id}"))
+      expect(response.body).to include(api_graph_path)
     end
   end
 

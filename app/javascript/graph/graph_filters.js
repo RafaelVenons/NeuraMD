@@ -1,6 +1,6 @@
 import { resolveNodeDepth } from "graph/graph_focus"
 import { resolvePriorityTag } from "graph/graph_tags"
-import { colorForEdge, colorForNode, roleLabel } from "graph/graph_style"
+import { colorForEdge, colorForNode, labelColorForNode, roleLabel } from "graph/graph_style"
 
 export function computeDisplayState(state) {
   const nodeDisplay = new Map()
@@ -35,7 +35,7 @@ export function computeDisplayState(state) {
       (sourceNode.depthFromFocus <= state.ui.focusDepth && targetNode.depthFromFocus <= state.ui.focusDepth)
     const visibleBySearch = sourceNode.matchesSearch || targetNode.matchesSearch
 
-    const hidden = !withinFocus || !visibleBySearch || (
+    const hidden = !visibleBySearch || (
       state.ui.filterMode === "focused-tags" &&
       state.ui.activeTagsOrdered.length > 0 &&
       !relevantToTags
@@ -49,8 +49,15 @@ export function computeDisplayState(state) {
     edgeDisplay.set(edgeId, {
       hidden,
       priorityTagId,
-      color: colorForEdge(priorityTagId, attributes.hierRole, state.indexes.tagMetaById, sourceNode.depthFromFocus === 1 || targetNode.depthFromFocus === 1, sourceNode.depthFromFocus === 2 || targetNode.depthFromFocus === 2),
-      size: sourceNode.depthFromFocus <= 1 || targetNode.depthFromFocus <= 1 ? 2.8 : 1.6,
+      color: colorForEdge(
+        priorityTagId,
+        attributes.hierRole,
+        state.indexes.tagMetaById,
+        sourceNode.depthFromFocus === 1 || targetNode.depthFromFocus === 1,
+        sourceNode.depthFromFocus === 2 || targetNode.depthFromFocus === 2,
+        state.ui.focusedNodeId !== null && !withinFocus
+      ),
+      size: state.ui.focusedNodeId !== null && !withinFocus ? 1.1 : sourceNode.depthFromFocus <= 1 || targetNode.depthFromFocus <= 1 ? 2.8 : 1.6,
       type: attributes.type,
       label: roleLabel(attributes.hierRole)
     })
@@ -63,12 +70,16 @@ export function computeDisplayState(state) {
     const hasVisibleIncidentEdge = visibleIncidentNodeIds.has(nodeId)
 
     let filterState = "normal"
+    if (state.ui.focusedNodeId !== null && base.depthFromFocus > state.ui.focusDepth && nodeId !== state.ui.focusedNodeId) {
+      filterState = "ghost"
+    }
+
     if (state.ui.filterMode === "focused-tags" && state.ui.activeTagsOrdered.length > 0 && !base.priorityTagId) {
       filterState = hasVisibleIncidentEdge ? "ghost" : "hidden"
     }
 
-    const hidden = !base.matchesSearch || base.depthFromFocus > state.ui.focusDepth && state.ui.focusedNodeId !== null || filterState === "hidden"
-    const size = isFocused ? 14 : base.depthFromFocus === 1 ? 10 : 7
+    const hidden = !base.matchesSearch || filterState === "hidden"
+    const size = isFocused ? 14 : base.depthFromFocus === 1 ? 10 : base.depthFromFocus === 2 ? 8.5 : filterState === "ghost" ? 5.5 : 7
 
     nodeDisplay.set(nodeId, {
       ...base,
@@ -76,6 +87,7 @@ export function computeDisplayState(state) {
       hidden,
       size,
       color: colorForNode(base.priorityTagId, filterState, state.indexes.tagMetaById, isFocused, isHovered),
+      labelColor: labelColorForNode(filterState, isFocused, isHovered),
       forceLabel: isFocused || isHovered || base.depthFromFocus <= 1
     })
   })

@@ -666,6 +666,25 @@
     min-height: 100vh;
     padding: 40px;
   }
+  .nm-auth__backdrop,
+  .nm-auth__shell,
+  .nm-auth__intro,
+  .nm-auth__card-wrap,
+  #editor-root,
+  #preview-pane,
+  .note-graph-panel,
+  .note-graph-embed,
+  .nm-graph__stage--fullscreen,
+  .nm-graph__canvas-wrap--fullscreen,
+  .nm-graph__floating,
+  .nm-app-flash--immersive,
+  .nm-app-nav {
+    transition:
+      transform 560ms cubic-bezier(0.22, 0.61, 0.25, 1),
+      opacity 560ms cubic-bezier(0.22, 0.61, 0.25, 1),
+      filter 560ms cubic-bezier(0.22, 0.61, 0.25, 1);
+    will-change: transform, opacity, filter;
+  }
   .nm-auth__intro,
   .nm-auth__card {
     border: 1px solid rgba(148, 163, 184, 0.16);
@@ -844,12 +863,14 @@
     display: grid;
     gap: 14px;
     width: min(380px, calc(100vw - 40px));
+    max-height: calc(100vh - 48px);
     border: 1px solid rgba(148, 163, 184, 0.16);
     border-radius: 26px;
     padding: 20px;
     background: rgba(15, 23, 42, 0.74);
     box-shadow: 0 28px 80px rgba(2, 6, 23, 0.34);
     backdrop-filter: blur(18px);
+    overflow: auto;
   }
   .nm-graph__floating--top-left {
     top: 24px;
@@ -869,6 +890,18 @@
     flex-wrap: wrap;
     gap: 10px;
     margin-top: 6px;
+  }
+  .nm-graph__field-inline {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+  .nm-graph__field-inline input[type="number"] {
+    width: 92px;
+    min-width: 92px;
+  }
+  .nm-graph__check--inline {
+    white-space: nowrap;
   }
   .nm-graph__primary-btn,
   .nm-graph__ghost-link {
@@ -926,6 +959,79 @@
     margin: 10px 0 0;
   }
 
+  .nm-transition-leaving {
+    overflow: hidden;
+  }
+  .nm-transition--auth-to-graph .nm-auth__backdrop {
+    transform: scale(1.05);
+    opacity: 0.82;
+  }
+  .nm-transition--auth-to-graph .nm-auth__shell {
+    transform: scale(1.03);
+  }
+  .nm-transition--auth-to-graph .nm-auth__intro {
+    transform: translateX(-64px);
+    opacity: 0;
+    filter: blur(6px);
+  }
+  .nm-transition--auth-to-graph .nm-auth__card-wrap {
+    transform: translateX(64px);
+    opacity: 0;
+    filter: blur(6px);
+  }
+  .nm-transition--graph-to-note .nm-graph__stage--fullscreen,
+  .nm-transition--graph-to-note .nm-app-main--fullbleed {
+    transform: scale(1.01);
+  }
+  .nm-transition--graph-to-note .nm-graph__canvas-wrap--fullscreen {
+    transform:
+      translate(
+        var(--nm-transition-graph-to-note-x, 18vw),
+        var(--nm-transition-graph-to-note-y, 15vh)
+      )
+      scale(var(--nm-transition-graph-to-note-scale, 0.56));
+    transform-origin: center center;
+    filter: saturate(0.92) blur(0.8px);
+    opacity: 0.96;
+  }
+  .nm-transition--graph-to-note .nm-graph__floating--top-left,
+  .nm-transition--graph-to-note .nm-graph__floating--left {
+    transform: translateX(-54px);
+    opacity: 0;
+    filter: blur(4px);
+  }
+  .nm-transition--graph-to-note .nm-graph__floating--right {
+    transform: translateX(54px) translateY(-10px);
+    opacity: 0;
+    filter: blur(4px);
+  }
+  .nm-transition--graph-to-note .nm-app-flash--immersive,
+  .nm-transition--graph-to-note .nm-app-nav {
+    opacity: 0;
+  }
+  .nm-transition--note-to-graph #editor-root {
+    transform: scale(0.985);
+    opacity: 0.92;
+  }
+  .nm-transition--note-to-graph #preview-pane {
+    transform: translateX(24px);
+  }
+  .nm-transition--note-to-graph .note-graph-panel,
+  .nm-transition--note-to-graph .note-graph-panel {
+    transform: scale(1.06);
+    filter: saturate(1.04);
+  }
+  .nm-transition--note-to-graph .note-graph-embed {
+    transform:
+      translate(
+        var(--nm-transition-note-to-graph-x, -18vw),
+        var(--nm-transition-note-to-graph-y, -10vh)
+      )
+      scale(var(--nm-transition-note-to-graph-scale, 2.4));
+    transform-origin: center center;
+    filter: saturate(1.08);
+  }
+
   @media (max-width: 1100px) {
     .nm-auth__shell {
       grid-template-columns: 1fr;
@@ -968,6 +1074,7 @@
       left: 16px;
       right: 16px;
       width: auto;
+      max-height: min(42vh, calc(100vh - 32px));
     }
     .nm-graph__floating--top-left {
       top: 16px;
@@ -1322,6 +1429,61 @@
     gap: 2px;
   }
   .backlinks-list li { padding-left: 8px; }
+
+  .note-graph-panel {
+    border-top: 1px solid var(--theme-border);
+  }
+  .note-graph-embed {
+    position: relative;
+    overflow: hidden;
+    border: 0;
+    border-radius: 0;
+    background:
+      radial-gradient(circle at 18% 20%, rgba(56, 189, 248, 0.12), transparent 24%),
+      linear-gradient(180deg, rgba(2, 6, 23, 0.96), rgba(15, 23, 42, 0.94));
+  }
+  .note-graph-embed__meta,
+  .note-graph-embed__empty,
+  .note-graph-embed__error {
+    position: absolute;
+    left: 16px;
+    z-index: 3;
+    max-width: calc(100% - 32px);
+    border-radius: 999px;
+    padding: 8px 12px;
+    backdrop-filter: blur(14px);
+  }
+  .note-graph-embed__meta {
+    top: 16px;
+    background: rgba(15, 23, 42, 0.72);
+    color: #cbd5e1;
+    border: 1px solid rgba(148, 163, 184, 0.16);
+  }
+  .note-graph-embed__empty,
+  .note-graph-embed__error {
+    bottom: 16px;
+    background: rgba(15, 23, 42, 0.82);
+    color: #e2e8f0;
+  }
+  .note-graph-embed__error {
+    background: rgba(127, 29, 29, 0.86);
+  }
+  .note-graph-embed__canvas {
+    position: relative;
+    min-height: 360px;
+  }
+  .note-graph-embed__host {
+    min-height: 360px;
+  }
+  .note-graph-embed__host canvas,
+  .note-graph-embed__host .sigma-mouse {
+    border-radius: 0;
+  }
+  .note-graph-embed__tooltip-layer {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+  }
 
   /* ── Tag sidebar ── */
   .tag-sidebar {

@@ -22,9 +22,9 @@ RSpec.describe "Note finder", type: :system do
   end
 
   it "opens from the layout and navigates to a searched note" do
-    visit notes_path
+    visit graph_path
 
-    find("nav button[data-action='click->note-finder#open']").click
+    find("button[data-action='click->note-finder#open']").click
     expect(page).to have_css("[data-note-finder-target='dialog']:not(.hidden)", wait: 3)
 
     search_in_finder("arritmia")
@@ -35,9 +35,9 @@ RSpec.describe "Note finder", type: :system do
   end
 
   it "navigates by mouse click on a finder result" do
-    visit notes_path
+    visit graph_path
 
-    find("nav button[data-action='click->note-finder#open']").click
+    find("button[data-action='click->note-finder#open']").click
     expect(page).to have_css("[data-note-finder-target='dialog']:not(.hidden)", wait: 3)
 
     search_in_finder("arritmia")

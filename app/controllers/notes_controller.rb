@@ -3,20 +3,8 @@ class NotesController < ApplicationController
   layout "editor", only: [:show, :show_revision]
 
   def index
-    @search_query = params[:q].to_s.strip
-    @search_regex = ActiveModel::Type::Boolean.new.cast(params[:regex])
-    @search_page = [params.fetch(:page, 1).to_i, 1].max
-
-    result = Search::NoteQueryService.call(
-      scope: policy_scope(Note),
-      query: @search_query,
-      regex: @search_regex,
-      page: @search_page
-    )
-
-    @notes = result.notes
-    @search_error = result.error
-    @has_more_results = result.has_more
+    authorize Note.new, :index?
+    redirect_to graph_path
   end
 
   def new
@@ -61,7 +49,7 @@ class NotesController < ApplicationController
   def destroy
     authorize @note
     @note.soft_delete!
-    redirect_to notes_path, notice: "Nota arquivada."
+    redirect_to graph_path, notice: "Nota arquivada."
   end
 
   def search

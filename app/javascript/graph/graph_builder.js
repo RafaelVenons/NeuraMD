@@ -21,6 +21,7 @@ export function buildGraph(dataset) {
       size: 6,
       color: "#7dd3fc",
       baseColor: "#7dd3fc",
+      labelColor: "#f8fafc",
       hidden: false,
       highlighted: false,
       forceLabel: false,

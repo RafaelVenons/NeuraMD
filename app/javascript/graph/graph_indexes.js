@@ -31,12 +31,15 @@ export function buildIndexes(dataset, graph) {
     graph.setEdgeAttribute(edgeId, "linkTags", tagsByLinkId.get(edgeId) || [])
   })
 
-  const neighborDepth1Cache = new Map()
-  const neighborDepth2Cache = new Map()
+  const neighborDepthCache = new Map()
 
   graph.forEachNode((nodeId) => {
-    neighborDepth1Cache.set(nodeId, collectDepth(graph, nodeId, 1))
-    neighborDepth2Cache.set(nodeId, collectDepth(graph, nodeId, 2))
+    neighborDepthCache.set(nodeId, {
+      1: collectDepth(graph, nodeId, 1),
+      2: collectDepth(graph, nodeId, 2),
+      3: collectDepth(graph, nodeId, 3),
+      4: collectDepth(graph, nodeId, 4)
+    })
   })
 
   return {
@@ -45,8 +48,7 @@ export function buildIndexes(dataset, graph) {
     tagMetaById,
     outEdgesByNodeId,
     inEdgesByNodeId,
-    neighborDepth1Cache,
-    neighborDepth2Cache
+    neighborDepthCache
   }
 }
 

@@ -25,10 +25,10 @@
        class="flex items-center gap-2 border-b border-gray-800 bg-gray-900 px-3 py-2 flex-shrink-0">
 
     <%# Back link %>
-    <%= link_to notes_path,
+    <%= link_to graph_path,
         class: "flex-shrink-0 rounded p-1.5 text-gray-400 hover:bg-gray-800 hover:text-gray-200",
-        title: "Voltar para lista",
-        "data-turbo-prefetch": "false" do %>
+        title: "Voltar para o grafo",
+        data: { turbo_prefetch: false, action: "click->page-transition#navigate", transition_kind: "note-to-graph" } do %>
       <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18"/>
       </svg>
@@ -283,57 +283,23 @@
         <p style="color: var(--theme-text-faint); font-style: italic;">Comece a digitar para ver o preview...</p>
       </div>
 
-      <%# Backlinks — grouped by semantic role with inverted colours %>
-      <%
-        incoming = @note.incoming_links.includes(:src_note)
-        fathers  = incoming.select { |l| l.hier_role == "target_is_child"   }.map(&:src_note).compact
-        brothers = incoming.select { |l| l.hier_role == "same_level"        }.map(&:src_note).compact
-        children = incoming.select { |l| l.hier_role == "target_is_parent"  }.map(&:src_note).compact
-        plain    = incoming.select { |l| l.hier_role.nil?                   }.map(&:src_note).compact
-      %>
-      <% if fathers.any? || brothers.any? || children.any? || plain.any? %>
-        <div class="backlinks-panel px-6 pb-8">
-          <% if fathers.any? %>
-            <div class="backlinks-group">
-              <span class="backlinks-group-label">Fathers:</span>
-              <ul class="backlinks-list">
-                <% fathers.each do |n| %>
-                  <li><%= link_to n.title, note_path(n.slug), class: "backlink-child" %></li>
-                <% end %>
-              </ul>
-            </div>
-          <% end %>
-          <% if brothers.any? %>
-            <div class="backlinks-group">
-              <span class="backlinks-group-label">Brothers:</span>
-              <ul class="backlinks-list">
-                <% brothers.each do |n| %>
-                  <li><%= link_to n.title, note_path(n.slug), class: "backlink-brother" %></li>
-                <% end %>
-              </ul>
-            </div>
-          <% end %>
-          <% if children.any? %>
-            <div class="backlinks-group">
-              <span class="backlinks-group-label">Children:</span>
-              <ul class="backlinks-list">
-                <% children.each do |n| %>
-                  <li><%= link_to n.title, note_path(n.slug), class: "backlink-father" %></li>
-                <% end %>
-              </ul>
-            </div>
-          <% end %>
-          <% if plain.any? %>
-            <div class="backlinks-group">
-              <ul class="backlinks-list">
-                <% plain.each do |n| %>
-                  <li><%= link_to n.title, note_path(n.slug), class: "backlink-null" %></li>
-                <% end %>
-              </ul>
-            </div>
-          <% end %>
+      <section class="note-graph-panel">
+        <div class="note-graph-embed"
+             data-controller="graph"
+             data-graph-data-url-value="<%= api_graph_path %>"
+             data-graph-initial-focused-node-id-value="<%= @note.id %>"
+             data-graph-embedded-mode-value="true">
+          <div class="note-graph-embed__meta hidden" data-graph-target="meta">Carregando grafo...</div>
+          <div class="note-graph-embed__canvas">
+            <div class="note-graph-embed__host" data-graph-target="graphHost"></div>
+            <div class="note-graph-embed__tooltip-layer" data-graph-target="tooltipLayer"></div>
+          </div>
+          <div class="note-graph-embed__empty hidden" data-graph-target="empty">
+            Nenhum vizinho ficou visivel no grafo.
+          </div>
+          <div class="note-graph-embed__error hidden" data-graph-target="error"></div>
         </div>
-      <% end %>
+      </section>
     </div>
   </div>
 

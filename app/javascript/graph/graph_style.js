@@ -1,11 +1,19 @@
 export function colorForNode(priorityTag, filterState, tagMetaById, isFocused, isHovered) {
   if (isFocused) return "#fde68a"
   if (isHovered) return "#bfdbfe"
-  if (filterState === "ghost") return "#3f4c61"
+  if (filterState === "ghost") return "#516178"
   return tagMetaById.get(priorityTag)?.color_hex || "#7dd3fc"
 }
 
-export function colorForEdge(priorityTag, hierRole, tagMetaById, isFocusDepth1, isFocusDepth2) {
+export function labelColorForNode(filterState, isFocused, isHovered) {
+  if (isFocused) return "#fff7cc"
+  if (isHovered) return "#f8fafc"
+  if (filterState === "ghost") return "#cbd5e1"
+  return "#f8fafc"
+}
+
+export function colorForEdge(priorityTag, hierRole, tagMetaById, isFocusDepth1, isFocusDepth2, isGhost) {
+  if (isGhost) return "rgba(100, 116, 139, 0.32)"
   if (priorityTag) return tagMetaById.get(priorityTag)?.color_hex || "#94a3b8"
   if (isFocusDepth1) return "#f8fafc"
   if (isFocusDepth2) return "#94a3b8"

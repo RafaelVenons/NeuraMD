@@ -5,7 +5,7 @@ export function deriveInitialTagOrder(dataset) {
 }
 
 export function resolvePriorityTag(itemTags, activeTagsOrdered, topN) {
-  const allowed = activeTagsOrdered.slice(0, topN)
+  const allowed = topN == null ? activeTagsOrdered : activeTagsOrdered.slice(0, topN)
   const itemTagSet = new Set(itemTags || [])
 
   for (const tagId of allowed) {

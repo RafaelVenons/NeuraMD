@@ -59,6 +59,11 @@ RSpec.describe "Editor HTML structure", type: :request do
       expect(response.body).not_to include('<nav class="border-b')
     end
 
+    it "uses graph as the back destination" do
+      expect(response.body).to include(graph_path)
+      expect(response.body).to include("Voltar para o grafo")
+    end
+
     it "renders full-screen editor root" do
       expect(response.body).to include('id="editor-root"')
     end

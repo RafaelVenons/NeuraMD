@@ -3,7 +3,7 @@
   <h1 class="nm-auth-form__title">Criar conta</h1>
   <p class="nm-auth-form__subtitle">Crie o usuario e caia direto na visualizacao principal do grafo.</p>
 
-  <%= form_for(resource, as: resource_name, url: registration_path(resource_name)) do |f| %>
+  <%= form_for(resource, as: resource_name, url: registration_path(resource_name), html: { data: { action: "submit->page-transition#submit", transition_kind: "auth-to-graph" } }) do |f| %>
     <%= render "devise/shared/error_messages", resource: resource %>
 
     <div class="space-y-4">

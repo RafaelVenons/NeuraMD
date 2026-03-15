@@ -10,6 +10,7 @@ import { animateCameraToNode } from "graph/graph_focus"
 import { renderTooltip } from "graph/graph_tooltip"
 import { renderTagList } from "graph/graph_sidebar"
 import { createEdgeProgramClasses } from "graph/graph_custom_edge_program"
+import { visitWithPageTransition } from "lib/page_transition"
 
 export default class extends Controller {
   static targets = [
@@ -21,11 +22,16 @@ export default class extends Controller {
     "tagList",
     "filterMode",
     "topN",
+    "topNAll",
     "focusDepth",
     "search"
   ]
 
-  static values = { dataUrl: String }
+  static values = {
+    dataUrl: String,
+    initialFocusedNodeId: Number,
+    embeddedMode: Boolean
+  }
 
   connect() {
     this.state = createAppState()
@@ -37,6 +43,9 @@ export default class extends Controller {
     })
     this._resizeObserver.observe(this.graphHostTarget)
     window.addEventListener("resize", this._boundResize)
+    this._boundTooltipClick = (event) => this.handleTooltipClick(event)
+    this.tooltipLayerTarget.addEventListener("click", this._boundTooltipClick)
+    if (this.hasTopNTarget && this.hasTopNAllTarget) this.topNTarget.disabled = this.topNAllTarget.checked
     this.load()
   }
 
@@ -44,12 +53,13 @@ export default class extends Controller {
     if (window.__graphDebug === this) delete window.__graphDebug
     window.removeEventListener("resize", this._boundResize)
     this._resizeObserver?.disconnect()
+    this.tooltipLayerTarget.removeEventListener("click", this._boundTooltipClick)
     this.destroyRenderer()
   }
 
   async load() {
     this.errorTarget.classList.add("hidden")
-    this.metaTarget.textContent = "Carregando dataset..."
+    if (this.hasMetaTarget) this.metaTarget.textContent = "Carregando dataset..."
 
     try {
       const response = await fetch(this.dataUrlValue, {
@@ -65,15 +75,18 @@ export default class extends Controller {
       this.state.graph = graph
       this.state.indexes = buildIndexes(payload, graph)
       this.state.ui.activeTagsOrdered = deriveInitialTagOrder(payload)
+      if (this.hasInitialFocusedNodeIdValue && graph.hasNode(this.initialFocusedNodeIdValue)) {
+        this.state.ui.focusedNodeId = this.initialFocusedNodeIdValue
+      }
 
       applyLayout(graph, this.state, { rebuild: true })
       this.mountRenderer()
       this.renderSidebar()
-      this.applyDisplayState({ relayout: false, animateFocus: false })
+      this.applyDisplayState({ relayout: false, animateFocus: this.hasInitialFocusedNodeIdValue })
     } catch (error) {
       this.errorTarget.textContent = error.message
       this.errorTarget.classList.remove("hidden")
-      this.metaTarget.textContent = ""
+      if (this.hasMetaTarget) this.metaTarget.textContent = ""
     }
   }
 
@@ -84,7 +97,10 @@ export default class extends Controller {
       allowInvalidContainer: true,
       renderEdgeLabels: false,
       labelDensity: 0.08,
+      labelSize: "fixed",
+      defaultLabelSize: 14,
       labelRenderedSizeThreshold: 10,
+      labelColor: { attribute: "labelColor" },
       defaultEdgeType: "line",
       defaultNodeType: "circle",
       hideLabelsOnMove: true,
@@ -180,7 +196,15 @@ export default class extends Controller {
     if (!nodeId) return
 
     const slug = this.state.graph.getNodeAttribute(nodeId, "slug")
-    this.visit(`/notes/${slug}`)
+    this.visit(`/notes/${slug}`, { kind: "graph-to-note" })
+  }
+
+  handleTooltipClick(event) {
+    const link = event.target.closest(".nm-graph-tooltip")
+    if (!link) return
+
+    event.preventDefault()
+    this.visit(link.getAttribute("href"), { kind: "graph-to-note" })
   }
 
   nodeAtPointer(event) {
@@ -233,7 +257,23 @@ export default class extends Controller {
   }
 
   updateTopN() {
-    this.state.ui.topN = Number(this.topNTarget.value)
+    if (this.topNAllTarget.checked) {
+      this.state.ui.topN = null
+    } else {
+      const parsed = Number(this.topNTarget.value)
+      this.state.ui.topN = Number.isFinite(parsed) && parsed > 0 ? Math.floor(parsed) : 1
+      this.topNTarget.value = String(this.state.ui.topN)
+    }
+    this.renderSidebar()
+    this.applyDisplayState({ relayout: false, animateFocus: false })
+  }
+
+  updateTopNMode() {
+    const useAll = this.topNAllTarget.checked
+    this.topNTarget.disabled = useAll
+    if (useAll) this.state.ui.topN = null
+    else if (this.state.ui.topN == null) this.state.ui.topN = Math.max(Number(this.topNTarget.value) || 3, 1)
+
     this.renderSidebar()
     this.applyDisplayState({ relayout: false, animateFocus: false })
   }
@@ -262,6 +302,8 @@ export default class extends Controller {
   }
 
   renderSidebar() {
+    if (!this.hasTagListTarget) return
+
     renderTagList(this.tagListTarget, this.state, this.state.indexes, (tagId, delta) => {
       this.state.ui.activeTagsOrdered = moveTag(this.state.ui.activeTagsOrdered, tagId, delta)
       this.renderSidebar()
@@ -284,7 +326,9 @@ export default class extends Controller {
     const visibleNodeCount = [...this.state.display.nodes.values()].filter((node) => !node.hidden).length
     const visibleEdgeCount = [...this.state.display.edges.values()].filter((edge) => !edge.hidden).length
 
-    this.metaTarget.textContent = `${visibleNodeCount} notas · ${visibleEdgeCount} links · WebGL ativo`
+    if (this.hasMetaTarget && !this.embeddedModeValue) {
+      this.metaTarget.textContent = `${visibleNodeCount} notas · ${visibleEdgeCount} links · WebGL ativo`
+    }
     this.emptyTarget.classList.toggle("hidden", visibleNodeCount > 0)
     this.state.renderer.refresh()
 
@@ -320,8 +364,7 @@ export default class extends Controller {
     `
   }
 
-  visit(path) {
-    if (window.Turbo?.visit) window.Turbo.visit(path)
-    else window.location.href = path
+  visit(path, options = {}) {
+    visitWithPageTransition(path, options)
   }
 }

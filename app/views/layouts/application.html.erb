@@ -20,7 +20,7 @@
   </head>
 
   <body class="<%= content_for?(:full_bleed) ? 'nm-app nm-app--immersive font-sans' : 'nm-app font-sans' %>"
-        data-controller="note-finder"
+        data-controller="page-transition note-finder"
         data-note-finder-search-url-value="<%= search_notes_path %>">
     <% unless content_for?(:hide_app_nav) %>
       <nav class="nm-app-nav">
@@ -28,7 +28,6 @@
         <% if user_signed_in? %>
           <div class="nm-app-nav__actions">
             <a href="<%= graph_path %>" class="nm-app-nav__link">Grafo</a>
-            <a href="<%= notes_path %>" class="nm-app-nav__link">Notas</a>
             <button type="button"
                     class="nm-app-nav__link"
                     title="Buscar notas (Ctrl+Shift+K)"
