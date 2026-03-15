@@ -505,48 +505,48 @@ spec/
 ## 11. Plano Incremental de Execução
 
 ### Fase 0 — Fundação *(define o esqueleto)*
-- [ ] Rails 8 + PostgreSQL + Docker
-- [ ] Devise auth + Tailwind base (com font fallback CJK)
-- [ ] Modelos: `notes`, `note_revisions`, `note_links`, `tags`, joins
-- [ ] Active Storage configurado com serviço local + `STORAGE_SERVICE` ENV
-- [ ] AR Encryption configurado (chaves via ENV)
-- [ ] Testes base (RSpec) + CI
+- [x] Rails 8 + PostgreSQL + Docker
+- [x] Devise auth + Tailwind base (com font fallback CJK)
+- [x] Modelos: `notes`, `note_revisions`, `note_links`, `tags`, joins
+- [x] Active Storage configurado com serviço local + `STORAGE_SERVICE` ENV
+- [x] AR Encryption configurado (chaves via ENV)
+- [x] Testes base (RSpec) + CI
 - **Entrega:** CRUD básico de nota com revisão e anexos
 
 ### Fase 1 — Editor + Preview *(core de uso)*
-- [ ] Portar CodeMirror 6 do FrankMD (adaptar para banco)
+- [x] Portar CodeMirror 6 do FrankMD (adaptar para banco)
 - [ ] Preview HTML server-side (CommonMarker + Turbo Frame)
-- [ ] Autosave com política (debounce + threshold) → `note_revisions`
-- [ ] Find/replace, jump-to-line, atalhos, typewriter mode
-- [ ] Offline detection + content loss protection
+- [x] Autosave com política (debounce + threshold) → `note_revisions`
+- [x] Find/replace, jump-to-line, atalhos, typewriter mode
+- [x] Offline detection + content loss protection
 - [ ] Suporte IME para input CJK
 - **Entrega:** editor usável no dia-a-dia
 
 ### Fase 2 — Links Semânticos + Tags + Versionamento *(diferencial)*
 
 #### 2a — Versionamento com save em 3 camadas
-- [ ] Migração: adicionar `revision_kind enum (draft, checkpoint)` em `note_revisions`
-- [ ] `POST /notes/:slug/draft` — upsert de draft (deleta draft anterior, cria novo)
-- [ ] `POST /notes/:slug/checkpoint` — cria checkpoint permanente + sincroniza links
-- [ ] Botão "Salvar" (canto superior direito no editor) → dispara checkpoint
-- [ ] Draft automático no servidor: debounce 60s no `autosave_controller.js`
-- [ ] localStorage continua em 3s (crash protection, sem mudança)
-- [ ] Timeline de checkpoints: `GET /notes/:slug/revisions` (somente `kind: checkpoint`)
-- [ ] Visualização de revisão histórica: `GET /notes/:slug/revisions/:id`
-- [ ] Restaurar revisão: `POST /notes/:slug/revisions/:id/restore` → novo checkpoint
-- [ ] Specs: draft upsert, checkpoint persist, restore flow
+- [x] Migração: adicionar `revision_kind enum (draft, checkpoint)` em `note_revisions`
+- [x] `POST /notes/:slug/draft` — upsert de draft (deleta draft anterior, cria novo)
+- [x] `POST /notes/:slug/checkpoint` — cria checkpoint permanente + sincroniza links
+- [x] Botão "Salvar" (canto superior direito no editor) → dispara checkpoint
+- [x] Draft automático no servidor: debounce 60s no `autosave_controller.js`
+- [x] localStorage continua em 3s (crash protection, sem mudança)
+- [x] Timeline de checkpoints: `GET /notes/:slug/revisions` (somente `kind: checkpoint`)
+- [x] Visualização de revisão histórica: `GET /notes/:slug/revisions/:id`
+- [x] Restaurar revisão: `POST /notes/:slug/revisions/:id/restore` → novo checkpoint
+- [x] Specs: draft upsert, checkpoint persist, restore flow
 
 #### 2b — Wiki-Links semânticos com autocomplete
-- [ ] `GET /notes/search?q=:query` — endpoint JSON `{id, title, slug}` para autocomplete
-- [ ] `Links::ExtractService` — extrai `[[Título|uuid]]` do markdown, retorna array de UUIDs
-- [ ] `Links::SyncService` — diff entre links extraídos e `note_links` existentes; cria/deleta; sem duplicatas por `(src_note_id, dst_note_id)`; só roda em checkpoints
+- [x] `GET /notes/search?q=:query` — endpoint JSON `{id, title, slug}` para autocomplete
+- [x] `Links::ExtractService` — extrai `[[Título|uuid]]` do markdown, retorna array de UUIDs
+- [x] `Links::SyncService` — diff entre links extraídos e `note_links` existentes; cria/deleta; sem duplicatas por `(src_note_id, dst_note_id)`; só roda em checkpoints
 - [ ] ~~`Links::TitleSyncService`~~ — não necessário; Display Text é livre e não rastreia o título da nota
-- [ ] CodeMirror extension: detecta `[[`, abre dropdown Stimulus com sugestões via fetch, navega com `↑`/`↓`, insere com `Enter`/`Tab`, fecha com `Esc`
+- [x] CodeMirror extension: detecta `[[`, abre dropdown Stimulus com sugestões via fetch, navega com `↑`/`↓`, insere com `Enter`/`Tab`, fecha com `Esc`
 - [ ] Decoração de link quebrado: UUID não encontrado no DB → classe CSS `wikilink-broken` (fundo vermelho) no editor via CodeMirror ViewPlugin
-- [ ] Preview: render `[[Título|uuid]]` como `<a href="/notes/slug">Título</a>` (server-side no `RenderService`)
-- [ ] Preview: se UUID inexistente, render como `<span class="wikilink-broken">Título</span>`
-- [ ] Backlinks no preview: seção no rodapé com notas src linkando para a nota atual
-- [ ] Specs: ExtractService, SyncService, TitleSyncService, endpoint search, render com links
+- [x] Preview: render `[[Título|uuid]]` como `<a href="/notes/slug">Título</a>` (server-side no `RenderService`)
+- [x] Preview: se UUID inexistente, render como `<span class="wikilink-broken">Título</span>`
+- [x] Backlinks no preview: seção no rodapé com notas src linkando para a nota atual
+- [x] Specs: ExtractService, SyncService, TitleSyncService, endpoint search, render com links
 
 #### 2c — Tags
 - [x] API Tags: `GET/POST/DELETE /tags` — JSON, Pundit auth

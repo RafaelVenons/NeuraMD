@@ -4,12 +4,11 @@ RSpec.describe Notes::CreateRevisionService do
   let(:user) { create(:user) }
   let(:note) { create(:note, :with_head_revision) }
 
-  def call(content: nil, author: user, summary: nil)
+  def call(content: nil, author: user)
     described_class.call(
       note: note,
       content_markdown: content || note.head_revision.content_markdown,
-      author: author,
-      change_summary: summary
+      author: author
     )
   end
 
@@ -107,11 +106,5 @@ RSpec.describe Notes::CreateRevisionService do
       end
     end
 
-    context "change_summary" do
-      it "stores the change summary" do
-        result = call(content: "A" * 300, summary: "Adicionei introdução")
-        expect(result[:revision].change_summary).to eq("Adicionei introdução")
-      end
-    end
   end
 end

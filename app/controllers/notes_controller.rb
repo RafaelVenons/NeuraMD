@@ -75,8 +75,7 @@ class NotesController < ApplicationController
     revision = Notes::CheckpointService.call(
       note: @note,
       content: params[:content_markdown].to_s,
-      author: current_user,
-      change_summary: params[:change_summary]
+      author: current_user
     )
     render json: {saved: true, kind: "checkpoint", revision_id: revision.id, created_at: revision.created_at.iso8601}
   rescue => e
@@ -89,10 +88,10 @@ class NotesController < ApplicationController
     render json: @revisions.map { |r|
       {
         id: r.id,
-        change_summary: r.change_summary,
         ai_generated: r.ai_generated,
         created_at: r.created_at.iso8601,
-        is_head: r.id == @note.head_revision_id
+        is_head: r.id == @note.head_revision_id,
+        content_markdown: r.content_markdown
       }
     }
   end
@@ -100,6 +99,7 @@ class NotesController < ApplicationController
   def show_revision
     authorize @note, :show?
     @revision = @note.note_revisions.where(revision_kind: :checkpoint).find(params[:revision_id])
+    render :show
   end
 
   def link_info
@@ -121,8 +121,7 @@ class NotesController < ApplicationController
     revision = Notes::CheckpointService.call(
       note: @note,
       content: source.content_markdown,
-      author: current_user,
-      change_summary: "Restaurado de #{source.created_at.strftime("%d/%m/%Y %H:%M")}"
+      author: current_user
     )
     render json: {saved: true, revision_id: revision.id}
   rescue => e

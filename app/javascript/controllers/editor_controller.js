@@ -5,29 +5,49 @@ export default class extends Controller {
   static targets = [
     "mainArea", "editorPane", "previewPane",
     "titleInput", "langBadge", "saveStatus",
-    "previewToggleBtn", "typewriterBtn"
+    "previewToggleBtn", "typewriterBtn", "primaryActionButton",
+    "revisionsButton", "revisionsMenu", "revisionsList"
   ]
   static values = {
     autosaveUrl: String,
+    revisionsUrl: String,
     slug: String,
     title: String,
-    language: String
+    language: String,
+    initialRevisionId: String,
+    initialRevisionKind: String,
+    headRevisionId: String
   }
 
   connect() {
     this._previewVisible = true
+    this._revisionsOpen = false
+    this._revisionsLoaded = false
+    this._revisionsById = new Map()
     this._scrollSyncLock = false
     this._scrollCooldown = null
+    this._hoveredRevisionId = null
+    this._selectedRevision = {
+      id: this.initialRevisionIdValue || null,
+      kind: this.initialRevisionKindValue || null,
+      isHead: this.initialRevisionIdValue && this.initialRevisionIdValue === this.headRevisionIdValue
+    }
+    this._selectedRevisionContent = this._initialEditorContent()
+    this._workingContent = this._selectedRevisionContent
+    this._onDocumentClick = this._handleDocumentClick.bind(this)
 
     this._bindEditorEvents()
     this._bindKeyboardShortcuts()
     this._bindTitleInput()
     this._bindAutosaveStatus()
     this._bindNoteNavigation()
+    this._syncPrimaryAction()
+    document.addEventListener("click", this._onDocumentClick)
   }
 
   disconnect() {
     document.removeEventListener("keydown", this._keyHandler)
+    document.removeEventListener("click", this._onDocumentClick)
   }
 
   togglePreview() {
@@ -43,6 +63,71 @@ export default class extends Controller {
     }
   }
 
+  async toggleRevisions(event) {
+    event.preventDefault()
+    event.stopPropagation()
+
+    this._revisionsOpen = !this._revisionsOpen
+    this._syncRevisionsMenu()
+
+    if (this._revisionsOpen && !this._revisionsLoaded) {
+      await this._loadRevisions()
+    }
+  }
+
+  async handlePrimaryAction(event) {
+    event.preventDefault()
+
+    if (this._shouldShowRestoreAction()) {
+      await this._restoreSelectedRevision()
+      return
+    }
+
+    await this._getAutosaveController()?.saveCheckpoint()
+    this._selectedRevision = {
+      id: this.headRevisionIdValue || this._selectedRevision.id,
+      kind: "checkpoint",
+      isHead: true
+    }
+    this._selectedRevisionContent = this._currentDisplayedContent()
+    this._workingContent = this._selectedRevisionContent
+    this._syncPrimaryAction()
+  }
+
+  previewRevision(event) {
+    const revision = this._findRevision(event.currentTarget.dataset.revisionId)
+    if (!revision) return
+
+    this._hoveredRevisionId = revision.id
+    this._applyContentToWorkspace(revision.content_markdown || "")
+  }
+
+  clearRevisionPreview(event) {
+    if (!this._hoveredRevisionId) return
+    if (event?.relatedTarget && this.revisionsMenuTarget.contains(event.relatedTarget)) return
+
+    this._hoveredRevisionId = null
+    this._applyContentToWorkspace(this._workingContent)
+  }
+
+  selectRevision(event) {
+    event.preventDefault()
+    const revision = this._findRevision(event.currentTarget.dataset.revisionId)
+    if (!revision) return
+
+    this._hoveredRevisionId = null
+    this._selectedRevision = {
+      id: revision.id,
+      kind: "checkpoint",
+      isHead: !!revision.is_head
+    }
+    this._selectedRevisionContent = revision.content_markdown || ""
+    this._workingContent = this._selectedRevisionContent
+    this._applyContentToWorkspace(this._selectedRevisionContent)
+    this._closeRevisions()
+    this._syncPrimaryAction()
+  }
+
   // ── Editor events ─────────────────────────────────────────
   _bindEditorEvents() {
     // Render initial content as soon as the editor is ready (fires once on connect).
@@ -56,7 +141,9 @@ export default class extends Controller {
     // Listen for CodeMirror change events bubbling up
     this.element.addEventListener("codemirror:change", (e) => {
       const content = e.detail.value
+      this._workingContent = content
       this._onContentChange(content)
+      this._syncPrimaryAction()
     })
 
     // Listen for CodeMirror scroll events
@@ -162,6 +249,7 @@ export default class extends Controller {
   _closeAllDialogs() {
     document.getElementById("find-replace-dialog")?.classList.add("hidden")
     document.getElementById("jump-to-line-dialog")?.classList.add("hidden")
+    this._closeRevisions()
   }
 
   // ── Title input ──────────────────────────────────────────
@@ -206,11 +294,169 @@ export default class extends Controller {
     const map = {
       salvo: { text: "Salvo ✓", cls: "text-green-400" },
       salvando: { text: "Salvando...", cls: "text-yellow-400" },
+      rascunho: { text: "Rascunho salvo", cls: "text-blue-300" },
       pendente: { text: "Pendente", cls: "text-gray-500" },
       erro: { text: "Erro ao salvar", cls: "text-red-400" }
     }
     const { text, cls } = map[state] || { text: "—", cls: "text-gray-500" }
     el.textContent = text
     el.className = `flex-shrink-0 text-xs ${cls}`
+  }
+
+  async _loadRevisions() {
+    if (!this.hasRevisionsListTarget) return
+
+    this.revisionsListTarget.innerHTML = `
+      <li class="px-3 py-2 text-xs" style="color: var(--theme-text-faint)">Carregando...</li>
+    `
+
+    try {
+      const response = await fetch(this.revisionsUrlValue, {
+        headers: { Accept: "application/json" }
+      })
+      if (!response.ok) throw new Error(`HTTP ${response.status}`)
+
+      const revisions = await response.json()
+      this._revisionsLoaded = true
+      this._revisionsById = new Map(revisions.map((revision) => [String(revision.id), revision]))
+      this._renderRevisions(revisions)
+    } catch (error) {
+      console.error("Revisions load error:", error)
+      this.revisionsListTarget.innerHTML = `
+        <li class="px-3 py-2 text-xs text-red-400">Nao foi possivel carregar as versoes.</li>
+      `
+    }
+  }
+
+  _renderRevisions(revisions) {
+    if (!this.hasRevisionsListTarget) return
+
+    if (!revisions.length) {
+      this.revisionsListTarget.innerHTML = `
+        <li class="px-3 py-2 text-xs" style="color: var(--theme-text-faint)">Nenhuma versao salva.</li>
+      `
+      return
+    }
+
+    this.revisionsListTarget.innerHTML = revisions.map((revision) => {
+      const createdAt = new Date(revision.created_at).toLocaleString("pt-BR", {
+        dateStyle: "short",
+        timeStyle: "short"
+      })
+      return `
+        <li class="border-b last:border-b-0"
+            style="border-color: var(--toolbar-border)">
+          <button type="button"
+                  class="revision-entry w-full text-left ${revision.is_head ? "is-head" : ""}"
+                  data-revision-id="${revision.id}"
+                  data-action="mouseenter->editor#previewRevision click->editor#selectRevision">
+            <span class="min-w-0 block">
+              <span class="flex items-center gap-2">
+                <span class="text-xs font-semibold text-gray-200">${createdAt}</span>
+                ${revision.is_head ? '<span class="rounded px-1.5 py-0.5 text-[10px] font-semibold text-green-200" style="background: rgba(34, 197, 94, 0.16)">Atual</span>' : ""}
+              </span>
+            </span>
+          </button>
+        </li>
+      `
+    }).join("")
+  }
+
+  _handleDocumentClick(event) {
+    if (!this._revisionsOpen || !this.hasRevisionsMenuTarget || !this.hasRevisionsButtonTarget) return
+    if (this.revisionsMenuTarget.contains(event.target)) return
+    if (this.revisionsButtonTarget.contains(event.target)) return
+    this._closeRevisions()
+  }
+
+  _closeRevisions() {
+    if (!this._revisionsOpen) return
+    this.clearRevisionPreview()
+    this._revisionsOpen = false
+    this._syncRevisionsMenu()
+  }
+
+  _syncRevisionsMenu() {
+    if (!this.hasRevisionsMenuTarget || !this.hasRevisionsButtonTarget) return
+    this.revisionsMenuTarget.classList.toggle("hidden", !this._revisionsOpen)
+    this.revisionsButtonTarget.classList.toggle("toolbar-btn--active", this._revisionsOpen)
+  }
+
+  _initialEditorContent() {
+    return this.editorPaneTarget.dataset.codemirrorInitialValueValue || ""
+  }
+
+  _currentDisplayedContent() {
+    return this._getCodemirrorController()?.getValue() || this._workingContent || ""
+  }
+
+  _applyContentToWorkspace(content) {
+    this._getCodemirrorController()?.setValue(content, { silent: true })
+    this._getPreviewController()?.update(content)
+  }
+
+  _findRevision(revisionId) {
+    if (!revisionId) return null
+    return this._revisionsById.get(String(revisionId)) || null
+  }
+
+  _hasPendingEdits() {
+    return this._workingContent !== this._selectedRevisionContent
+  }
+
+  _shouldShowRestoreAction() {
+    return !!(
+      this._selectedRevision?.id &&
+      this._selectedRevision?.kind === "checkpoint" &&
+      !this._selectedRevision?.isHead &&
+      !this._hasPendingEdits()
+    )
+  }
+
+  async _restoreSelectedRevision() {
+    const revisionId = this._selectedRevision?.id
+    if (!revisionId) return
+    if (!window.confirm("Restaurar esta versão como a versão atual?")) return
+
+    const csrfToken = document.querySelector("meta[name='csrf-token']")?.content
+
+    try {
+      const response = await fetch(`/notes/${this.slugValue}/revisions/${revisionId}/restore`, {
+        method: "POST",
+        headers: {
+          "X-CSRF-Token": csrfToken,
+          "Accept": "application/json"
+        }
+      })
+      if (!response.ok) throw new Error(`HTTP ${response.status}`)
+
+      this._revisionsLoaded = false
+      this._closeRevisions()
+      Turbo.visit(`/notes/${this.slugValue}`)
+    } catch (error) {
+      console.error("Revision restore error:", error)
+    }
+  }
+
+  _syncPrimaryAction() {
+    if (!this.hasPrimaryActionButtonTarget) return
+
+    const isRestore = this._shouldShowRestoreAction()
+    const button = this.primaryActionButtonTarget
+
+    button.title = isRestore ? "Restaurar esta versao" : "Salvar versão (checkpoint)"
+    button.style.background = isRestore ? "#dc2626" : "var(--theme-accent)"
+    button.innerHTML = isRestore ? `
+      <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+        <path d="M3 12a9 9 0 109-9"/><path d="M3 3v6h6"/>
+      </svg>
+      Restaurar
+    ` : `
+      <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+        <path d="M19 21H5a2 2 0 01-2-2V5a2 2 0 012-2h11l5 5v11a2 2 0 01-2 2z"/>
+        <polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/>
+      </svg>
+      Salvar
+    `
   }
 }

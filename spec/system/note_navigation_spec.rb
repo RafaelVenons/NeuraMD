@@ -112,4 +112,66 @@ RSpec.describe "Note navigation via links", type: :system do
       expect(dest_note.note_revisions.where(revision_kind: :draft)).to exist
     end
   end
+
+  describe "revision history dropdown" do
+    let!(:note_with_revisions) do
+      note = create(:note)
+      Notes::CheckpointService.call(note: note, content: "Primeira versao", author: user)
+      Notes::CheckpointService.call(note: note, content: "Segunda versao", author: user)
+      note
+    end
+
+    before do
+      visit note_path(note_with_revisions.slug)
+      expect(page).to have_css(".cm-editor", wait: 5)
+    end
+
+    it "opens a dropdown from the clock button and lists saved revisions" do
+      find("[data-editor-target='revisionsButton']").click
+
+      expect(page).to have_css("[data-editor-target='revisionsMenu']:not(.hidden)", wait: 3)
+      expect(page).to have_text("Primeira")
+      expect(page).to have_text("Segunda")
+      expect(page).not_to have_button("Abrir")
+    end
+
+    it "previews a historical revision on hover and restores the current content on mouse leave" do
+      revision = note_with_revisions.note_revisions.where(revision_kind: :checkpoint).order(:created_at).first
+
+      expect(page).to have_text("Segunda versao")
+
+      find("[data-editor-target='revisionsButton']").click
+      find("[data-revision-id='#{revision.id}']").hover
+
+      expect(page).to have_text("Primeira versao")
+
+      find("body").hover
+
+      expect(page).to have_text("Segunda versao")
+    end
+
+    it "keeps the clicked historical revision in the editor and offers restore until edited" do
+      revision = note_with_revisions.note_revisions.where(revision_kind: :checkpoint).order(:created_at).first
+
+      find("[data-editor-target='revisionsButton']").click
+      find("[data-revision-id='#{revision.id}']").click
+
+      expect(page).to have_current_path(note_path(note_with_revisions.slug), wait: 5)
+      expect(page).to have_text("Primeira versao")
+      expect(page).to have_button("Restaurar")
+
+      find(".cm-content").click
+      find(".cm-content").send_keys(" editada")
+
+      expect(page).to have_button("Salvar")
+    end
+
+    it "shows restore instead of save when loading an old revision without edits" do
+      revision = note_with_revisions.note_revisions.where(revision_kind: :checkpoint).order(:created_at).first
+
+      visit revision_note_path(note_with_revisions.slug, revision_id: revision.id)
+
+      expect(page).to have_button("Restaurar", wait: 5)
+    end
+  end
 end

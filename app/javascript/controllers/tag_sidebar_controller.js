@@ -24,7 +24,7 @@ import { Controller } from "@hotwired/stimulus"
 export default class extends Controller {
   static values  = { noteSlug: String, linkTagsData: String }
   static targets = [
-    "list", "nameInput", "modeLabel", "newDotBtn", "newRow",
+    "list", "nameInput", "modeLabel", "searchInput", "newDotBtn", "newRow",
     "colorPicker", "colorSuggestions", "colorWheel", "colorPreview", "colorHex", "colorWcag"
   ]
 
@@ -37,6 +37,8 @@ export default class extends Controller {
     this._newColor         = "#3b82f6"
     this._currentWheelHue  = 216   // default blue hue for the color wheel
     this._linkTagsMap      = this._parseLinkTagsData()
+    this._searchOpen       = false
+    this._searchQuery      = ""
 
     this._onWikilinkCursor = this._handleWikilinkCursor.bind(this)
     document.addEventListener("wikilink:cursor", this._onWikilinkCursor)
@@ -66,6 +68,37 @@ export default class extends Controller {
   toggle() {
     this._collapsed = !this._collapsed
     this.element.classList.toggle("tag-sidebar--collapsed", this._collapsed)
+    if (this._collapsed) this._closeSearchField()
+  }
+
+  openSearch() {
+    if (this._collapsed || !this.hasSearchInputTarget || !this.hasModeLabelTarget) return
+    this._searchOpen = true
+    this.modeLabelTarget.hidden = true
+    this.searchInputTarget.hidden = false
+    this.searchInputTarget.value = this._searchQuery
+    this.searchInputTarget.focus()
+    this.searchInputTarget.select()
+  }
+
+  closeSearch() {
+    if (this._searchQuery.trim()) return
+    this._closeSearchField()
+  }
+
+  handleSearchKeydown(event) {
+    if (event.key === "Escape") {
+      event.preventDefault()
+      this._searchQuery = ""
+      this.searchInputTarget.value = ""
+      this._closeSearchField()
+      this._renderList()
+    }
+  }
+
+  searchTags(event) {
+    this._searchQuery = event.target.value
+    this._renderList()
   }
 
   // ── Color picker ─────────────────────────────────────────
@@ -263,7 +296,7 @@ export default class extends Controller {
     const linkedTagIds = new Set((this._focusedLink?.tags || []).map(t => t.id))
     const usage        = this._tagUsageInNote()
 
-    const sorted = [...this._tags].sort((a, b) => {
+    const sorted = this._filterAndSortTags((a, b) => {
       const aOn = linkedTagIds.has(a.id) ? 1 : 0
       const bOn = linkedTagIds.has(b.id) ? 1 : 0
       if (aOn !== bOn) return bOn - aOn
@@ -286,7 +319,7 @@ export default class extends Controller {
 
   _renderGlobalMode() {
     const usage = this._tagUsageInNote()
-    const sorted = [...this._tags].sort((a, b) => {
+    const sorted = this._filterAndSortTags((a, b) => {
       const aA = this._activatedTagId === a.id ? 1 : 0
       const bA = this._activatedTagId === b.id ? 1 : 0
       if (aA !== bA) return bA - aA
@@ -318,6 +351,74 @@ export default class extends Controller {
           </button>
         </li>`
     }).join("")
+  }
+
+  _filterAndSortTags(baseSorter) {
+    const tags = [...this._tags]
+    const query = this._searchQuery.trim()
+    if (!query) return tags.sort(baseSorter)
+
+    return tags
+      .map((tag) => ({ tag, score: this._tagSearchScore(tag.name, query) }))
+      .filter(({ score }) => score > 0)
+      .sort((a, b) => {
+        if (b.score !== a.score) return b.score - a.score
+        return baseSorter(a.tag, b.tag)
+      })
+      .map(({ tag }) => tag)
+  }
+
+  _tagSearchScore(name, query) {
+    const normalizedName = this._normalizeSearchText(name)
+    const normalizedQuery = this._normalizeSearchText(query)
+    if (!normalizedName || !normalizedQuery) return 0
+    if (normalizedName.includes(normalizedQuery)) return 1
+
+    const nameVector = this._trigramVector(normalizedName)
+    const queryVector = this._trigramVector(normalizedQuery)
+    return this._cosineSimilarity(nameVector, queryVector)
+  }
+
+  _normalizeSearchText(value) {
+    return (value || "")
+      .toLowerCase()
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .replace(/[^a-z0-9]+/g, " ")
+      .trim()
+  }
+
+  _trigramVector(value) {
+    const compact = `  ${value.replace(/\s+/g, " ")}  `
+    const vector = new Map()
+    for (let index = 0; index <= compact.length - 3; index += 1) {
+      const gram = compact.slice(index, index + 3)
+      vector.set(gram, (vector.get(gram) || 0) + 1)
+    }
+    return vector
+  }
+
+  _cosineSimilarity(left, right) {
+    let dot = 0
+    let leftNorm = 0
+    let rightNorm = 0
+
+    left.forEach((value, key) => {
+      leftNorm += value * value
+      dot += value * (right.get(key) || 0)
+    })
+    right.forEach((value) => {
+      rightNorm += value * value
+    })
+
+    if (!leftNorm || !rightNorm) return 0
+    return dot / (Math.sqrt(leftNorm) * Math.sqrt(rightNorm))
+  }
+
+  _closeSearchField() {
+    this._searchOpen = false
+    if (this.hasSearchInputTarget) this.searchInputTarget.hidden = true
+    if (this.hasModeLabelTarget) this.modeLabelTarget.hidden = false
   }
 
   // ── Link-mode: N:N tag toggle ────────────────────────────

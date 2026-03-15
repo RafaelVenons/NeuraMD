@@ -19,11 +19,13 @@ export default class extends Controller {
     this._themeCompartment = new Compartment()
     this._lineNumbersCompartment = new Compartment()
     this._readOnlyCompartment = new Compartment()
+    this._suppressChangeDispatch = false
 
     const updateListener = EditorView.updateListener.of((update) => {
-      if (update.docChanged) {
+      if (update.docChanged && !this._suppressChangeDispatch) {
         this._dispatchChange()
       }
+      this._suppressChangeDispatch = false
       if (update.selectionSet) {
         this._dispatchSelectionChange()
       }
@@ -91,8 +93,9 @@ export default class extends Controller {
     return this._view?.state.doc.toString() || ""
   }
 
-  setValue(value) {
+  setValue(value, { silent = false } = {}) {
     if (!this._view) return
+    this._suppressChangeDispatch = silent
     this._view.dispatch({
       changes: { from: 0, to: this._view.state.doc.length, insert: value }
     })

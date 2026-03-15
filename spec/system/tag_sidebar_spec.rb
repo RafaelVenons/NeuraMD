@@ -137,6 +137,32 @@ RSpec.describe "Tag sidebar", type: :system do
     end
   end
 
+  describe "tag search in header" do
+    let!(:alpha_tag) { create(:tag, name: "Cardiologia") }
+    let!(:beta_tag)  { create(:tag, name: "Cardio Geral") }
+    let!(:gamma_tag) { create(:tag, name: "Neurologia") }
+
+    it "replaces the mode label with a search input and ranks by cosine similarity" do
+      visit current_path
+      expect(page).to have_css(".cm-editor", wait: 5)
+      expect(page).to have_css(".tag-item", minimum: 3, wait: 3)
+
+      find("[data-tag-sidebar-target='modeLabel']").click
+
+      expect(page).to have_css("[data-tag-sidebar-target='searchInput']:not([hidden])", wait: 3)
+
+      find("[data-tag-sidebar-target='searchInput']").fill_in with: "cardio"
+      expect(page).to have_css(".tag-item", minimum: 2, wait: 3)
+
+      names = page.evaluate_script(<<~JS)
+        Array.from(document.querySelectorAll(".tag-item .tag-name")).map((el) => el.textContent.trim())
+      JS
+
+      expect(names).to eq(["cardio geral", "cardiologia"])
+      expect(page).not_to have_css(".tag-item", text: "neurologia")
+    end
+  end
+
   # ── New tag creation flows ───────────────────────────────────────────────
 
   describe "creating a new tag" do

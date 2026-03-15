@@ -5,15 +5,14 @@ module Notes
   #
   # Returns the new NoteRevision checkpoint.
   class CheckpointService
-    def self.call(note:, content:, author: nil, change_summary: nil)
-      new(note:, content:, author:, change_summary:).call
+    def self.call(note:, content:, author: nil)
+      new(note:, content:, author:).call
     end
 
-    def initialize(note:, content:, author:, change_summary:)
+    def initialize(note:, content:, author:)
       @note = note
       @content = content
       @author = author
-      @change_summary = change_summary
     end
 
     def call
@@ -30,7 +29,6 @@ module Notes
           content_markdown: @content,
           revision_kind: :checkpoint,
           author: @author,
-          change_summary: @change_summary,
           base_revision_id: latest_checkpoint_id
         )
 

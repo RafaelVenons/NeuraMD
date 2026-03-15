@@ -3,15 +3,14 @@ module Notes
     CHANGE_THRESHOLD_CHARS = 200
     CHANGE_THRESHOLD_RATIO = 0.05
 
-    def self.call(note:, content_markdown:, author: nil, change_summary: nil)
-      new(note:, content_markdown:, author:, change_summary:).call
+    def self.call(note:, content_markdown:, author: nil)
+      new(note:, content_markdown:, author:).call
     end
 
-    def initialize(note:, content_markdown:, author: nil, change_summary: nil)
+    def initialize(note:, content_markdown:, author: nil)
       @note = note
       @content_markdown = content_markdown.to_s
       @author = author
-      @change_summary = change_summary
     end
 
     def call
@@ -41,8 +40,7 @@ module Notes
         revision = @note.note_revisions.create!(
           content_markdown: @content_markdown,
           author: @author,
-          base_revision_id: @note.head_revision_id,
-          change_summary: @change_summary
+          base_revision_id: @note.head_revision_id
         )
         @note.update_column(:head_revision_id, revision.id)
         @note.touch

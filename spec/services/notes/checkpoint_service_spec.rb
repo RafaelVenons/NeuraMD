@@ -33,11 +33,6 @@ RSpec.describe Notes::CheckpointService do
       expect(note.note_revisions.reload.where(revision_kind: :draft).count).to eq(0)
     end
 
-    it "persists change_summary" do
-      revision = call(change_summary: "Major rewrite")
-      expect(revision.change_summary).to eq("Major rewrite")
-    end
-
     it "synchronises wiki-links from content" do
       dst = create(:note)
       content = "[[Target|#{dst.id}]]\n\n" + ("content. " * 10)

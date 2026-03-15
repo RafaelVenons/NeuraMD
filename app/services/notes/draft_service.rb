@@ -22,8 +22,7 @@ module Notes
         draft = @note.note_revisions.create!(
           content_markdown: @content,
           revision_kind: :draft,
-          author: @author,
-          change_summary: "draft"
+          author: @author
         )
 
         Links::SyncService.call(src_note: @note, revision: draft, content: @content)
