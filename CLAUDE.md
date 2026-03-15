@@ -515,11 +515,11 @@ spec/
 
 ### Fase 1 — Editor + Preview *(core de uso)*
 - [x] Portar CodeMirror 6 do FrankMD (adaptar para banco)
-- [ ] Preview HTML server-side (CommonMarker + Turbo Frame)
+- [x] Preview HTML client-side (CodeMirror + Stimulus)
 - [x] Autosave com política (debounce + threshold) → `note_revisions`
 - [x] Find/replace, jump-to-line, atalhos, typewriter mode
 - [x] Offline detection + content loss protection
-- [ ] Suporte IME para input CJK
+- [x] Suporte IME para input CJK
 - **Entrega:** editor usável no dia-a-dia
 
 ### Fase 2 — Links Semânticos + Tags + Versionamento *(diferencial)*
@@ -543,7 +543,7 @@ spec/
 - [ ] ~~`Links::TitleSyncService`~~ — não necessário; Display Text é livre e não rastreia o título da nota
 - [x] CodeMirror extension: detecta `[[`, abre dropdown Stimulus com sugestões via fetch, navega com `↑`/`↓`, insere com `Enter`/`Tab`, fecha com `Esc`
 - [ ] Decoração de link quebrado: UUID não encontrado no DB → classe CSS `wikilink-broken` (fundo vermelho) no editor via CodeMirror ViewPlugin
-- [x] Preview: render `[[Título|uuid]]` como `<a href="/notes/slug">Título</a>` (server-side no `RenderService`)
+- [x] Preview: render `[[Título|uuid]]` como `<a href="/notes/slug">Título</a>` (client-side no preview controller)
 - [x] Preview: se UUID inexistente, render como `<span class="wikilink-broken">Título</span>`
 - [x] Backlinks no preview: seção no rodapé com notas src linkando para a nota atual
 - [x] Specs: ExtractService, SyncService, TitleSyncService, endpoint search, render com links
@@ -558,10 +558,8 @@ spec/
 - [x] `GET /notes/:slug/link_info?dst_uuid=` — retorna { link_id, tags } para o link focado
 - [x] `link-tags-data` JSON pré-carregado no `data-` attribute da view — evita request extra para highlight global
 - [x] Specs: tag CRUD, link_tag N:N, idempotência, toggle, highlight semântico
-- [ ] Tags em notas (`note_tags` join) — criar, remover chips na nota
-- [ ] Filtro por tag na listagem de notas
 
-- **Entrega:** links semânticos automáticos via markup, histórico de checkpoints navegável, tags em notas
+- **Entrega:** links semânticos automáticos via markup, histórico de checkpoints navegável, tags em links
 
 ### Fase 3 — Busca
 - [ ] `pg_trgm` em títulos
@@ -576,6 +574,8 @@ spec/
 - [ ] Visualização JS com filtros (`hier_role`/tag/profundidade)
 - [ ] Navegação por clique
 - [ ] CTEs recursivas para insights (descendentes, órfãs, caminho)
+- [ ] Tags em notas (`note_tags` join) — após UI do grafo, para agregar também no nível do nó
+- [ ] Filtro por tag na listagem de notas
 - **Entrega:** grafo útil e navegável
 
 ### Fase 5 — IA Plugável (texto)
