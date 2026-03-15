@@ -36,6 +36,8 @@ export default class extends Controller {
   connect() {
     this.state = createAppState()
     window.__graphDebug = this
+    this.dragState = null
+    this.stagePanState = null
     this._boundResize = () => this.positionTooltip()
     this._resizeObserver = new ResizeObserver(() => {
       this.state.renderer?.refresh()
@@ -130,31 +132,48 @@ export default class extends Controller {
     this._mouseLayer = mouseLayer
     this._boundGraphMouseMove = (event) => this.handleMouseLayerMove(event)
     this._boundGraphMouseLeave = () => this.handleMouseLayerLeave()
+    this._boundGraphMouseDown = (event) => this.handleMouseLayerDown(event)
     this._boundGraphClick = (event) => this.handleMouseLayerClick(event)
     this._boundGraphDoubleClick = (event) => this.handleMouseLayerDoubleClick(event)
+    this._boundWindowMouseMove = (event) => this.handleWindowMouseMove(event)
+    this._boundWindowMouseUp = (event) => this.handleWindowMouseUp(event)
 
+    mouseLayer.addEventListener("mousedown", this._boundGraphMouseDown)
     mouseLayer.addEventListener("mousemove", this._boundGraphMouseMove)
     mouseLayer.addEventListener("mouseleave", this._boundGraphMouseLeave)
     mouseLayer.addEventListener("click", this._boundGraphClick)
     mouseLayer.addEventListener("dblclick", this._boundGraphDoubleClick)
+    window.addEventListener("mousemove", this._boundWindowMouseMove)
+    window.addEventListener("mouseup", this._boundWindowMouseUp)
   }
 
   unbindMouseLayerEvents() {
     if (!this._mouseLayer) return
 
+    this._mouseLayer.removeEventListener("mousedown", this._boundGraphMouseDown)
     this._mouseLayer.removeEventListener("mousemove", this._boundGraphMouseMove)
     this._mouseLayer.removeEventListener("mouseleave", this._boundGraphMouseLeave)
     this._mouseLayer.removeEventListener("click", this._boundGraphClick)
     this._mouseLayer.removeEventListener("dblclick", this._boundGraphDoubleClick)
+    window.removeEventListener("mousemove", this._boundWindowMouseMove)
+    window.removeEventListener("mouseup", this._boundWindowMouseUp)
 
     this._mouseLayer = null
+    this._boundGraphMouseDown = null
     this._boundGraphMouseMove = null
     this._boundGraphMouseLeave = null
     this._boundGraphClick = null
     this._boundGraphDoubleClick = null
+    this._boundWindowMouseMove = null
+    this._boundWindowMouseUp = null
   }
 
   handleMouseLayerMove(event) {
+    if (this.dragState?.nodeId) {
+      this.dragNodeToPointer(event)
+      return
+    }
+
     const nodeId = this.nodeAtPointer(event)
     if (nodeId === this.state.ui.hoveredNodeId) {
       this.positionTooltip()
@@ -168,10 +187,47 @@ export default class extends Controller {
   }
 
   handleMouseLayerLeave() {
+    if (this.dragState?.nodeId) return
+
     this.state.ui.hoveredNodeId = null
 
     if (!this.state.ui.pinnedTooltipNodeId) this.applyDisplayState({ relayout: false, animateFocus: false })
     else this.positionTooltip()
+  }
+
+  handleMouseLayerDown(event) {
+    if (event.button !== 0) return
+
+    const nodeId = this.nodeAtPointer(event)
+    if (!nodeId) {
+      if (this.state.ui.focusedNodeId) {
+        this.stagePanState = {
+          pointerStart: this.pointerFromMouseEvent(event),
+          released: false
+        }
+      }
+      return
+    }
+
+    const pointer = this.pointerFromMouseEvent(event)
+    const node = this.state.graph.getNodeAttributes(nodeId)
+    const graphPoint = this.state.renderer.viewportToGraph(pointer)
+
+    this.dragState = {
+      nodeId,
+      pointerStart: pointer,
+      offsetX: node.x - graphPoint.x,
+      offsetY: node.y - graphPoint.y,
+      moved: false
+    }
+
+    this.state.ui.draggingNodeId = nodeId
+    this.state.ui.draggedNodeMoved = false
+    this.state.ui.hoveredNodeId = nodeId
+    this.setCameraDraggingEnabled(false)
+    this.resetMouseCaptorState()
+    event.preventDefault()
+    event.stopPropagation()
   }
 
   handleMouseLayerClick(event) {
@@ -188,7 +244,7 @@ export default class extends Controller {
     this.state.ui.hoveredNodeId = null
     this.state.ui.focusedNodeId = null
     this.state.ui.pinnedTooltipNodeId = null
-    this.applyDisplayState({ relayout: true, animateFocus: false })
+    this.applyDisplayState({ relayout: false, animateFocus: false })
   }
 
   handleMouseLayerDoubleClick(event) {
@@ -210,6 +266,15 @@ export default class extends Controller {
   nodeAtPointer(event) {
     if (!this.state.renderer || !this._mouseLayer) return null
 
+    const nodeId = this.exactNodeAtPointer(event)
+    if (nodeId) return nodeId
+
+    return this.closestVisibleNodeFromEvent(event)
+  }
+
+  exactNodeAtPointer(event) {
+    if (!this.state.renderer || !this._mouseLayer) return null
+
     const rect = this._mouseLayer.getBoundingClientRect()
     const point = {
       x: event.clientX - rect.left,
@@ -222,7 +287,17 @@ export default class extends Controller {
       return display?.hidden ? null : nodeId
     }
 
-    return this.closestVisibleNodeToViewportPoint(point)
+    return null
+  }
+
+  closestVisibleNodeFromEvent(event) {
+    if (!this._mouseLayer) return null
+
+    const rect = this._mouseLayer.getBoundingClientRect()
+    return this.closestVisibleNodeToViewportPoint({
+      x: event.clientX - rect.left,
+      y: event.clientY - rect.top
+    })
   }
 
   closestVisibleNodeToViewportPoint(point) {
@@ -280,7 +355,7 @@ export default class extends Controller {
 
   updateDepth() {
     this.state.ui.focusDepth = Number(this.focusDepthTarget.value)
-    this.applyDisplayState({ relayout: true, animateFocus: true })
+    this.applyDisplayState({ relayout: false, animateFocus: true })
   }
 
   updateSearch() {
@@ -298,7 +373,7 @@ export default class extends Controller {
   resetFocus() {
     this.state.ui.focusedNodeId = null
     this.state.ui.pinnedTooltipNodeId = null
-    this.applyDisplayState({ relayout: true, animateFocus: false })
+    this.applyDisplayState({ relayout: false, animateFocus: false })
   }
 
   renderSidebar() {
@@ -366,5 +441,122 @@ export default class extends Controller {
 
   visit(path, options = {}) {
     visitWithPageTransition(path, options)
+  }
+
+  handleWindowMouseMove(event) {
+    if (this.dragState?.nodeId) {
+      event.preventDefault()
+      this.dragNodeToPointer(event)
+      return
+    }
+
+    if (!this.stagePanState || this.stagePanState.released) return
+
+    const pointer = this.pointerFromMouseEvent(event)
+    if (!pointer) return
+
+    const movedDistance = Math.hypot(
+      pointer.x - this.stagePanState.pointerStart.x,
+      pointer.y - this.stagePanState.pointerStart.y
+    )
+
+    if (movedDistance >= 6) {
+      this.releaseFocusForStagePan()
+      this.stagePanState.released = true
+    }
+  }
+
+  handleWindowMouseUp(event) {
+    if (!this.dragState?.nodeId) {
+      this.stagePanState = null
+      return
+    }
+
+    const { nodeId, moved } = this.dragState
+
+    this.dragState = null
+    this.state.ui.draggingNodeId = null
+    this.state.ui.draggedNodeMoved = false
+    this.resetMouseCaptorState()
+    this.setCameraDraggingEnabled(true)
+    event?.preventDefault?.()
+
+    if (!moved) return
+
+    this.state.ui.hoveredNodeId = nodeId
+    this.state.ui.focusedNodeId = nodeId
+    this.state.ui.pinnedTooltipNodeId = nodeId
+    this.applyDisplayState({ relayout: false, animateFocus: false })
+  }
+
+  releaseFocusForStagePan() {
+    this.state.layout.basePositions = captureNodePositions(this.state.graph)
+    this.state.ui.focusedNodeId = null
+    this.state.ui.pinnedTooltipNodeId = null
+    this.state.ui.hoveredNodeId = null
+    this.state.layout.animationToken += 1
+    this.applyDisplayState({ relayout: false, animateFocus: false })
+  }
+
+  dragNodeToPointer(event) {
+    if (!this.dragState?.nodeId || !this.state.renderer || !this.state.graph?.hasNode(this.dragState.nodeId)) return
+
+    const pointer = this.pointerFromMouseEvent(event)
+    if (!pointer) return
+
+    const movedDistance = Math.hypot(
+      pointer.x - this.dragState.pointerStart.x,
+      pointer.y - this.dragState.pointerStart.y
+    )
+
+    if (movedDistance >= 4) {
+      this.dragState.moved = true
+      this.state.ui.draggedNodeMoved = true
+    }
+
+    const graphPoint = this.state.renderer.viewportToGraph(pointer)
+    const x = graphPoint.x + this.dragState.offsetX
+    const y = graphPoint.y + this.dragState.offsetY
+
+    this.state.graph.mergeNodeAttributes(this.dragState.nodeId, { x, y })
+    this.state.layout.manualPositions.set(this.dragState.nodeId, { x, y })
+    if (this.state.layout.basePositions?.has(this.dragState.nodeId)) {
+      this.state.layout.basePositions.set(this.dragState.nodeId, { x, y })
+    }
+
+    this.state.renderer.refresh()
+    this.positionTooltip()
+  }
+
+  pointerFromMouseEvent(event) {
+    if (!this._mouseLayer) return null
+
+    const rect = this._mouseLayer.getBoundingClientRect()
+    return {
+      x: event.clientX - rect.left,
+      y: event.clientY - rect.top
+    }
+  }
+
+  setCameraDraggingEnabled(enabled) {
+    if (this.state.renderer?.mouseCaptor) this.state.renderer.mouseCaptor.enabled = enabled
+  }
+
+  resetMouseCaptorState() {
+    const captor = this.state.renderer?.mouseCaptor
+    if (!captor) return
+
+    if (typeof captor.movingTimeout === "number") {
+      clearTimeout(captor.movingTimeout)
+      captor.movingTimeout = null
+    }
+
+    captor.isMouseDown = false
+    captor.isMoving = false
+    captor.draggedEvents = 0
+    captor.startCameraState = null
+    captor.lastMouseX = null
+    captor.lastMouseY = null
+    captor.downStartTime = null
   }
 }

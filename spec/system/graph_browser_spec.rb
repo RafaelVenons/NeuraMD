@@ -115,4 +115,96 @@ RSpec.describe "Graph browser", type: :system do
     expect(title_is_focused).to be(true)
     expect(page.find("[data-editor-target='titleInput']").value).to eq("Nova nota")
   end
+
+  it "supports dragging nodes and arranges depth-1 neighbors by hierarchy" do
+    root = create(:note, title: "Root")
+    parent_note = create(:note, title: "Parent")
+    child_note = create(:note, title: "Child")
+    sibling_note = create(:note, title: "Sibling")
+    neutral_note = create(:note, title: "Neutral")
+
+    [root, parent_note, child_note, sibling_note, neutral_note].each do |note|
+      revision = create(:note_revision, note:, content_markdown: "Resumo de #{note.title}")
+      note.update_columns(head_revision_id: revision.id)
+    end
+
+    create(:note_link, src_note: root, dst_note: parent_note, created_in_revision: root.head_revision, hier_role: "target_is_parent")
+    create(:note_link, src_note: root, dst_note: child_note, created_in_revision: root.head_revision, hier_role: "target_is_child")
+    create(:note_link, src_note: root, dst_note: sibling_note, created_in_revision: root.head_revision, hier_role: "same_level")
+    create(:note_link, src_note: neutral_note, dst_note: root, created_in_revision: neutral_note.head_revision, hier_role: nil)
+
+    visit graph_path
+
+    expect(page).to have_css(".sigma-mouse", wait: 10)
+
+    page.execute_script(<<~JS, root.id)
+      const rootId = arguments[0]
+      const controller = window.__graphDebug
+      controller.state.ui.focusedNodeId = rootId
+      controller.state.ui.pinnedTooltipNodeId = rootId
+      controller.state.ui.focusDepth = 1
+      controller.applyDisplayState({ relayout: true, animateFocus: false })
+    JS
+
+    sleep 1.0
+
+    hierarchy_positions = page.evaluate_script(<<~JS, root.id, parent_note.id, child_note.id, sibling_note.id, neutral_note.id)
+      (() => {
+        const [rootId, parentId, childId, siblingId, neutralId] = arguments
+        const graph = window.__graphDebug.state.graph
+        const pick = (id) => {
+          const node = graph.getNodeAttributes(id)
+          return { x: node.x, y: node.y }
+        }
+
+        return {
+          root: pick(rootId),
+          parent: pick(parentId),
+          child: pick(childId),
+          sibling: pick(siblingId),
+          neutral: pick(neutralId)
+        }
+      })()
+    JS
+
+    expect(hierarchy_positions["parent"]["y"]).to be < hierarchy_positions["root"]["y"]
+    expect(hierarchy_positions["child"]["y"]).to be > hierarchy_positions["root"]["y"]
+    expect((hierarchy_positions["sibling"]["x"] - hierarchy_positions["root"]["x"]).abs).to be > 0.01
+    expect((hierarchy_positions["neutral"]["x"] - hierarchy_positions["root"]["x"]).abs).to be > 0.01
+
+    drag_result = page.evaluate_script(<<~JS, child_note.id)
+      (() => {
+        const nodeId = arguments[0]
+        const controller = window.__graphDebug
+        const renderer = controller.state.renderer
+        const target = document.querySelector(".sigma-mouse")
+        const node = renderer.getNodeDisplayData(nodeId)
+        const start = renderer.graphToViewport({ x: node.x, y: node.y })
+        const finish = { x: start.x + 90, y: start.y + 50 }
+        const rect = target.getBoundingClientRect()
+        const eventAt = (type, point) => new MouseEvent(type, {
+          bubbles: true,
+          clientX: rect.left + point.x,
+          clientY: rect.top + point.y
+        })
+
+        target.dispatchEvent(eventAt("mousedown", start))
+        window.dispatchEvent(eventAt("mousemove", finish))
+        window.dispatchEvent(eventAt("mouseup", finish))
+
+        const moved = controller.state.graph.getNodeAttributes(nodeId)
+        const manual = controller.state.layout.manualPositions.get(nodeId)
+
+        return {
+          before: { x: node.x, y: node.y },
+          after: { x: moved.x, y: moved.y },
+          manual
+        }
+      })()
+    JS
+
+    expect((drag_result["after"]["x"] - drag_result["before"]["x"]).abs).to be > 0.005
+    expect((drag_result["after"]["y"] - drag_result["before"]["y"]).abs).to be > 0.005
+    expect(drag_result["manual"]).not_to be_nil
+  end
 end

@@ -10,7 +10,8 @@ export function createAppState() {
     },
     layout: {
       basePositions: null,
-      animationToken: 0
+      animationToken: 0,
+      manualPositions: new Map()
     },
     ui: {
       focusedNodeId: null,
@@ -21,7 +22,9 @@ export function createAppState() {
       filterMode: "all",
       focusDepth: 3,
       enabledRoles: new Set(["target_is_parent", "target_is_child", "same_level", "null"]),
-      searchQuery: ""
+      searchQuery: "",
+      draggingNodeId: null,
+      draggedNodeMoved: false
     }
   }
 }

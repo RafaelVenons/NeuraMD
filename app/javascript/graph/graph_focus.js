@@ -52,6 +52,9 @@ function resolveCameraTargetState(renderer, state) {
 
   if (focusIds.length === 0) return null
 
+  const focusedPoint = renderer.getNodeDisplayData(state.ui.focusedNodeId)
+  if (!focusedPoint) return null
+
   let minX = Infinity
   let minY = Infinity
   let maxX = -Infinity
@@ -72,8 +75,8 @@ function resolveCameraTargetState(renderer, state) {
   const span = Math.max(maxX - minX, maxY - minY)
 
   return {
-    x: (minX + maxX) / 2,
-    y: (minY + maxY) / 2,
+    x: focusedPoint.x,
+    y: focusedPoint.y,
     ratio: Math.max(0.48, Math.min(0.9, span * 2.0 + 0.16))
   }
 }

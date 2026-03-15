@@ -18,7 +18,7 @@ Construir uma experiência de exploração de grafo grande de notas, com foco em
 - layout dinâmico e estável
 - foco contextual por nó selecionado
 - filtro e hierarquia visual por Tags
-- tooltip persistente com navegação para edição
+- tooltip persistente com navegação para a nota
 - semântica visual específica para arestas
 - arquitetura sem React
 - integração natural com Rails, Hotwire e o modelo de dados do NeuraMD
@@ -500,6 +500,24 @@ Ao clicar em um nó:
 4. a vizinhança de profundidade 1 e 2 pode receber estilo especial
 5. o layout pode sofrer reorganização local, não reset global completo
 
+### Organização hierárquica local desejada
+
+Quando existir `focusedNodeId`, o relayout local deve privilegiar leitura estrutural:
+
+- profundidade 1:
+  - `father` tende para cima
+  - `brother` tende para o meio do eixo vertical
+  - `child` tende para baixo
+  - `null` fica mais distante do nó em foco do que os demais
+  - `src` tende para a esquerda
+  - `dst` tende para a direita
+- profundidade 2:
+  - tenta preservar essa leitura
+  - fica um pouco mais distante do foco do que a profundidade 1 para ajudar a visualização
+
+Observação:
+- a organização é local e assistida, não precisa virar um layout rígido de árvore.
+
 Estado mínimo sugerido:
 
 ```ts
@@ -531,6 +549,13 @@ Regras de implementação:
 - não desenhar tooltip dentro do canvas/WebGL do Sigma
 - posicionar o tooltip com coordenadas projetadas do nó na viewport
 - o tooltip deve usar `title`, `excerpt` e ações de navegação
+
+Estado atual aceito:
+
+- tooltip HTML em overlay
+- hover transitório e clique persistente
+- clique no tooltip navega para a nota
+- não é obrigatório expor múltiplos CTAs se a navegação principal já estiver clara
 
 ---
 

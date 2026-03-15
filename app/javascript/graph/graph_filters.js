@@ -33,6 +33,7 @@ export function computeDisplayState(state) {
     const relevantToTags = Boolean(priorityTagId || sourceNode.priorityTagId || targetNode.priorityTagId)
     const withinFocus = state.ui.focusedNodeId === null ||
       (sourceNode.depthFromFocus <= state.ui.focusDepth && targetNode.depthFromFocus <= state.ui.focusDepth)
+    const incidentToFocus = source === state.ui.focusedNodeId || target === state.ui.focusedNodeId
     const visibleBySearch = sourceNode.matchesSearch || targetNode.matchesSearch
 
     const hidden = !visibleBySearch || (
@@ -53,11 +54,17 @@ export function computeDisplayState(state) {
         priorityTagId,
         attributes.hierRole,
         state.indexes.tagMetaById,
-        sourceNode.depthFromFocus === 1 || targetNode.depthFromFocus === 1,
+        incidentToFocus || sourceNode.depthFromFocus === 1 || targetNode.depthFromFocus === 1,
         sourceNode.depthFromFocus === 2 || targetNode.depthFromFocus === 2,
-        state.ui.focusedNodeId !== null && !withinFocus
+        state.ui.focusedNodeId !== null && (!withinFocus || !incidentToFocus && sourceNode.depthFromFocus >= 1 && targetNode.depthFromFocus >= 1)
       ),
-      size: state.ui.focusedNodeId !== null && !withinFocus ? 1.1 : sourceNode.depthFromFocus <= 1 || targetNode.depthFromFocus <= 1 ? 2.8 : 1.6,
+      size: incidentToFocus
+        ? 3.1
+        : state.ui.focusedNodeId !== null && !withinFocus
+          ? 0.9
+          : sourceNode.depthFromFocus <= 1 || targetNode.depthFromFocus <= 1
+            ? 2.1
+            : 1.3,
       type: attributes.type,
       label: roleLabel(attributes.hierRole)
     })
