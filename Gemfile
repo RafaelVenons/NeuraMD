@@ -23,10 +23,6 @@ gem "image_processing", "~> 1.2"
 gem "devise"
 gem "pundit"
 
-# Markdown
-gem "commonmarker", "~> 2.0"
-gem "sanitize"
-
 # Search
 gem "pg_search"
 
