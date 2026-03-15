@@ -258,11 +258,16 @@
     text-decoration: underline;
     text-underline-offset: 2px;
   }
+  .preview-prose a:visited { color: var(--theme-accent-hover); }
   .preview-prose a:hover { color: var(--theme-accent-text); }
   .preview-prose a.wikilink-father { color: var(--wikilink-father); }
+  .preview-prose a.wikilink-father:visited { color: var(--wikilink-father); }
   .preview-prose a.wikilink-child { color: var(--wikilink-child); }
+  .preview-prose a.wikilink-child:visited { color: var(--wikilink-child); }
   .preview-prose a.wikilink-brother { color: var(--wikilink-brother); }
+  .preview-prose a.wikilink-brother:visited { color: var(--wikilink-brother); }
   .preview-prose a.wikilink-null { color: var(--wikilink-null); }
+  .preview-prose a.wikilink-null:visited { color: var(--wikilink-null); }
 
   .preview-prose strong { color: var(--theme-text-primary); font-weight: 700; }
   .preview-prose em { font-style: italic; }
@@ -927,6 +932,20 @@
     border-bottom: 1px dashed #ef4444;
     border-radius: 2px;
     padding: 0 2px;
+    animation: broken-wikilink-pulse 1.4s ease-in-out infinite;
+  }
+
+  @keyframes broken-wikilink-pulse {
+    0%, 100% {
+      background: color-mix(in srgb, #ef4444 18%, transparent);
+      border-bottom-color: #ef4444;
+      color: #fca5a5;
+    }
+    50% {
+      background: color-mix(in srgb, #ef4444 30%, transparent);
+      border-bottom-color: #f87171;
+      color: #fecaca;
+    }
   }
 
   /* ── Revision history panel ── */

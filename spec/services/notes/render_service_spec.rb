@@ -138,6 +138,13 @@ RSpec.describe Notes::RenderService do
         expect(html).not_to include("[[")
       end
 
+      it "renders non-uuid wiki-link target as wikilink-broken span" do
+        html = render("Veja [[Link Quebrado|nao-e-uuid]].")
+        expect(html).to include("wikilink-broken")
+        expect(html).to include("Link Quebrado")
+        expect(html).not_to include("[[")
+      end
+
       it "renders [[Display|f:uuid]] with hier_role prefix" do
         html = render("Parent: [[Nota Pai|f:#{target.id}]]")
         expect(html).to include("<a ")

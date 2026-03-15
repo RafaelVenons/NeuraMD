@@ -66,28 +66,33 @@ export const highlightExtension = {
 
 // Client-side wiki-link extension for the live preview.
 // Converts [[Display Text|uuid]] and [[Display Text|f/c/b:uuid]] to anchor tags.
-// The UUID is used as the href path (/notes/:uuid); the server resolves it via
-// UUID fallback in NotesController#set_note.
+// Invalid targets are rendered as broken-link spans so raw [[...]] markup never
+// leaks into the preview.
 const WIKILINK_ROLE_CLASS = { f: "wikilink-father", c: "wikilink-child", b: "wikilink-brother" }
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
 export const wikilinkExtension = {
   name: "wikilink",
   level: "inline",
   start(src) { return src.indexOf("[[") },
   tokenizer(src) {
-    const match = /^\[\[([^\]|]+)\|([fcb]:)?([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\]\]/i.exec(src)
+    const match = /^\[\[([^\]|]+)\|([fcb]:)?([^\]]+)\]\]/i.exec(src)
     if (match) {
+      const target = match[3].trim()
       return {
         type: "wikilink",
         raw: match[0],
         display: match[1].trim(),
         role: match[2] ? match[2].replace(":", "") : null,
-        uuid: match[3].toLowerCase()
+        uuid: UUID_RE.test(target) ? target.toLowerCase() : null
       }
     }
   },
   renderer(token) {
     const display   = token.display.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+    if (!token.uuid) {
+      return `<span class="wikilink-broken" title="Nota nao encontrada">${display}</span>`
+    }
     const roleClass = WIKILINK_ROLE_CLASS[token.role] || "wikilink-null"
     return `<a href="/notes/${token.uuid}" class="wikilink ${roleClass}" data-uuid="${token.uuid}">${display}</a>`
   }

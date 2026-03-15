@@ -1,7 +1,9 @@
 module Notes
   class RenderService
-    # Matches [[Display Text|uuid]] and [[Display Text|f/c/b:uuid]]
-    WIKILINK_RE = /\[\[(?<display>[^\]|]+)\|(?<role>[fcb]:)?(?<uuid>[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\]\]/i
+    # Matches [[Display Text|uuid]] and [[Display Text|f/c/b:uuid]].
+    # Invalid targets are still matched so they can render as broken links.
+    WIKILINK_RE = /\[\[(?<display>[^\]|]+)\|(?<role>[fcb]:)?(?<target>[^\]]+)\]\]/i
+    UUID_RE = /\A[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\z/i
 
     ALLOWED_TAGS = %w[
       h1 h2 h3 h4 h5 h6
@@ -80,9 +82,14 @@ module Notes
 
       html.gsub(WIKILINK_RE) do
         display    = $~[:display].strip
-        uuid       = $~[:uuid].downcase
+        target     = $~[:target].to_s.strip
         role_key   = $~[:role]&.chomp(":")
         role_class = ROLE_CLASS[role_key] || "wikilink-null"
+        uuid       = UUID_RE.match?(target) ? target.downcase : nil
+
+        unless uuid
+          next "<span class=\"wikilink-broken\" title=\"Nota não encontrada\">#{CGI.escapeHTML(display)}</span>"
+        end
 
         note = note_cache[uuid] ||= Note.active.select(:id, :slug, :title).find_by(id: uuid)
 

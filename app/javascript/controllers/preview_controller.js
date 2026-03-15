@@ -13,6 +13,8 @@ export default class extends Controller {
     this._scrollSyncEnabled = true
     this._isScrolling = false
     this._scrollCooldown = null
+    this._wikilinkState = new Map()
+    this._renderVersion = 0
   }
 
   disconnect() {
@@ -55,10 +57,12 @@ export default class extends Controller {
 
   _render(content) {
     try {
+      const renderVersion = ++this._renderVersion
       const html = marked.parse(content || "")
       this.outputTarget.innerHTML = html
       // Syntax highlight code blocks if available
       this._highlightCode()
+      this._validateWikilinks(renderVersion)
     } catch (e) {
       console.error("Preview render error:", e)
     }
@@ -69,5 +73,63 @@ export default class extends Controller {
     this.outputTarget.querySelectorAll("pre code").forEach(el => {
       el.classList.add("cm-code-block")
     })
+  }
+
+  async _validateWikilinks(renderVersion) {
+    const links = Array.from(this.outputTarget.querySelectorAll("a.wikilink[data-uuid]"))
+    if (links.length === 0) return
+
+    const pendingChecks = []
+
+    links.forEach(link => {
+      const uuid = link.dataset.uuid
+      if (!uuid) return
+
+      if (this._wikilinkState.get(uuid) === false) {
+        this._replaceBrokenWikilink(link)
+        return
+      }
+
+      if (this._wikilinkState.get(uuid) === true) return
+
+      pendingChecks.push(this._checkWikilink(uuid, renderVersion))
+    })
+
+    if (pendingChecks.length > 0) {
+      await Promise.allSettled(pendingChecks)
+    }
+
+    if (renderVersion !== this._renderVersion) return
+
+    this.outputTarget.querySelectorAll("a.wikilink[data-uuid]").forEach(link => {
+      if (this._wikilinkState.get(link.dataset.uuid) === false) {
+        this._replaceBrokenWikilink(link)
+      }
+    })
+  }
+
+  async _checkWikilink(uuid, renderVersion) {
+    try {
+      const response = await fetch(`/notes/${uuid}`, {
+        method: "GET",
+        headers: { Accept: "text/html" },
+        credentials: "same-origin"
+      })
+
+      if (renderVersion !== this._renderVersion) return
+      this._wikilinkState.set(uuid, response.ok)
+    } catch (error) {
+      if (renderVersion !== this._renderVersion) return
+      this._wikilinkState.set(uuid, false)
+      console.warn("Failed to validate wikilink preview:", error)
+    }
+  }
+
+  _replaceBrokenWikilink(link) {
+    const broken = document.createElement("span")
+    broken.className = "wikilink-broken"
+    broken.textContent = link.textContent || ""
+    broken.title = "Nota nao encontrada"
+    link.replaceWith(broken)
   }
 }

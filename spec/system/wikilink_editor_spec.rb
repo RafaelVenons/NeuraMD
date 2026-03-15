@@ -122,6 +122,26 @@ RSpec.describe "Wiki-link editor", type: :system do
       expect(editor.text).to match(/\[\[Nota Destino\|[0-9a-f-]{36}\]\]/)
     end
 
+    it "renders broken wikilinks as animated red text without showing raw markup" do
+      type_in_editor("[[Quebrado|00000000-0000-0000-0000-000000000000]]")
+
+      within(".preview-prose") do
+        expect(page).to have_css(".wikilink-broken", text: "Quebrado", wait: 5)
+        expect(page).to have_no_css("a[href='/notes/00000000-0000-0000-0000-000000000000']", wait: 5)
+        expect(page).to have_no_text("[[Quebrado|00000000-0000-0000-0000-000000000000]]")
+      end
+    end
+
+    it "renders non-uuid wikilink targets as broken text in preview" do
+      type_in_editor("[[Quebrado|nao-e-uuid]]")
+
+      within(".preview-prose") do
+        expect(page).to have_css(".wikilink-broken", text: "Quebrado", wait: 5)
+        expect(page).to have_no_css("a.wikilink", wait: 2)
+        expect(page).to have_no_text("[[Quebrado|nao-e-uuid]]")
+      end
+    end
+
     it "cycles hier_role with Left/Right arrows" do
       type_in_editor("[[")
       expect(page).to have_css(".wikilink-dropdown:not([hidden])", wait: 3)
