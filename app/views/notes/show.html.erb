@@ -15,6 +15,7 @@
      data-autosave-draft-url-value="<%= draft_note_path(@note.slug) %>"
      data-autosave-checkpoint-url-value="<%= checkpoint_note_path(@note.slug) %>"
      data-autosave-local-key-value="note-draft-<%= @note.id %>"
+     data-autosave-server-updated-at-value="<%= @revision&.updated_at&.iso8601 %>"
      data-autosave-draft-ms-value="60000"
      data-autosave-local-ms-value="3000">
 

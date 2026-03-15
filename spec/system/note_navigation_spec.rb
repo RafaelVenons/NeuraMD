@@ -76,6 +76,34 @@ RSpec.describe "Note navigation via links", type: :system do
       expect(page).to have_css(".preview-prose h1", text: "Título Destino", wait: 5)
       expect(page).not_to have_text("Comece a digitar para ver o preview")
     end
+
+    it "prefers newer local content on reopen and saves that version before navigation" do
+      Notes::CheckpointService.call(
+        note: src_note,
+        content: "Versao servidor [[Destino|#{dest_note.id}]]",
+        author: user
+      )
+
+      visit note_path(src_note.slug)
+      expect(page).to have_css(".cm-editor", wait: 5)
+
+      page.execute_script(<<~JS)
+        localStorage.setItem("note-draft-#{src_note.id}", JSON.stringify({
+          content: "Versao local nova [[Destino|#{dest_note.id}]]",
+          savedAt: Date.now() + 60_000
+        }))
+      JS
+
+      visit current_path
+      expect(page).to have_css(".preview-prose a.wikilink", wait: 5)
+      expect(page).to have_text("Versao local nova", wait: 5)
+
+      find(".preview-prose a.wikilink").click
+
+      expect(page).to have_current_path(note_path(dest_note.slug), wait: 5)
+      src_note.reload
+      expect(src_note.note_revisions.where(revision_kind: :draft).last.content_markdown).to include("Versao local nova")
+    end
   end
 
   # ── Backlink click ───────────────────────────────────────────────────────
@@ -130,8 +158,7 @@ RSpec.describe "Note navigation via links", type: :system do
       find("[data-editor-target='revisionsButton']").click
 
       expect(page).to have_css("[data-editor-target='revisionsMenu']:not(.hidden)", wait: 3)
-      expect(page).to have_text("Primeira")
-      expect(page).to have_text("Segunda")
+      expect(page).to have_css("[data-revision-id]", count: 2, wait: 3)
       expect(page).not_to have_button("Abrir")
     end
 
