@@ -124,6 +124,70 @@
     color: var(--theme-accent-hover);
   }
 
+  .note-finder-panel {
+    background: #18181b;
+    border-color: #27272a;
+    box-shadow: 0 24px 80px rgba(0, 0, 0, 0.45);
+  }
+  .note-finder-panel__header {
+    background: #18181b;
+    border-bottom: 1px solid #27272a;
+  }
+  .note-finder-panel__results {
+    background: #111114;
+  }
+  .note-finder-input {
+    border: 0;
+    background: transparent;
+    color: #f4f4f5;
+    outline: none;
+  }
+  .note-finder-input::placeholder {
+    color: #71717a;
+  }
+  .note-finder-regex {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    color: #a1a1aa;
+    font-size: 13px;
+  }
+  .note-finder-status {
+    color: #71717a;
+  }
+  .note-finder-result {
+    width: 100%;
+    display: grid;
+    gap: 4px;
+    text-align: left;
+    padding: 14px 16px;
+    border-bottom: 1px solid #27272a;
+    background: #111114;
+  }
+  .note-finder-result:last-child {
+    border-bottom: 0;
+  }
+  .note-finder-result.is-active,
+  .note-finder-result:hover {
+    background: #1f1f23;
+  }
+  .note-finder-result__title {
+    color: #fafafa;
+    font-size: 14px;
+    font-weight: 600;
+  }
+  .note-finder-result__meta {
+    color: #a1a1aa;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+  .note-finder-result__snippet {
+    color: #d4d4d8;
+    font-size: 13px;
+    line-height: 1.45;
+  }
+
   /* ── Toolbar ── */
   #editor-toolbar {
     background: var(--toolbar-bg);
