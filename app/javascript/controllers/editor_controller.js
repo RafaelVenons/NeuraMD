@@ -3,7 +3,9 @@ import { Controller } from "@hotwired/stimulus"
 // Orchestrates all sub-controllers: codemirror, preview, autosave, scroll-sync
 export default class extends Controller {
   static targets = [
-    "mainArea", "editorPane", "previewPane",
+    "mainArea", "editorPane", "previewPane", "previewContent",
+    "contextPanel", "graphPanel", "backlinksPanel", "contextMode",
+    "previewResizeHandle", "contextResizeHandle",
     "titleInput", "langBadge", "saveStatus",
     "previewToggleBtn", "typewriterBtn", "primaryActionButton",
     "revisionsButton", "revisionsMenu", "revisionsList"
@@ -36,20 +38,28 @@ export default class extends Controller {
     this._selectedRevisionContent = this._initialEditorContent()
     this._workingContent = this._selectedRevisionContent
     this._onDocumentClick = this._handleDocumentClick.bind(this)
+    this._layoutStorageKey = `editor-layout:${this.slugValue}`
+    this._boundPointerMove = (event) => this._handlePointerMove(event)
+    this._boundPointerUp = () => this._finishPointerResize()
 
     this._bindEditorEvents()
     this._bindKeyboardShortcuts()
     this._bindTitleInput()
     this._bindAutosaveStatus()
     this._bindNoteNavigation()
+    this._restoreLayoutState()
     this._syncPrimaryAction()
     this._focusTitleIfRequested()
     document.addEventListener("click", this._onDocumentClick)
+    window.addEventListener("pointermove", this._boundPointerMove)
+    window.addEventListener("pointerup", this._boundPointerUp)
   }
 
   disconnect() {
     document.removeEventListener("keydown", this._keyHandler)
     document.removeEventListener("click", this._onDocumentClick)
+    window.removeEventListener("pointermove", this._boundPointerMove)
+    window.removeEventListener("pointerup", this._boundPointerUp)
   }
 
   togglePreview() {
@@ -59,10 +69,31 @@ export default class extends Controller {
     if (this._previewVisible) {
       pane.classList.remove("hidden")
       this.previewToggleBtnTarget.classList.add("toolbar-btn--active")
+      this._applyPreviewWidth(this._previewWidthRatio || 0.5)
     } else {
       pane.classList.add("hidden")
       this.previewToggleBtnTarget.classList.remove("toolbar-btn--active")
+      this.editorPaneTarget.style.flex = "1 1 auto"
     }
+  }
+
+  startPreviewResize(event) {
+    if (!this._previewVisible) return
+    event.preventDefault()
+    this._resizeMode = "preview"
+    document.body.style.cursor = "col-resize"
+  }
+
+  startContextResize(event) {
+    if (this.contextModeTarget.value === "hidden") return
+    event.preventDefault()
+    this._resizeMode = "context"
+    document.body.style.cursor = "row-resize"
+  }
+
+  updateContextMode() {
+    this._applyContextMode(this.contextModeTarget.value)
+    this._persistLayoutState()
   }
 
   async toggleRevisions(event) {
@@ -182,6 +213,92 @@ export default class extends Controller {
       await this._getAutosaveController()?.saveDraftNow()
       Turbo.visit(href)
     })
+  }
+
+  _restoreLayoutState() {
+    const stored = this._readLayoutState()
+    this._previewWidthRatio = stored.previewWidthRatio || 0.5
+    this._contextHeight = stored.contextHeight || 360
+
+    if (stored.previewVisible === false) {
+      this._previewVisible = false
+      this.previewPaneTarget.classList.add("hidden")
+      this.previewToggleBtnTarget.classList.remove("toolbar-btn--active")
+      this.editorPaneTarget.style.flex = "1 1 auto"
+    } else {
+      this.previewToggleBtnTarget.classList.add("toolbar-btn--active")
+      this._applyPreviewWidth(this._previewWidthRatio)
+    }
+
+    this.contextModeTarget.value = stored.contextMode || "graph"
+    this._applyContextHeight(this._contextHeight)
+    this._applyContextMode(this.contextModeTarget.value)
+  }
+
+  _applyPreviewWidth(ratio) {
+    if (!this._previewVisible) return
+    const bounded = Math.min(Math.max(ratio, 0.25), 0.75)
+    this._previewWidthRatio = bounded
+    this.previewPaneTarget.style.flex = `0 0 ${bounded * 100}%`
+    this.editorPaneTarget.style.flex = "1 1 auto"
+  }
+
+  _applyContextHeight(height) {
+    const bounded = Math.min(Math.max(height, 140), window.innerHeight * 0.72)
+    this._contextHeight = bounded
+    this.contextPanelTarget.style.flex = `0 0 ${bounded}px`
+  }
+
+  _applyContextMode(mode) {
+    const isHidden = mode === "hidden"
+    const showBacklinks = mode === "backlinks"
+
+    this.contextPanelTarget.classList.toggle("hidden", isHidden)
+    this.contextResizeHandleTarget.classList.toggle("hidden", isHidden)
+    this.graphPanelTarget.classList.toggle("hidden", showBacklinks || isHidden)
+    this.backlinksPanelTarget.classList.toggle("hidden", !showBacklinks || isHidden)
+  }
+
+  _handlePointerMove(event) {
+    if (!this._resizeMode) return
+
+    if (this._resizeMode === "preview") {
+      const rect = this.mainAreaTarget.getBoundingClientRect()
+      const ratio = (rect.right - event.clientX) / Math.max(rect.width, 1)
+      this._applyPreviewWidth(ratio)
+      return
+    }
+
+    if (this._resizeMode === "context") {
+      const previewRect = this.previewPaneTarget.getBoundingClientRect()
+      const height = previewRect.bottom - event.clientY
+      this._applyContextHeight(height)
+    }
+  }
+
+  _finishPointerResize() {
+    if (!this._resizeMode) return
+    this._resizeMode = null
+    document.body.style.cursor = ""
+    this._persistLayoutState()
+  }
+
+  _persistLayoutState() {
+    const payload = {
+      previewWidthRatio: this._previewWidthRatio,
+      contextHeight: this._contextHeight,
+      contextMode: this.contextModeTarget.value,
+      previewVisible: this._previewVisible
+    }
+    window.localStorage?.setItem(this._layoutStorageKey, JSON.stringify(payload))
+  }
+
+  _readLayoutState() {
+    try {
+      return JSON.parse(window.localStorage?.getItem(this._layoutStorageKey) || "{}")
+    } catch {
+      return {}
+    }
   }
 
   _getAutosaveController() {
