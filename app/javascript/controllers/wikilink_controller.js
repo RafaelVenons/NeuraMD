@@ -9,7 +9,7 @@ import { Controller } from "@hotwired/stimulus"
 // [[Display|uuid]] and dispatches wikilink:cursor so tag_sidebar_controller
 // can react (link-focus mode vs global mode).
 export default class extends Controller {
-  static values = { searchUrl: String }
+  static values = { searchUrl: String, currentNoteId: String }
   static targets = ["dropdown"]
 
   // Cycle order for hier_role; null = plain reference
@@ -175,7 +175,9 @@ export default class extends Controller {
 
   async _fetchSuggestions(query) {
     try {
-      const url      = `${this.searchUrlValue}?q=${encodeURIComponent(query)}`
+      const params = new URLSearchParams({ q: query })
+      if (this.currentNoteIdValue) params.set("exclude_id", this.currentNoteIdValue)
+      const url = `${this.searchUrlValue}?${params.toString()}`
       const response = await fetch(url, { headers: { Accept: "application/json" } })
       if (!response.ok) return
       const suggestions = await response.json()

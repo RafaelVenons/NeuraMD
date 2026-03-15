@@ -61,6 +61,22 @@ RSpec.describe "Wiki-link editor", type: :system do
       expect(labels.first(2)).to eq(["Cardio Geral", "Cardiologia Avancada"])
     end
 
+    it "does not suggest the current note itself" do
+      current_note = Note.find_by!(slug: current_path.split("/").last)
+      current_note.update!(title: "Nota Destino")
+
+      visit note_path(current_note.slug)
+      expect(page).to have_css(".cm-editor", wait: 5)
+
+      type_in_editor("[[Nota")
+      expect(page).to have_css(".wikilink-suggestion", wait: 3)
+      labels = page.evaluate_script(<<~JS)
+        Array.from(document.querySelectorAll(".wikilink-suggestion")).map((el) => el.textContent.trim())
+      JS
+
+      expect(labels.count("Nota Destino")).to eq(1)
+    end
+
     it "closes on Escape" do
       type_in_editor("[[")
       expect(page).to have_css(".wikilink-dropdown:not([hidden])", wait: 3)

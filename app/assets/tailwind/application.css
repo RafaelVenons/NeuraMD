@@ -259,6 +259,10 @@
     text-underline-offset: 2px;
   }
   .preview-prose a:hover { color: var(--theme-accent-text); }
+  .preview-prose a.wikilink-father { color: var(--wikilink-father); }
+  .preview-prose a.wikilink-child { color: var(--wikilink-child); }
+  .preview-prose a.wikilink-brother { color: var(--wikilink-brother); }
+  .preview-prose a.wikilink-null { color: var(--wikilink-null); }
 
   .preview-prose strong { color: var(--theme-text-primary); font-weight: 700; }
   .preview-prose em { font-style: italic; }

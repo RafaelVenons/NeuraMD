@@ -53,7 +53,7 @@ class NotesController < ApplicationController
 
   def search
     authorize Note.new, :index?
-    notes = Note.search_by_title(params[:q].to_s)
+    notes = Note.search_by_title(params[:q].to_s, exclude_id: params[:exclude_id])
     render json: notes.map { |n| {id: n.id, title: n.title, slug: n.slug} }
   end
 

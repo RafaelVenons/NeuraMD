@@ -78,6 +78,14 @@ RSpec.describe "Notes", type: :request do
       expect(titles.first(2)).to eq(["Cardio Geral", "Cardiologia Avancada"])
       expect(titles).not_to include("Neurologia")
     end
+
+    it "excludes the current note from search results when requested" do
+      get search_notes_path, params: { q: "cardio", exclude_id: exactish.id }
+
+      expect(response).to have_http_status(:ok)
+      titles = response.parsed_body.map { |note| note["title"] }
+      expect(titles).not_to include("Cardio Geral")
+    end
   end
 
   describe "GET /notes/:slug/edit" do
