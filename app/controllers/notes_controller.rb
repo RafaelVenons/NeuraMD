@@ -29,7 +29,7 @@ class NotesController < ApplicationController
     authorize @note
 
     if @note.save
-      redirect_to note_path(@note.slug), notice: "Nota criada."
+      redirect_to note_path(@note.slug, focus: "title"), notice: "Nota criada."
     else
       render :new, status: :unprocessable_entity
     end

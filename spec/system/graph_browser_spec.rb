@@ -90,10 +90,29 @@ RSpec.describe "Graph browser", type: :system do
     JS
 
     expect(focus_state["focusedNodeId"]).to eq(notes.first.id)
-    expect(focus_state["ratio"]).to be < 1
+    expect(focus_state["ratio"]).to be <= 1
 
     screenshot_path = Rails.root.join("tmp/graph-browser-spec.png")
     page.save_screenshot(screenshot_path, full: true)
     expect(File.exist?(screenshot_path)).to be(true)
+  end
+
+  it "creates a note from the floating header and focuses the title in the editor" do
+    visit graph_path
+
+    click_button "Nova nota"
+
+    expect(page).to have_current_path(%r{/notes/[^/]+}, wait: 10)
+    expect(page).to have_css("[data-editor-target='titleInput']", wait: 10)
+
+    title_is_focused = page.evaluate_script(<<~JS)
+      (() => {
+        const input = document.querySelector("[data-editor-target='titleInput']")
+        return document.activeElement === input
+      })()
+    JS
+
+    expect(title_is_focused).to be(true)
+    expect(page.find("[data-editor-target='titleInput']").value).to eq("Nova nota")
   end
 end

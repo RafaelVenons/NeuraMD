@@ -5,7 +5,7 @@ import { buildGraph } from "graph/graph_builder"
 import { buildIndexes } from "graph/graph_indexes"
 import { deriveInitialTagOrder, moveTag } from "graph/graph_tags"
 import { computeDisplayState } from "graph/graph_filters"
-import { applyLayout } from "graph/graph_layout"
+import { animateNodePositions, applyLayout, assignNodePositions, captureNodePositions } from "graph/graph_layout"
 import { animateCameraToNode } from "graph/graph_focus"
 import { renderTooltip } from "graph/graph_tooltip"
 import { renderTagList } from "graph/graph_sidebar"
@@ -66,7 +66,7 @@ export default class extends Controller {
       this.state.indexes = buildIndexes(payload, graph)
       this.state.ui.activeTagsOrdered = deriveInitialTagOrder(payload)
 
-      applyLayout(graph, this.state)
+      applyLayout(graph, this.state, { rebuild: true })
       this.mountRenderer()
       this.renderSidebar()
       this.applyDisplayState({ relayout: false, animateFocus: false })
@@ -272,7 +272,13 @@ export default class extends Controller {
   applyDisplayState({ relayout, animateFocus }) {
     if (!this.state.graph || !this.state.renderer) return
 
-    if (relayout) applyLayout(this.state.graph, this.state)
+    let targetPositions = null
+    if (relayout) {
+      const currentPositions = captureNodePositions(this.state.graph)
+      targetPositions = applyLayout(this.state.graph, this.state, { rebuild: false })
+      assignNodePositions(this.state.graph, currentPositions)
+      animateNodePositions(this.state.graph, this.state.renderer, currentPositions, targetPositions, this.state)
+    }
 
     this.state.display = computeDisplayState(this.state)
     const visibleNodeCount = [...this.state.display.nodes.values()].filter((node) => !node.hidden).length
@@ -282,7 +288,7 @@ export default class extends Controller {
     this.emptyTarget.classList.toggle("hidden", visibleNodeCount > 0)
     this.state.renderer.refresh()
 
-    if (animateFocus && this.state.ui.focusedNodeId) animateCameraToNode(this.state.renderer, this.state.ui.focusedNodeId)
+    if (animateFocus && this.state.ui.focusedNodeId) animateCameraToNode(this.state.renderer, this.state)
     this.positionTooltip()
   }
 
@@ -309,26 +315,9 @@ export default class extends Controller {
 
     this.tooltipLayerTarget.innerHTML = `
       <div class="nm-graph__tooltip-anchor ${horizontalClass} ${verticalClass}" style="left:${projected.x}px;top:${projected.y}px">
-        ${renderTooltip(node, this.state, this.state.indexes, this.incidentEdges(nodeId))}
+        ${renderTooltip(node, this.state)}
       </div>
     `
-  }
-
-  incidentEdges(nodeId) {
-    const outgoing = this.state.indexes.outEdgesByNodeId.get(nodeId) || []
-    const incoming = this.state.indexes.inEdgesByNodeId.get(nodeId) || []
-
-    return [...outgoing, ...incoming].map((edgeId) => {
-      const edge = this.state.graph.getEdgeAttributes(edgeId)
-      const [source, target] = this.state.graph.extremities(edgeId)
-      const otherId = source === nodeId ? target : source
-      const other = this.state.graph.getNodeAttributes(otherId)
-
-      return {
-        ...edge,
-        otherTitle: other.title || other.label
-      }
-    })
   }
 
   visit(path) {

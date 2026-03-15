@@ -47,7 +47,7 @@ RSpec.describe "Authentication", type: :request do
       post user_session_path, params: {
         user: { email: user.email, password: "password123" }
       }
-      expect(response).to redirect_to(root_path)
+      expect(response).to redirect_to(graph_path)
     end
 
     it "rejects invalid credentials and shows Portuguese error" do

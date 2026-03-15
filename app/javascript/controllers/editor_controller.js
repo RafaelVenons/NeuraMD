@@ -14,6 +14,7 @@ export default class extends Controller {
     slug: String,
     title: String,
     language: String,
+    focusTitle: Boolean,
     initialRevisionId: String,
     initialRevisionKind: String,
     headRevisionId: String
@@ -42,6 +43,7 @@ export default class extends Controller {
     this._bindAutosaveStatus()
     this._bindNoteNavigation()
     this._syncPrimaryAction()
+    this._focusTitleIfRequested()
     document.addEventListener("click", this._onDocumentClick)
   }
 
@@ -261,6 +263,15 @@ export default class extends Controller {
     this.titleInputTarget.addEventListener("input", (e) => {
       clearTimeout(titleTimer)
       titleTimer = setTimeout(() => this._saveTitle(e.target.value), 1000)
+    })
+  }
+
+  _focusTitleIfRequested() {
+    if (!this.focusTitleValue || !this.hasTitleInputTarget) return
+
+    requestAnimationFrame(() => {
+      this.titleInputTarget.focus()
+      this.titleInputTarget.select()
     })
   }
 

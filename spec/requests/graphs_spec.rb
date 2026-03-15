@@ -10,8 +10,9 @@ RSpec.describe "Graphs", type: :request do
       get graph_path
 
       expect(response).to have_http_status(:ok)
-      expect(response.body).to include("Grafo de notas")
+      expect(response.body).to include("Mapa estrutural")
       expect(response.body).to include(api_graph_path)
+      expect(response.body).to include("Nova nota")
     end
   end
 

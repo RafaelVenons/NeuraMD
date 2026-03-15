@@ -6,7 +6,7 @@ Rails.application.routes.draw do
 
   get "up" => "rails/health#show", as: :rails_health_check
 
-  root "notes#index"
+  root "graphs#show"
   get "graph", to: "graphs#show", as: :graph
   get "api/graph", to: "api/graphs#show", as: :api_graph
 

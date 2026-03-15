@@ -9,6 +9,7 @@
      data-editor-slug-value="<%= @note.slug %>"
      data-editor-title-value="<%= @note.title %>"
      data-editor-language-value="<%= @note.detected_language %>"
+     data-editor-focus-title-value="<%= params[:focus] == 'title' %>"
      data-editor-initial-revision-id-value="<%= @revision&.id %>"
      data-editor-initial-revision-kind-value="<%= @revision&.revision_kind %>"
      data-editor-head-revision-id-value="<%= @note.head_revision_id %>"

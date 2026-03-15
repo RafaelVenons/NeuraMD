@@ -19,46 +19,45 @@
     <%= javascript_importmap_tags %>
   </head>
 
-  <body class="bg-white font-sans"
+  <body class="<%= content_for?(:full_bleed) ? 'nm-app nm-app--immersive font-sans' : 'nm-app font-sans' %>"
         data-controller="note-finder"
         data-note-finder-search-url-value="<%= search_notes_path %>">
-    <nav class="border-b border-gray-200 bg-white px-4 py-3 flex items-center justify-between">
-      <a href="<%= root_path %>" class="text-lg font-semibold text-gray-900">NeuraMD</a>
-      <% if user_signed_in? %>
-        <div class="flex items-center gap-4 text-sm text-gray-600">
-          <a href="<%= graph_path %>"
-             class="rounded border border-gray-200 px-3 py-1.5 text-sm text-gray-600 hover:border-blue-300 hover:text-blue-700">
-            Grafo
-          </a>
-          <button type="button"
-                  class="rounded border border-gray-200 px-3 py-1.5 text-sm text-gray-600 hover:border-blue-300 hover:text-blue-700"
-                  title="Buscar notas (Ctrl+Shift+K)"
-                  data-action="click->note-finder#open">
-            Buscar
-          </button>
-          <span><%= current_user.email %></span>
-          <%= button_to "Sair", destroy_user_session_path, method: :delete,
-              class: "text-red-600 hover:underline bg-transparent border-0 cursor-pointer p-0" %>
-        </div>
-      <% end %>
-    </nav>
+    <% unless content_for?(:hide_app_nav) %>
+      <nav class="nm-app-nav">
+        <a href="<%= root_path %>" class="nm-app-nav__brand">NeuraMD</a>
+        <% if user_signed_in? %>
+          <div class="nm-app-nav__actions">
+            <a href="<%= graph_path %>" class="nm-app-nav__link">Grafo</a>
+            <a href="<%= notes_path %>" class="nm-app-nav__link">Notas</a>
+            <button type="button"
+                    class="nm-app-nav__link"
+                    title="Buscar notas (Ctrl+Shift+K)"
+                    data-action="click->note-finder#open">
+              Buscar
+            </button>
+            <span class="nm-app-nav__user"><%= current_user.email %></span>
+            <%= button_to "Sair", destroy_user_session_path, method: :delete, class: "nm-app-nav__logout" %>
+          </div>
+        <% end %>
+      </nav>
+    <% end %>
 
     <% if notice.present? %>
-      <div class="mx-auto max-w-4xl mt-4 px-4">
-        <div class="rounded bg-green-50 border border-green-200 px-4 py-2 text-sm text-green-800">
+      <div class="<%= content_for?(:full_bleed) ? 'nm-app-flash nm-app-flash--immersive' : 'mx-auto max-w-4xl mt-4 px-4' %>">
+        <div class="nm-app-flash__message nm-app-flash__message--notice">
           <%= notice %>
         </div>
       </div>
     <% end %>
     <% if alert.present? %>
-      <div class="mx-auto max-w-4xl mt-4 px-4">
-        <div class="rounded bg-red-50 border border-red-200 px-4 py-2 text-sm text-red-800">
+      <div class="<%= content_for?(:full_bleed) ? 'nm-app-flash nm-app-flash--immersive' : 'mx-auto max-w-4xl mt-4 px-4' %>">
+        <div class="nm-app-flash__message nm-app-flash__message--alert">
           <%= alert %>
         </div>
       </div>
     <% end %>
 
-    <main class="container mx-auto max-w-6xl px-4 py-6">
+    <main class="<%= content_for?(:full_bleed) ? 'nm-app-main nm-app-main--fullbleed' : 'nm-app-main container mx-auto max-w-6xl px-4 py-6' %>">
       <%= yield %>
     </main>
 

@@ -1,24 +1,57 @@
 <% content_for :title, "Grafo — NeuraMD" %>
+<% content_for :full_bleed, true %>
+<% content_for :hide_app_nav, true %>
 
-<section class="nm-graph nm-graph--wide"
+<section class="nm-graph nm-graph--fullscreen"
          data-controller="graph"
          data-graph-data-url-value="<%= api_graph_path %>">
-  <header class="nm-graph__hero">
-    <div>
-      <p class="nm-graph__eyebrow">Exploracao estrutural</p>
-      <h1 class="nm-graph__title">Grafo de notas</h1>
-      <p class="nm-graph__subtitle">Base estrutural em Sigma.js, Graphology e WebGL para evoluir o grafo sem retrabalho visual.</p>
+  <div class="nm-graph__stage nm-graph__stage--fullscreen">
+    <div class="nm-graph__canvas-wrap nm-graph__canvas-wrap--fullscreen">
+      <div class="nm-graph__sigma-host" data-graph-target="graphHost"></div>
+      <div class="nm-graph__tooltip-layer" data-graph-target="tooltipLayer"></div>
     </div>
-    <div class="nm-graph__meta" data-graph-target="meta">Carregando dataset...</div>
-  </header>
 
-  <div class="nm-graph__layout">
-    <aside class="nm-graph__sidebar">
+    <header class="nm-graph__floating nm-graph__floating--top-left">
+      <div class="nm-graph__eyebrow">Mapa estrutural</div>
+      <h1 class="nm-graph__title">Grafo</h1>
+      <p class="nm-graph__subtitle">Navegacao principal em tela cheia com o grafo como pano de fundo.</p>
+      <div class="nm-graph__header-actions">
+        <%= button_to "Nova nota",
+            notes_path,
+            method: :post,
+            params: { note: { title: "Nova nota" } },
+            class: "nm-graph__primary-btn" %>
+        <button type="button" class="nm-graph__ghost-btn" data-action="click->note-finder#open">Buscar</button>
+        <a href="<%= notes_path %>" class="nm-graph__ghost-link">Lista</a>
+      </div>
+    </header>
+
+    <aside class="nm-graph__floating nm-graph__floating--left">
       <section class="nm-graph__panel">
         <div class="nm-graph__panel-head">
           <h2>Controles</h2>
           <button type="button" class="nm-graph__ghost-btn" data-action="graph#resetFocus">Limpar foco</button>
         </div>
+
+        <div class="nm-graph__meta" data-graph-target="meta">Carregando dataset...</div>
+
+        <label class="nm-graph__field">
+          <span>Buscar nota</span>
+          <input type="search"
+                 placeholder="Titulo ou resumo"
+                 data-graph-target="search"
+                 data-action="input->graph#updateSearch">
+        </label>
+
+        <label class="nm-graph__field">
+          <span>Profundidade</span>
+          <select data-graph-target="focusDepth" data-action="change->graph#updateDepth">
+            <option value="1">1 salto</option>
+            <option value="2">2 saltos</option>
+            <option value="3" selected>3 saltos</option>
+            <option value="4">4 saltos</option>
+          </select>
+        </label>
 
         <label class="nm-graph__field">
           <span>Modo</span>
@@ -38,24 +71,10 @@
             <option value="999">Todas</option>
           </select>
         </label>
-
-        <label class="nm-graph__field">
-          <span>Profundidade</span>
-          <select data-graph-target="focusDepth" data-action="change->graph#updateDepth">
-            <option value="1">1 salto</option>
-            <option value="2" selected>2 saltos</option>
-          </select>
-        </label>
-
-        <label class="nm-graph__field">
-          <span>Buscar nota</span>
-          <input type="search"
-                 placeholder="Titulo ou resumo"
-                 data-graph-target="search"
-                 data-action="input->graph#updateSearch">
-        </label>
       </section>
+    </aside>
 
+    <aside class="nm-graph__floating nm-graph__floating--right">
       <section class="nm-graph__panel">
         <div class="nm-graph__panel-head">
           <h2>Hierarquia</h2>
@@ -81,21 +100,23 @@
       <section class="nm-graph__panel">
         <div class="nm-graph__panel-head">
           <h2>Tags ativas</h2>
-          <span class="nm-graph__panel-hint">Ordem define prioridade de cor.</span>
+          <span class="nm-graph__panel-hint">Ordem define prioridade.</span>
         </div>
         <div class="nm-graph__tag-list" data-graph-target="tagList"></div>
       </section>
+
+      <section class="nm-graph__panel nm-graph__panel--compact">
+        <div class="nm-graph__panel-head">
+          <h2>Sessao</h2>
+        </div>
+        <p class="nm-graph__session-email"><%= current_user.email %></p>
+        <%= button_to "Sair", destroy_user_session_path, method: :delete, class: "nm-graph__ghost-btn nm-graph__ghost-btn--danger" %>
+      </section>
     </aside>
 
-    <div class="nm-graph__stage">
-      <div class="nm-graph__canvas-wrap">
-        <div class="nm-graph__sigma-host" data-graph-target="graphHost"></div>
-        <div class="nm-graph__tooltip-layer" data-graph-target="tooltipLayer"></div>
-      </div>
-      <div class="nm-graph__empty hidden" data-graph-target="empty">
-        Nenhum elemento permaneceu visivel com os filtros atuais.
-      </div>
-      <div class="nm-graph__error hidden" data-graph-target="error"></div>
+    <div class="nm-graph__empty hidden" data-graph-target="empty">
+      Nenhum elemento permaneceu visivel com os filtros atuais.
     </div>
+    <div class="nm-graph__error hidden" data-graph-target="error"></div>
   </div>
 </section>

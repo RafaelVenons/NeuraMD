@@ -11,32 +11,34 @@
     <%= javascript_importmap_tags %>
   </head>
 
-  <body class="min-h-screen bg-gray-950 flex items-center justify-center px-4">
-    <div class="w-full max-w-sm">
-      <%# Logo / brand %>
-      <div class="text-center mb-8">
-        <a href="/" class="inline-flex items-center gap-2">
-          <span class="text-2xl font-bold text-white tracking-tight">Neura<span class="text-blue-400">MD</span></span>
-        </a>
-        <p class="mt-1 text-xs text-gray-500">Self-hosted markdown notes</p>
-      </div>
-
-      <%# Flash messages %>
-      <% if notice.present? %>
-        <div class="mb-4 rounded-lg bg-green-900/40 border border-green-700 px-4 py-3 text-sm text-green-300">
-          <%= notice %>
-        </div>
-      <% end %>
-      <% if alert.present? %>
-        <div class="mb-4 rounded-lg bg-red-900/40 border border-red-700 px-4 py-3 text-sm text-red-300">
-          <%= alert %>
-        </div>
-      <% end %>
-
-      <%# Card %>
-      <div class="rounded-2xl border border-gray-800 bg-gray-900 shadow-2xl p-8">
-        <%= yield %>
-      </div>
+  <body class="nm-auth">
+    <div class="nm-auth__backdrop" aria-hidden="true">
+      <span class="nm-auth__orb nm-auth__orb--a"></span>
+      <span class="nm-auth__orb nm-auth__orb--b"></span>
+      <span class="nm-auth__orb nm-auth__orb--c"></span>
+      <span class="nm-auth__grid"></span>
     </div>
+
+    <main class="nm-auth__shell">
+      <section class="nm-auth__intro">
+        <a href="/" class="nm-auth__brand">NeuraMD</a>
+        <p class="nm-auth__eyebrow">Mapa vivo de notas</p>
+        <h1 class="nm-auth__title">Entre direto no grafo e navegue o conhecimento como estrutura, nao como lista.</h1>
+        <p class="nm-auth__copy">O layout de acesso agora segue a pagina principal: fundo amplo, atmosfera de rede e controles em caixas flutuantes.</p>
+      </section>
+
+      <section class="nm-auth__card-wrap">
+        <% if notice.present? %>
+          <div class="nm-auth__flash nm-auth__flash--notice"><%= notice %></div>
+        <% end %>
+        <% if alert.present? %>
+          <div class="nm-auth__flash nm-auth__flash--alert"><%= alert %></div>
+        <% end %>
+
+        <div class="nm-auth__card">
+          <%= yield %>
+        </div>
+      </section>
+    </main>
   </body>
 </html>
