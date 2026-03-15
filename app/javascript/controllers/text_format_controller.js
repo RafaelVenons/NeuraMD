@@ -50,6 +50,7 @@ export default class extends Controller {
   }
 
   _handleKey(e) {
+    if (e.isComposing || e.keyCode === 229 || this._getEditor()?.isComposing()) return
     const ctrl = e.ctrlKey || e.metaKey
     if (!ctrl) return
 

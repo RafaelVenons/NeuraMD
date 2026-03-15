@@ -3,7 +3,7 @@ require "rails_helper"
 # Acceptance tests for wiki-link autocomplete dropdown and link-mode detection.
 # Runs in real Chromium via Cuprite — exercises actual JS.
 RSpec.describe "Wiki-link editor", type: :system do
-  let(:user)    { create(:user) }
+  let(:user) { create(:user) }
   let!(:target) { create(:note, title: "Nota Destino") }
   let!(:alt_target) { create(:note, title: "Cardio Geral") }
   let!(:alt_target_two) { create(:note, title: "Cardiologia Avancada") }
@@ -14,6 +14,7 @@ RSpec.describe "Wiki-link editor", type: :system do
     visit note_path(note.slug)
     # Wait for CodeMirror to mount
     expect(page).to have_css(".cm-editor", wait: 5)
+    expect(page).to have_css("[data-wikilink-ready='true']", wait: 5)
   end
 
   def editor
@@ -140,6 +141,16 @@ RSpec.describe "Wiki-link editor", type: :system do
         expect(page).to have_no_css("a.wikilink", wait: 2)
         expect(page).to have_no_text("[[Quebrado|nao-e-uuid]]")
       end
+    end
+
+    it "does not open wikilink autocomplete while IME composition is active" do
+      page.execute_script(<<~JS)
+        const content = document.querySelector(".cm-content")
+        content.dispatchEvent(new CompositionEvent("compositionstart", { bubbles: true, data: "に" }))
+      JS
+
+      type_in_editor("[[")
+      expect(page).to have_no_css(".wikilink-dropdown:not([hidden])", wait: 1)
     end
 
     it "cycles hier_role with Left/Right arrows" do

@@ -220,6 +220,7 @@ export default class extends Controller {
   // ── Keyboard shortcuts ───────────────────────────────────
   _bindKeyboardShortcuts() {
     this._keyHandler = (e) => {
+      if (e.isComposing || e.keyCode === 229 || this._getCodemirrorController()?.isComposing()) return
       const ctrl = e.ctrlKey || e.metaKey
 
       if (ctrl && e.key === "p") {

@@ -19,6 +19,7 @@ export default class extends Controller {
   static FULL_RE    = /\[\[([^\]|]+)\|([fcb]:)?([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\]\]/gi
 
   connect() {
+    this.element.dataset.wikilinkReady = "true"
     this._suggestions  = []
     this._activeIndex  = -1
     this._insertStart  = null
@@ -26,13 +27,15 @@ export default class extends Controller {
     this._cm = null
     this._currentRole  = null   // null | 'f' | 'c' | 'b'
     this._lastFocusedUUID = null
+    this._isComposing = false
 
     this._onEditorChange = this._handleEditorChange.bind(this)
     this.element.addEventListener("codemirror:change", this._onEditorChange)
 
     // Cursor movement without text change: re-run link detection only
     this._onSelectionChange = (e) => {
-      const { value, cursorPos } = e.detail
+      const { value, cursorPos, isComposing } = e.detail
+      this._isComposing = !!isComposing
       if (value !== undefined && cursorPos !== undefined) {
         this._detectCursorInLink(value, cursorPos)
       }
@@ -44,11 +47,18 @@ export default class extends Controller {
     this._onCmReady = (e) => { this._cm = e.detail.editor }
     this.element.addEventListener("codemirror:ready", this._onCmReady)
 
+    this._onCompositionChange = (e) => {
+      this._isComposing = !!e.detail.isComposing
+      if (this._isComposing) this._closeDropdown({ preserveFocus: true })
+    }
+    this.element.addEventListener("codemirror:compositionchange", this._onCompositionChange)
+
     // Keyboard navigation for the dropdown.
     // Use capture phase so our handler fires BEFORE CodeMirror's keymap,
     // allowing us to call stopPropagation() when we consume a key.
     this._keydownHandler = (e) => {
       if (!this._isDropdownOpen()) return
+      if (e.isComposing || e.keyCode === 229 || this._isComposing) return
       const handled = this._handleKey(e.key)
       if (handled) {
         e.preventDefault()
@@ -59,9 +69,11 @@ export default class extends Controller {
   }
 
   disconnect() {
+    delete this.element.dataset.wikilinkReady
     this.element.removeEventListener("codemirror:change", this._onEditorChange)
     this.element.removeEventListener("codemirror:selectionchange", this._onSelectionChange)
     this.element.removeEventListener("codemirror:ready", this._onCmReady)
+    this.element.removeEventListener("codemirror:compositionchange", this._onCompositionChange)
     this.element.removeEventListener("keydown", this._keydownHandler, { capture: true })
     this._closeDropdown()
   }
@@ -69,8 +81,15 @@ export default class extends Controller {
   // ── Editor change handler ────────────────────────────────
 
   _handleEditorChange(event) {
-    const { value, cursorPos, cm } = event.detail
+    const { value, cursorPos, cm, isComposing } = event.detail
     if (cm) this._cm = cm
+    this._isComposing = !!isComposing
+
+    if (this._isComposing) {
+      this._closeDropdown({ preserveFocus: true })
+      this._detectCursorInLink(value, cursorPos)
+      return
+    }
 
     // Detect mid-typing trigger [[ ... (dropdown autocomplete)
     const lineUpToCursor = this._lineUpToCursor(value, cursorPos)
@@ -271,12 +290,12 @@ export default class extends Controller {
     return this.hasDropdownTarget && !this.dropdownTarget.hidden
   }
 
-  _closeDropdown() {
+  _closeDropdown({ preserveFocus = false } = {}) {
     if (this.hasDropdownTarget) this.dropdownTarget.hidden = true
     this._suggestions   = []
     this._activeIndex   = -1
     this._currentRole   = null
-    this._cm?.focus()
+    if (!preserveFocus && !this._isComposing) this._cm?.focus()
   }
 
   // ── Helpers ──────────────────────────────────────────────

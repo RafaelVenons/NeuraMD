@@ -20,6 +20,7 @@ export default class extends Controller {
     this._lineNumbersCompartment = new Compartment()
     this._readOnlyCompartment = new Compartment()
     this._suppressChangeDispatch = false
+    this._isComposing = false
 
     const updateListener = EditorView.updateListener.of((update) => {
       if (update.docChanged && !this._suppressChangeDispatch) {
@@ -32,7 +33,12 @@ export default class extends Controller {
     })
 
     const scrollListener = EditorView.domEventHandlers({
-      scroll: () => { this._dispatchScroll() }
+      scroll: () => { this._dispatchScroll() },
+      compositionstart: () => { this._setComposing(true) },
+      compositionend: () => {
+        // Let the committed IME text land before clearing the composition flag.
+        setTimeout(() => { this._setComposing(false) }, 0)
+      }
     })
 
     const state = EditorState.create({
@@ -166,6 +172,10 @@ export default class extends Controller {
 
   get view() { return this._view }
 
+  isComposing() {
+    return this._isComposing || this._view?.composing || false
+  }
+
   // Replace text from insertStart to current cursor with the wiki-link markup.
   _insertWikilink(markup, insertStart) {
     if (!this._view) return
@@ -181,7 +191,7 @@ export default class extends Controller {
   _dispatchChange() {
     const cursorPos = this._view?.state.selection.main.head ?? 0
     this.dispatch("change", {
-      detail: { value: this.getValue(), cursorPos, cm: this },
+      detail: { value: this.getValue(), cursorPos, cm: this, isComposing: this.isComposing() },
       bubbles: true
     })
   }
@@ -190,7 +200,7 @@ export default class extends Controller {
     const pos       = this.getCursorPosition()
     const cursorPos = this._view?.state.selection.main.head ?? 0
     this.dispatch("selectionchange", {
-      detail: { ...pos, cursorPos, value: this.getValue() },
+      detail: { ...pos, cursorPos, value: this.getValue(), isComposing: this.isComposing() },
       bubbles: true
     })
   }
@@ -198,6 +208,14 @@ export default class extends Controller {
   _dispatchScroll() {
     this.dispatch("scroll", {
       detail: { ratio: this.getScrollRatio() },
+      bubbles: true
+    })
+  }
+
+  _setComposing(isComposing) {
+    this._isComposing = isComposing
+    this.dispatch("compositionchange", {
+      detail: { isComposing: this.isComposing() },
       bubbles: true
     })
   }
