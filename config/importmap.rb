@@ -5,6 +5,7 @@ pin "@hotwired/turbo-rails", to: "turbo.min.js"
 pin "@hotwired/stimulus", to: "stimulus.min.js"
 pin "@hotwired/stimulus-loading", to: "stimulus-loading.js"
 pin_all_from "app/javascript/controllers", under: "controllers"
+pin_all_from "app/javascript/graph", under: "graph"
 pin_all_from "app/javascript/lib", under: "lib"
 pin "@codemirror/state", to: "@codemirror--state.js" # @6.5.4
 pin "@marijn/find-cluster-break", to: "@marijn--find-cluster-break.js" # @1.0.2
@@ -151,3 +152,41 @@ pin "@lezer/rust", to: "@lezer--rust.js" # @1.0.2
 pin "@lezer/sass", to: "@lezer--sass.js" # @1.1.0
 pin "@lezer/xml", to: "@lezer--xml.js" # @1.0.6
 pin "@lezer/yaml", to: "@lezer--yaml.js" # @1.0.4
+pin "graphology" # @0.26.0
+pin "graphology-layout" # @0.6.1
+pin "graphology-layout/circlepack", to: "circlepack.js"
+pin "graphology-layout/circular", to: "circular.js"
+pin "graphology-layout/random", to: "random.js"
+pin "graphology-layout-forceatlas2" # @0.10.1
+pin "graphology-layout-forceatlas2/_/987d9be9", to: "_/987d9be9.js"
+pin "graphology-layout-noverlap" # @0.4.2
+pin "graphology-layout-noverlap/_/a72dd12e", to: "_/a72dd12e.js"
+pin "graphology-traversal" # @0.3.1
+pin "sigma" # @3.0.2
+pin "sigma/rendering", to: "rendering/dist/sigma-rendering.esm.js"
+pin "sigma/utils", to: "utils/dist/sigma-utils.esm.js"
+pin "sigma/settings", to: "settings/dist/sigma-settings.esm.js"
+pin "sigma/types", to: "types/dist/sigma-types.esm.js"
+pin "sigma/_/B0DcsMff", to: "_/B0DcsMff.js"
+pin "sigma/_/BZp2-4cL", to: "_/BZp2-4cL.js"
+pin "sigma/_/C-W17dgt", to: "_/C-W17dgt.js"
+pin "sigma/_/kE2EJL4M", to: "_/kE2EJL4M.js"
+pin "sigma/_/pV8YYdtx", to: "_/pV8YYdtx.js"
+pin "sigma/dist/colors", to: "dist/colors-beb06eb2.esm.js"
+pin "sigma/dist/data", to: "dist/data-11df7124.esm.js"
+pin "sigma/dist/index", to: "dist/index-236c62ad.esm.js"
+pin "sigma/dist/inherits", to: "dist/inherits-d1a1e29b.esm.js"
+pin "sigma/dist/normalization", to: "dist/normalization-be445518.esm.js"
+pin "events" # @3.3.0
+pin "graphology-indices/bfs-queue", to: "graphology-indices--bfs-queue.js" # @0.17.0
+pin "graphology-indices/dfs-stack", to: "graphology-indices--dfs-stack.js" # @0.17.0
+pin "graphology-utils/defaults", to: "graphology-utils--defaults.js" # @2.5.2
+pin "graphology-utils/getters", to: "graphology-utils--getters.js" # @2.5.2
+pin "graphology-utils/is-graph", to: "graphology-utils--is-graph.js" # @2.5.2
+pin "mnemonist/fixed-deque", to: "mnemonist--fixed-deque.js" # @0.39.8
+pin "mnemonist/_/l6VHs6WY", to: "_/l6VHs6WY.js"
+pin "mnemonist/utils/typed-arrays", to: "utils/typed-arrays.js"
+pin "obliterator/foreach", to: "obliterator--foreach.js" # @2.0.5
+pin "obliterator/_/TukZPN2J", to: "_/TukZPN2J.js"
+pin "obliterator/iterator", to: "obliterator--iterator.js" # @2.0.5
+pin "pandemonium/shuffle-in-place", to: "pandemonium--shuffle-in-place.js" # @2.4.1

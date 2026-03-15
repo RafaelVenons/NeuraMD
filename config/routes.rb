@@ -7,11 +7,8 @@ Rails.application.routes.draw do
   get "up" => "rails/health#show", as: :rails_health_check
 
   root "notes#index"
-  get "graph", to: "notes#graph", as: :graph
-
-  namespace :api do
-    resource :graph, only: :show, controller: "graph"
-  end
+  get "graph", to: "graphs#show", as: :graph
+  get "api/graph", to: "api/graphs#show", as: :api_graph
 
   resources :tags, only: [:index, :create, :destroy]
 

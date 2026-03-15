@@ -1,0 +1,101 @@
+<% content_for :title, "Grafo — NeuraMD" %>
+
+<section class="nm-graph nm-graph--wide"
+         data-controller="graph"
+         data-graph-data-url-value="<%= api_graph_path %>">
+  <header class="nm-graph__hero">
+    <div>
+      <p class="nm-graph__eyebrow">Exploracao estrutural</p>
+      <h1 class="nm-graph__title">Grafo de notas</h1>
+      <p class="nm-graph__subtitle">Base estrutural em Sigma.js, Graphology e WebGL para evoluir o grafo sem retrabalho visual.</p>
+    </div>
+    <div class="nm-graph__meta" data-graph-target="meta">Carregando dataset...</div>
+  </header>
+
+  <div class="nm-graph__layout">
+    <aside class="nm-graph__sidebar">
+      <section class="nm-graph__panel">
+        <div class="nm-graph__panel-head">
+          <h2>Controles</h2>
+          <button type="button" class="nm-graph__ghost-btn" data-action="graph#resetFocus">Limpar foco</button>
+        </div>
+
+        <label class="nm-graph__field">
+          <span>Modo</span>
+          <select data-graph-target="filterMode" data-action="change->graph#updateFilterMode">
+            <option value="all">Tudo</option>
+            <option value="focused-tags">Tags relevantes</option>
+          </select>
+        </label>
+
+        <label class="nm-graph__field">
+          <span>Top-N</span>
+          <select data-graph-target="topN" data-action="change->graph#updateTopN">
+            <option value="1">1</option>
+            <option value="2">2</option>
+            <option value="3" selected>3</option>
+            <option value="5">5</option>
+            <option value="999">Todas</option>
+          </select>
+        </label>
+
+        <label class="nm-graph__field">
+          <span>Profundidade</span>
+          <select data-graph-target="focusDepth" data-action="change->graph#updateDepth">
+            <option value="1">1 salto</option>
+            <option value="2" selected>2 saltos</option>
+          </select>
+        </label>
+
+        <label class="nm-graph__field">
+          <span>Buscar nota</span>
+          <input type="search"
+                 placeholder="Titulo ou resumo"
+                 data-graph-target="search"
+                 data-action="input->graph#updateSearch">
+        </label>
+      </section>
+
+      <section class="nm-graph__panel">
+        <div class="nm-graph__panel-head">
+          <h2>Hierarquia</h2>
+        </div>
+        <label class="nm-graph__check">
+          <input type="checkbox" value="target_is_parent" checked data-action="change->graph#toggleRole">
+          <span>Target e pai</span>
+        </label>
+        <label class="nm-graph__check">
+          <input type="checkbox" value="target_is_child" checked data-action="change->graph#toggleRole">
+          <span>Target e filho</span>
+        </label>
+        <label class="nm-graph__check">
+          <input type="checkbox" value="same_level" checked data-action="change->graph#toggleRole">
+          <span>Mesmo nivel</span>
+        </label>
+        <label class="nm-graph__check">
+          <input type="checkbox" value="null" checked data-action="change->graph#toggleRole">
+          <span>Sem classificacao</span>
+        </label>
+      </section>
+
+      <section class="nm-graph__panel">
+        <div class="nm-graph__panel-head">
+          <h2>Tags ativas</h2>
+          <span class="nm-graph__panel-hint">Ordem define prioridade de cor.</span>
+        </div>
+        <div class="nm-graph__tag-list" data-graph-target="tagList"></div>
+      </section>
+    </aside>
+
+    <div class="nm-graph__stage">
+      <div class="nm-graph__canvas-wrap">
+        <div class="nm-graph__sigma-host" data-graph-target="graphHost"></div>
+        <div class="nm-graph__tooltip-layer" data-graph-target="tooltipLayer"></div>
+      </div>
+      <div class="nm-graph__empty hidden" data-graph-target="empty">
+        Nenhum elemento permaneceu visivel com os filtros atuais.
+      </div>
+      <div class="nm-graph__error hidden" data-graph-target="error"></div>
+    </div>
+  </div>
+</section>

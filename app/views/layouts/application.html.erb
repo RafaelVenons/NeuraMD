@@ -26,8 +26,10 @@
       <a href="<%= root_path %>" class="text-lg font-semibold text-gray-900">NeuraMD</a>
       <% if user_signed_in? %>
         <div class="flex items-center gap-4 text-sm text-gray-600">
-          <%= link_to "Grafo", graph_path,
-              class: "rounded border border-gray-200 px-3 py-1.5 text-sm text-gray-600 hover:border-blue-300 hover:text-blue-700" %>
+          <a href="<%= graph_path %>"
+             class="rounded border border-gray-200 px-3 py-1.5 text-sm text-gray-600 hover:border-blue-300 hover:text-blue-700">
+            Grafo
+          </a>
           <button type="button"
                   class="rounded border border-gray-200 px-3 py-1.5 text-sm text-gray-600 hover:border-blue-300 hover:text-blue-700"
                   title="Buscar notas (Ctrl+Shift+K)"

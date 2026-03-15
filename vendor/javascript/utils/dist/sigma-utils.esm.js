@@ -1,0 +1,4 @@
+export { A as ANIMATE_DEFAULTS, h as animateNodes, b as createElement, c as createNormalizationFunction, o as cubicIn, r as cubicInOut, p as cubicOut, e as easings, j as getCorrectionRatio, a as getMatrixImpact, d as getPixelRatio, g as graphExtent, i as identity, l as linear, m as matrixFromCamera, w as multiply, f as multiplyVec2, q as quadraticIn, n as quadraticInOut, k as quadraticOut, t as rotate, s as scale, u as translate, v as validateGraph, z as zIndexOrdering } from 'sigma/dist/normalization';
+export { H as HTML_COLORS, d as colorToArray, c as colorToIndex, e as extractPixel, f as floatColor, g as getPixelColor, i as indexToColor, p as parseColor, r as rgbaToFloat } from 'sigma/dist/colors';
+export { a as assign, b as assignDeep, e as extend, i as isPlainObject } from 'sigma/dist/data';
+import 'graphology-utils/is-graph';
