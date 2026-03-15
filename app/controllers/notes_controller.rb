@@ -19,6 +19,10 @@ class NotesController < ApplicationController
     @has_more_results = result.has_more
   end
 
+  def graph
+    authorize Note.new, :index?
+  end
+
   def new
     @note = Note.new
     authorize @note
