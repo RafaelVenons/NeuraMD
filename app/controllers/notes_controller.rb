@@ -3,7 +3,20 @@ class NotesController < ApplicationController
   layout "editor", only: [:show, :show_revision]
 
   def index
-    @notes = policy_scope(Note).order(updated_at: :desc)
+    @search_query = params[:q].to_s.strip
+    @search_regex = ActiveModel::Type::Boolean.new.cast(params[:regex])
+    @search_page = [params.fetch(:page, 1).to_i, 1].max
+
+    result = Search::NoteQueryService.call(
+      scope: policy_scope(Note),
+      query: @search_query,
+      regex: @search_regex,
+      page: @search_page
+    )
+
+    @notes = result.notes
+    @search_error = result.error
+    @has_more_results = result.has_more
   end
 
   def new
@@ -53,8 +66,27 @@ class NotesController < ApplicationController
 
   def search
     authorize Note.new, :index?
-    notes = Note.search_by_title(params[:q].to_s, exclude_id: params[:exclude_id])
-    render json: notes.map { |n| {id: n.id, title: n.title, slug: n.slug} }
+    if params[:mode] == "finder"
+      result = Search::NoteQueryService.call(
+        scope: policy_scope(Note),
+        query: params[:q],
+        regex: params[:regex],
+        page: params[:page],
+        limit: params[:limit] || 8
+      )
+
+      if result.error.present?
+        render json: {results: [], error: result.error, meta: finder_meta(result)}, status: :unprocessable_entity
+      else
+        render json: {
+          results: result.notes.map { |note| finder_payload(note) },
+          meta: finder_meta(result)
+        }
+      end
+    else
+      notes = Note.search_by_title(params[:q].to_s, exclude_id: params[:exclude_id])
+      render json: notes.map { |n| {id: n.id, title: n.title, slug: n.slug} }
+    end
   end
 
   def autosave
@@ -137,5 +169,36 @@ class NotesController < ApplicationController
 
   def note_params
     params.require(:note).permit(:title, :slug, :note_kind, :detected_language)
+  end
+
+  def finder_payload(note)
+    {
+      id: note.id,
+      title: note.title,
+      slug: note.slug,
+      detected_language: note.detected_language,
+      updated_at: note.updated_at.iso8601,
+      snippet: finder_snippet(note)
+    }
+  end
+
+  def finder_meta(result)
+    {
+      page: result.page,
+      limit: result.limit,
+      has_more: result.has_more,
+      query: result.query,
+      regex: result.regex
+    }
+  end
+
+  def finder_snippet(note)
+    revision = note.head_revision
+    if revision.present? && note.attributes["search_content_plain"].present?
+      revision = revision.dup
+      revision.content_plain = note.attributes["search_content_plain"]
+    end
+
+    revision&.search_preview_text(limit: 180).to_s
   end
 end

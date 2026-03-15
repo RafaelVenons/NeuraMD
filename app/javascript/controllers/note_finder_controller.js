@@ -74,8 +74,18 @@ export default class extends Controller {
   }
 
   hoverResult(event) {
-    this._activeIndex = Number(event.currentTarget.dataset.index)
+    const nextIndex = Number(event.currentTarget.dataset.index)
+    if (nextIndex === this._activeIndex) return
+    this._activeIndex = nextIndex
     this._renderResults()
+  }
+
+  choose(event) {
+    event.preventDefault()
+    event.stopPropagation()
+    const result = this._results[Number(event.currentTarget.dataset.index)]
+    if (!result) return
+    this._visit(result)
   }
 
   async _fetchResults() {
@@ -150,7 +160,7 @@ export default class extends Controller {
       <a href="/notes/${result.slug}"
          class="note-finder-result ${index === this._activeIndex ? "is-active" : ""}"
          data-index="${index}"
-         data-action="mouseenter->note-finder#hoverResult">
+         data-action="mouseenter->note-finder#hoverResult click->note-finder#choose">
         <span class="note-finder-result__title">${this._escapeHtml(result.title)}</span>
         <span class="note-finder-result__meta">${this._escapeHtml(result.detected_language || "auto")} · ${this._formatDate(result.updated_at)}</span>
         <span class="note-finder-result__snippet">${this._escapeHtml(result.snippet || "")}</span>

@@ -14,7 +14,11 @@
     <%= javascript_importmap_tags %>
   </head>
 
-  <body class="bg-gray-950 font-sans overflow-hidden" style="height: 100dvh;">
+  <body class="bg-gray-950 font-sans overflow-hidden"
+        style="height: 100dvh;"
+        data-controller="note-finder"
+        data-note-finder-search-url-value="<%= search_notes_path %>">
     <%= yield %>
+    <%= render "shared/note_finder" %>
   </body>
 </html>

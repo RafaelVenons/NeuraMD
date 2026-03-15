@@ -84,6 +84,15 @@
     <div class="w-px h-5 bg-gray-700 flex-shrink-0"></div>
 
     <%# Preview toggle %>
+    <button title="Buscar notas (Ctrl+Shift+K)"
+            class="toolbar-btn"
+            data-action="click->note-finder#open">
+      <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <circle cx="11" cy="11" r="7"/>
+        <path d="m20 20-3.5-3.5"/>
+      </svg>
+    </button>
+
     <button title="Toggle Preview (Ctrl+P)"
             class="toolbar-btn"
             data-action="click->editor#togglePreview"

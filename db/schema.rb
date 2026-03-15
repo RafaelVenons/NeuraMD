@@ -113,6 +113,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_03_05_131429) do
     t.uuid "note_id", null: false
     t.enum "revision_kind", default: "checkpoint", null: false, enum_type: "note_revision_kind"
     t.datetime "updated_at", null: false
+    t.index ["content_plain"], name: "index_note_revisions_on_content_plain", opclass: :gin_trgm_ops, using: :gin
     t.index "to_tsvector('simple'::regconfig, COALESCE(content_plain, ''::text))", name: "index_note_revisions_on_content_plain_tsvector", using: :gin
     t.index ["author_id"], name: "index_note_revisions_on_author_id"
     t.index ["created_at"], name: "index_note_revisions_on_created_at"

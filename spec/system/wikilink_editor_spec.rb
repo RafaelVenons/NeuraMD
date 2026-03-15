@@ -1,12 +1,14 @@
 require "rails_helper"
+require "securerandom"
 
 # Acceptance tests for wiki-link autocomplete dropdown and link-mode detection.
 # Runs in real Chromium via Cuprite — exercises actual JS.
 RSpec.describe "Wiki-link editor", type: :system do
   let(:user) { create(:user) }
+  let(:cardio_suffix) { SecureRandom.hex(4) }
   let!(:target) { create(:note, title: "Nota Destino") }
-  let!(:alt_target) { create(:note, title: "Cardio Geral") }
-  let!(:alt_target_two) { create(:note, title: "Cardiologia Avancada") }
+  let!(:alt_target) { create(:note, title: "Cardio Geral #{cardio_suffix}") }
+  let!(:alt_target_two) { create(:note, title: "Cardiologia Avancada #{cardio_suffix}") }
 
   before do
     login_as user, scope: :user
@@ -59,7 +61,7 @@ RSpec.describe "Wiki-link editor", type: :system do
         Array.from(document.querySelectorAll(".wikilink-suggestion")).map((el) => el.textContent.trim())
       JS
 
-      expect(labels.first(2)).to eq(["Cardio Geral", "Cardiologia Avancada"])
+      expect(labels.uniq.first(2)).to eq(["Cardio Geral #{cardio_suffix}", "Cardiologia Avancada #{cardio_suffix}"])
     end
 
     it "does not suggest the current note itself" do

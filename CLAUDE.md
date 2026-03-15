@@ -37,7 +37,7 @@ Aplicação self-hosted de notas com:
 - Tailwind CSS
 - Hotwire (Turbo + Stimulus) — mesma abordagem do FrankMD
 - CodeMirror 6 — mesmo editor do FrankMD
-- CommonMarker + sanitização (render server-side)
+- Preview HTML client-side via `marked.js` + extensões locais de wikilink
 - Suporte a Unicode completo: Mandarim (CJK), Japonês (Hiragana/Katakana/Kanji), Coreano (Hangul)
 
 ### Infra
@@ -103,7 +103,7 @@ note_revisions
   base_revision_id  UUID FK → note_revisions (nullable; futuro: merge)
   content_markdown  text ENCRYPTED
   content_plain     text (derivado; para indexação e preview rápido)
-  change_summary    string
+  change_summary    string (legado; fora do fluxo atual da UI)
   revision_kind     enum (draft, checkpoint) DEFAULT draft
   ai_generated      boolean DEFAULT false
   created_at        timestamp
@@ -386,9 +386,9 @@ ai_requests (auditoria)
 ## 5. Busca
 
 - **Títulos:** `pg_trgm` (trigram) — rápido para strings curtas
-- **Conteúdo:** `pg_search` com `tsvector` — poderoso para texto longo
-- **CJK:** tokenização por caractere para Mandarim/Japonês/Coreano (caracteres são palavras)
-- **Fuzzy finder em listas pequenas:** Levenshtein client-side (JS)
+- **Conteúdo:** `tsvector('simple')` + `pg_trgm similarity` em `content_plain`
+- **CJK:** fallback por trigram/similarity em `content_plain`
+- **Fuzzy finder / busca principal:** serviço Rails único com ranking híbrido (ILIKE + trigram + tsvector)
 - **Regex no conteúdo:** com paginação, timeout e limite de N resultados
 - Indexes: `GIN` em `content_plain` para `tsvector`; `GIN` em `title` para `trgm`
 
@@ -562,11 +562,11 @@ spec/
 - **Entrega:** links semânticos automáticos via markup, histórico de checkpoints navegável, tags em links
 
 ### Fase 3 — Busca
-- [ ] `pg_trgm` em títulos
-- [ ] `pg_search` + `tsvector` em conteúdo (com suporte CJK)
-- [ ] Fuzzy finder dialog (client-side)
-- [ ] Busca por regex com limites (paginação, timeout, max N)
-- [ ] Indexes GIN
+- [x] `pg_trgm` em títulos
+- [x] Busca em conteúdo com `tsvector` + fallback trigram para CJK
+- [x] Fuzzy finder dialog (client-side)
+- [x] Busca por regex com limites (paginação, timeout, max N)
+- [x] Indexes GIN
 - **Entrega:** produtividade real
 
 ### Fase 4 — Grafo Web

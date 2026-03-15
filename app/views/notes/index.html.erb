@@ -57,9 +57,9 @@
             <h2 class="font-semibold text-gray-900 group-hover:text-blue-700 truncate">
               <%= note.title %>
             </h2>
-            <% if note.head_revision&.content_plain.present? %>
+            <% if note.head_revision&.search_preview_text.present? %>
               <p class="mt-1 text-sm text-gray-500 line-clamp-2">
-                <%= note.head_revision.content_plain.truncate(160) %>
+                <%= note.head_revision.search_preview_text(limit: 160) %>
               </p>
             <% end %>
           </div>

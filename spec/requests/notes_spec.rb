@@ -1,4 +1,5 @@
 require "rails_helper"
+require "securerandom"
 
 RSpec.describe "Notes", type: :request do
   let(:user) { create(:user) }
@@ -19,6 +20,32 @@ RSpec.describe "Notes", type: :request do
       expect(response.body).to include("Active")
       expect(response.body).not_to include("Deleted")
     end
+
+    it "filters notes by title and content" do
+      titled = create(:note, :with_head_revision, title: "Cardio Guia")
+      content_match = create(:note, title: "Neurologia")
+      content_revision = create(:note_revision, note: content_match, content_markdown: "Paciente com arritmia recorrente")
+      content_match.update_columns(head_revision_id: content_revision.id)
+      other = create(:note, :with_head_revision, title: "Dermatologia")
+
+      get notes_path, params: { q: "arritmia" }
+
+      expect(response).to have_http_status(:ok)
+      expect(response.body).to include("Neurologia")
+      expect(response.body).not_to include("Dermatologia")
+      expect(response.body).not_to include("Cardio Guia")
+    end
+
+    it "supports limited regex search" do
+      create(:note, :with_head_revision, title: "ECG 2026")
+      create(:note, :with_head_revision, title: "ECG antigo")
+
+      get notes_path, params: { q: "ECG\\s\\d{4}", regex: "1" }
+
+      expect(response).to have_http_status(:ok)
+      expect(response.body).to include("ECG 2026")
+      expect(response.body).not_to include("ECG antigo")
+    end
   end
 
   describe "GET /notes/new" do
@@ -37,7 +64,7 @@ RSpec.describe "Notes", type: :request do
       }.to change(Note, :count).by(1)
 
       expect(response).to have_http_status(:redirect)
-      note = Note.last
+      note = Note.order(created_at: :desc).find_by!(title: "Minha Nota")
       expect(note.title).to eq("Minha Nota")
       follow_redirect!
       expect(response).to have_http_status(:ok)
@@ -65,26 +92,77 @@ RSpec.describe "Notes", type: :request do
   end
 
   describe "GET /notes/search" do
-    let!(:exactish) { create(:note, title: "Cardio Geral") }
-    let!(:fuzzy) { create(:note, title: "Cardiologia Avancada") }
+    let(:suffix) { SecureRandom.hex(4) }
+    let!(:exactish) { create(:note, title: "Cardio Geral #{suffix}") }
+    let!(:fuzzy) { create(:note, title: "Cardiologia Avancada #{suffix}") }
     let!(:other) { create(:note, title: "Neurologia") }
 
     it "returns title matches ordered by relevance" do
       get search_notes_path, params: { q: "cardio" }
 
       expect(response).to have_http_status(:ok)
-      titles = response.parsed_body.map { |note| note["title"] }
-
-      expect(titles.first(2)).to eq(["Cardio Geral", "Cardiologia Avancada"])
-      expect(titles).not_to include("Neurologia")
+      ids = response.parsed_body.map { |note| note["id"] }
+      expect(ids).to include(exactish.id, fuzzy.id)
+      expect(ids.index(exactish.id)).to be < ids.index(fuzzy.id)
+      expect(response.parsed_body.map { |note| note["title"] }).not_to include("Neurologia")
     end
 
     it "excludes the current note from search results when requested" do
       get search_notes_path, params: { q: "cardio", exclude_id: exactish.id }
 
       expect(response).to have_http_status(:ok)
-      titles = response.parsed_body.map { |note| note["title"] }
-      expect(titles).not_to include("Cardio Geral")
+      titles = response.parsed_body.map { |note| note["title"] }.uniq
+      expect(titles).not_to include("Cardio Geral #{suffix}")
+    end
+
+    it "returns finder results with content snippets" do
+      content_match = create(:note, title: "Neurologia")
+      content_revision = create(:note_revision, note: content_match, content_markdown: "Paciente com arritmia recorrente em acompanhamento")
+      content_match.update_columns(head_revision_id: content_revision.id)
+
+      get search_notes_path, params: { q: "arritmia", mode: "finder", limit: 5 }
+
+      expect(response).to have_http_status(:ok)
+      payload = response.parsed_body
+      expect(payload["results"].first["title"]).to eq("Neurologia")
+      expect(payload["results"].first["snippet"]).to include("arritmia")
+      expect(payload["meta"]["limit"]).to eq(5)
+    end
+
+    it "strips wikilink UUIDs from finder snippets" do
+      linked = create(:note, title: "Resumo limpo")
+      target = create(:note, title: "Destino")
+      revision = create(:note_revision, note: linked, content_markdown: "[[Destino|#{target.id}]] em acompanhamento")
+      linked.update_columns(head_revision_id: revision.id)
+
+      get search_notes_path, params: { q: "Destino", mode: "finder", limit: 5 }
+
+      expect(response).to have_http_status(:ok)
+      snippet = response.parsed_body["results"].find { |result| result["title"] == "Resumo limpo" }["snippet"]
+      expect(snippet).to include("Destino")
+      expect(snippet).not_to include(target.id)
+    end
+
+    it "strips normalized UUIDs from finder snippets" do
+      linked = create(:note, title: "Resumo sem uuid")
+      revision = create(:note_revision, note: linked, content_markdown: "Texto inicial")
+      revision.update_columns(
+        content_plain: "Minha primeira nota f:6676ab19 f3d8 4cef bbbe 31679f1f8423 e v:3aa6e5f1 c0e1 4ddf 801a 4589c335979a limpo"
+      )
+      linked.update_columns(head_revision_id: revision.id)
+
+      get search_notes_path, params: { q: "limpo", mode: "finder", limit: 5 }
+
+      expect(response).to have_http_status(:ok)
+      snippet = response.parsed_body["results"].find { |result| result["title"] == "Resumo sem uuid" }["snippet"]
+      expect(snippet).to eq("Minha primeira nota e limpo")
+    end
+
+    it "rejects invalid finder regex" do
+      get search_notes_path, params: { q: "[abc", mode: "finder", regex: "1" }
+
+      expect(response).to have_http_status(:unprocessable_entity)
+      expect(response.parsed_body["error"]).to eq("Regex invalida")
     end
   end
 

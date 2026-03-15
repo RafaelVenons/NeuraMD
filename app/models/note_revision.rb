@@ -1,4 +1,6 @@
 class NoteRevision < ApplicationRecord
+  SEARCH_UUID_RE = /\b(?:[a-z]:)?[0-9a-f]{8}(?:[-\s]?[0-9a-f]{4}){3}[-\s]?[0-9a-f]{12}\b/i
+
   belongs_to :note
   belongs_to :author, class_name: "User", optional: true
   belongs_to :base_revision, class_name: "NoteRevision", optional: true
@@ -17,6 +19,15 @@ class NoteRevision < ApplicationRecord
   validates :revision_kind, presence: true
 
   before_save :derive_content_plain
+
+  def search_preview_text(limit: nil)
+    text = content_plain.to_s
+      .gsub(SEARCH_UUID_RE, " ")
+      .gsub(/\s+/, " ")
+      .strip
+
+    limit ? text.truncate(limit) : text
+  end
 
   private
 
