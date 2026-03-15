@@ -64,6 +64,22 @@ RSpec.describe "Notes", type: :request do
     end
   end
 
+  describe "GET /notes/search" do
+    let!(:exactish) { create(:note, title: "Cardio Geral") }
+    let!(:fuzzy) { create(:note, title: "Cardiologia Avancada") }
+    let!(:other) { create(:note, title: "Neurologia") }
+
+    it "returns title matches ordered by relevance" do
+      get search_notes_path, params: { q: "cardio" }
+
+      expect(response).to have_http_status(:ok)
+      titles = response.parsed_body.map { |note| note["title"] }
+
+      expect(titles.first(2)).to eq(["Cardio Geral", "Cardiologia Avancada"])
+      expect(titles).not_to include("Neurologia")
+    end
+  end
+
   describe "GET /notes/:slug/edit" do
     let(:note) { create(:note) }
 

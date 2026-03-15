@@ -5,6 +5,8 @@ require "rails_helper"
 RSpec.describe "Wiki-link editor", type: :system do
   let(:user)    { create(:user) }
   let!(:target) { create(:note, title: "Nota Destino") }
+  let!(:alt_target) { create(:note, title: "Cardio Geral") }
+  let!(:alt_target_two) { create(:note, title: "Cardiologia Avancada") }
 
   before do
     login_as user, scope: :user
@@ -46,6 +48,17 @@ RSpec.describe "Wiki-link editor", type: :system do
       expect(page).to have_css(".wikilink-dropdown:not([hidden])", wait: 3)
       expect(page).to have_css(".wikilink-suggestion", wait: 3)
       expect(page).to have_text("Nota Destino")
+    end
+
+    it "orders suggestions by cosine similarity for fuzzy matches" do
+      type_in_editor("[[cardio")
+      expect(page).to have_css(".wikilink-suggestion", minimum: 2, wait: 3)
+
+      labels = page.evaluate_script(<<~JS)
+        Array.from(document.querySelectorAll(".wikilink-suggestion")).map((el) => el.textContent.trim())
+      JS
+
+      expect(labels.first(2)).to eq(["Cardio Geral", "Cardiologia Avancada"])
     end
 
     it "closes on Escape" do

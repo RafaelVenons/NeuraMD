@@ -178,7 +178,8 @@ export default class extends Controller {
       const url      = `${this.searchUrlValue}?q=${encodeURIComponent(query)}`
       const response = await fetch(url, { headers: { Accept: "application/json" } })
       if (!response.ok) return
-      this._suggestions = await response.json()
+      const suggestions = await response.json()
+      this._suggestions = this._rankSuggestionsByCosineSimilarity(suggestions, query)
       this._activeIndex = this._suggestions.length > 0 ? 0 : -1
       this._renderDropdown()
     } catch (_) {
@@ -281,6 +282,69 @@ export default class extends Controller {
   _lineUpToCursor(fullText, cursorPos) {
     const lineStart = fullText.lastIndexOf("\n", cursorPos - 1) + 1
     return fullText.slice(lineStart, cursorPos)
+  }
+
+  _rankSuggestionsByCosineSimilarity(suggestions, query) {
+    const normalizedQuery = this._normalizeSearchText(query)
+    if (!normalizedQuery) return suggestions
+
+    return [...suggestions]
+      .map((note) => ({
+        note,
+        score: this._suggestionSearchScore(note.title, normalizedQuery)
+      }))
+      .filter(({ score }) => score > 0)
+      .sort((left, right) => {
+        if (right.score !== left.score) return right.score - left.score
+        return left.note.title.localeCompare(right.note.title, "pt-BR")
+      })
+      .map(({ note }) => note)
+  }
+
+  _suggestionSearchScore(title, normalizedQuery) {
+    const normalizedTitle = this._normalizeSearchText(title)
+    if (!normalizedTitle) return 0
+    if (normalizedTitle.includes(normalizedQuery)) return 1
+
+    const titleVector = this._trigramVector(normalizedTitle)
+    const queryVector = this._trigramVector(normalizedQuery)
+    return this._cosineSimilarity(titleVector, queryVector)
+  }
+
+  _normalizeSearchText(value) {
+    return (value || "")
+      .toLowerCase()
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .replace(/[^a-z0-9]+/g, " ")
+      .trim()
+  }
+
+  _trigramVector(value) {
+    const compact = `  ${value.replace(/\s+/g, " ")}  `
+    const vector = new Map()
+    for (let index = 0; index <= compact.length - 3; index += 1) {
+      const gram = compact.slice(index, index + 3)
+      vector.set(gram, (vector.get(gram) || 0) + 1)
+    }
+    return vector
+  }
+
+  _cosineSimilarity(left, right) {
+    let dot = 0
+    let leftNorm = 0
+    let rightNorm = 0
+
+    left.forEach((value, key) => {
+      leftNorm += value * value
+      dot += value * (right.get(key) || 0)
+    })
+    right.forEach((value) => {
+      rightNorm += value * value
+    })
+
+    if (!leftNorm || !rightNorm) return 0
+    return dot / (Math.sqrt(leftNorm) * Math.sqrt(rightNorm))
   }
 
   _escapeHtml(str) {

@@ -18,7 +18,18 @@ class Note < ApplicationRecord
   scope :active, -> { where(deleted_at: nil) }
   scope :deleted, -> { where.not(deleted_at: nil) }
   scope :search_by_title, ->(query) {
-    active.where("title ILIKE ?", "%#{sanitize_sql_like(query)}%").order(:title).limit(10)
+    normalized = query.to_s.strip
+    next active.order(:title).limit(10) if normalized.blank?
+
+    pattern = "%#{sanitize_sql_like(normalized)}%"
+    sanitized_query = connection.quote_string(normalized)
+    similarity_sql = "similarity(title, '#{sanitized_query}')"
+
+    active
+      .where("title ILIKE :pattern OR #{similarity_sql} > 0.12", pattern:)
+      .select("notes.*, #{similarity_sql} AS title_similarity")
+      .order(Arel.sql("CASE WHEN title ILIKE #{connection.quote(pattern)} THEN 0 ELSE 1 END ASC, title_similarity DESC, title ASC"))
+      .limit(10)
   }
 
   def soft_delete!
