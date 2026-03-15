@@ -396,15 +396,19 @@ ai_requests (auditoria)
 
 ## 6. Grafo Web (Fase 4)
 
-- Endpoint `GET /api/graph` retorna nodes + edges com tags/cores
-- Visualização com biblioteca JS (D3.js ou Cytoscape.js)
-- Filtros: `hier_role`, tag, profundidade máxima
-- Navegação por clique (abre nota)
-- Arestas coloridas por tag do link
+- A especificação detalhada do grafo vive em `GRAFO.md` e deve ser tratada como fonte de verdade
+- O estado atual de `/graph` e `/api/graph` deve ser considerado descartável se divergir de `GRAFO.md`
+- Backend do grafo em Rails; frontend do grafo em JavaScript no browser integrado à página Rails
+- Endpoint de dados do grafo deve retornar dataset normalizado (`notes`, `links`, `tags`, `noteTags`, `linkTags`)
+- Visualização com Sigma.js + Graphology
+- Filtros: `hier_role`, tag, profundidade máxima, foco por nó, modos de destaque por tags
+- Tooltip HTML persistente no clique e transitório no hover
+- Navegação por clique para abrir a nota
+- Arestas com semântica visual por `hier_role`
 - Insights futuros via CTE:
-  - Notas mais referenciadas (PageRank simples)
+  - Notas mais referenciadas
   - Clusters de temas
-  - Notas órfãs (sem links)
+  - Notas órfãs
   - Caminho mais curto entre duas notas
 
 ---
@@ -570,11 +574,16 @@ spec/
 - **Entrega:** produtividade real
 
 ### Fase 4 — Grafo Web
-- [ ] Endpoint `GET /api/graph` (nodes + edges + tags/cores)
-- [ ] Visualização JS com filtros (`hier_role`/tag/profundidade)
+- [ ] Revisar a feature do grafo partindo de `GRAFO.md`, sem reaproveitar por inércia a implementação atual
+- [ ] Novo `GET /api/graph` com dataset normalizado (`notes`, `links`, `tags`, `noteTags`, `linkTags`)
+- [ ] Nova página `GET /graph` integrada ao Rails e desacoplada da UI atual
+- [ ] Visualização JS com Sigma.js + Graphology
+- [ ] Custom edge renderer para seta em `source` ou `target` e gap assimétrico
+- [ ] Filtros (`hier_role`/tag/profundidade), foco por nó e modos de destaque
+- [ ] Tooltip HTML persistente/transitório
 - [ ] Navegação por clique
 - [ ] CTEs recursivas para insights (descendentes, órfãs, caminho)
-- [ ] Tags em notas (`note_tags` join) — após UI do grafo, para agregar também no nível do nó
+- [ ] Tags em notas (`note_tags` join) visíveis também no nível do nó
 - [ ] Filtro por tag na listagem de notas
 - **Entrega:** grafo útil e navegável
 
@@ -633,6 +642,7 @@ spec/
 | `f:/c:/b:` prefixos de hier_role no UUID | Sem sintaxe extra no Display Text; role embutida no campo de referência |
 | Tooltip no preview = título real da nota | Display Text pode divergir do título; tooltip sempre mostra o título atual do DB |
 | Sem TitleSyncService | Display Text é livre — não há título para propagar; simplifica drasticamente |
+| Grafo especificado em `GRAFO.md` | Evitar drift entre visão de produto e implementação da feature |
 
 ---
 
