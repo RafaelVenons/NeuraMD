@@ -494,8 +494,6 @@ export default class extends Controller {
     if (!moved) return
 
     this.state.ui.hoveredNodeId = nodeId
-    this.state.ui.focusedNodeId = nodeId
-    this.state.ui.pinnedTooltipNodeId = nodeId
     this.applyDisplayState({ relayout: false, animateFocus: false })
   }
 
@@ -623,20 +621,22 @@ export default class extends Controller {
     const nodeId = this.state.ui.focusedNodeId
     if (!nodeId || !this.state.graph?.hasNode(nodeId)) return
 
-    const noteTags = [...(this.state.graph.getNodeAttribute(nodeId, "noteTags") || [])]
-    const isAttached = noteTags.includes(tagId)
+    const tagKey = String(tagId)
+    const noteId = this.state.graph.getNodeAttribute(nodeId, "id")
+    const noteTags = [...(this.state.graph.getNodeAttribute(nodeId, "noteTags") || [])].map(String)
+    const isAttached = noteTags.includes(tagKey)
     const method = isAttached ? "DELETE" : "POST"
     const csrfToken = document.querySelector('meta[name="csrf-token"]')?.content || ""
-    const query = new URLSearchParams({ note_id: nodeId, tag_id: tagId })
+    const payload = JSON.stringify({ note_id: String(noteId), tag_id: tagKey })
 
-    const response = await fetch(isAttached ? `/note_tags?${query.toString()}` : "/note_tags", {
+    const response = await fetch("/note_tags", {
       method,
       headers: {
         "Accept": "application/json",
-        "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
+        "Content-Type": "application/json",
         "X-CSRF-Token": csrfToken
       },
-      body: isAttached ? null : query.toString(),
+      body: payload,
       credentials: "same-origin"
     })
 
@@ -646,16 +646,16 @@ export default class extends Controller {
     }
 
     const nextTags = isAttached
-      ? noteTags.filter((currentTagId) => currentTagId !== tagId)
-      : [...noteTags, tagId]
+      ? noteTags.filter((currentTagId) => currentTagId !== tagKey)
+      : [...noteTags, tagKey]
 
     this.state.graph.setNodeAttribute(nodeId, "noteTags", [...new Set(nextTags)])
     this.state.indexes.tagsByNoteId.set(nodeId, [...new Set(nextTags)])
 
     const currentNoteTags = this.state.dataset.noteTags || []
     this.state.dataset.noteTags = isAttached
-      ? currentNoteTags.filter((row) => !(row.note_id === nodeId && row.tag_id === tagId))
-      : [...currentNoteTags, { note_id: nodeId, tag_id: tagId }]
+      ? currentNoteTags.filter((row) => !(String(row.note_id) === String(noteId) && String(row.tag_id) === tagKey))
+      : [...currentNoteTags, { note_id: noteId, tag_id: tagKey }]
 
     this.renderSidebar()
     this.applyDisplayState({ relayout: false, animateFocus: false })

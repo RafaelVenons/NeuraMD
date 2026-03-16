@@ -11,74 +11,81 @@
       <div class="nm-graph__tooltip-layer" data-graph-target="tooltipLayer"></div>
     </div>
 
-    <header class="nm-graph__floating nm-graph__floating--top-left">
-      <div class="nm-graph__eyebrow">Mapa estrutural</div>
-      <h1 class="nm-graph__title">Grafo</h1>
-      <p class="nm-graph__subtitle">Navegacao principal em tela cheia com o grafo como pano de fundo.</p>
-      <div class="nm-graph__header-actions">
-        <%= button_to "Nova nota",
-            notes_path,
-            method: :post,
-            params: { note: { title: "Nova nota" } },
-            class: "nm-graph__primary-btn",
-            form: { data: { action: "submit->page-transition#submit", transition_kind: "graph-to-note" } } %>
-        <button type="button" class="nm-graph__ghost-btn" data-action="click->note-finder#open">Buscar</button>
-      </div>
-    </header>
-
-    <aside class="nm-graph__floating nm-graph__floating--left">
-      <div class="nm-graph__panel-head">
-        <h2>Controles</h2>
-        <button type="button" class="nm-graph__ghost-btn" data-action="graph#resetFocus">Limpar foco</button>
-      </div>
-
-      <div class="nm-graph__meta" data-graph-target="meta">Carregando dataset...</div>
-
-      <label class="nm-graph__field">
-        <span>Buscar nota</span>
-        <input type="search"
-               placeholder="Titulo ou resumo"
-               data-graph-target="search"
-               data-action="input->graph#updateSearch">
-      </label>
-
-      <label class="nm-graph__field">
-        <span>Profundidade</span>
-        <select data-graph-target="focusDepth" data-action="change->graph#updateDepth">
-          <option value="1">1 salto</option>
-          <option value="2">2 saltos</option>
-          <option value="3" selected>3 saltos</option>
-          <option value="4">4 saltos</option>
-        </select>
-      </label>
-
-      <label class="nm-graph__field">
-        <span>Modo</span>
-        <select data-graph-target="filterMode" data-action="change->graph#updateFilterMode">
-          <option value="all">Tudo</option>
-          <option value="focused-tags">Tags relevantes</option>
-        </select>
-      </label>
-
-      <label class="nm-graph__field">
-        <span>Tags ativas</span>
-        <div class="nm-graph__field-inline">
-          <label class="nm-graph__check nm-graph__check--inline">
-            <input type="checkbox" checked data-graph-target="topNAll" data-action="change->graph#updateTopNMode">
-            <span>Todas</span>
-          </label>
-          <input type="number"
-                 min="1"
-                 step="1"
-                 value="3"
-                 disabled
-                 data-graph-target="topN"
-                 data-action="input->graph#updateTopN">
+    <div class="nm-graph__left-rail">
+      <header class="nm-graph__floating nm-graph__floating--top-left">
+        <h1 class="nm-graph__title">NeuraMD</h1>
+        <div class="nm-graph__header-actions">
+          <%= button_to "Nova nota",
+              notes_path,
+              method: :post,
+              params: { note: { title: "Nova nota" } },
+              class: "nm-graph__primary-btn",
+              form: { data: { action: "submit->page-transition#submit", transition_kind: "graph-to-note" } } %>
+          <button type="button" class="nm-graph__ghost-btn" data-action="click->note-finder#open">Buscar</button>
         </div>
-      </label>
-    </aside>
+      </header>
+
+      <aside class="nm-graph__floating nm-graph__floating--left">
+        <div class="nm-graph__panel-head">
+          <h2>Tags</h2>
+        </div>
+        <div class="nm-graph__tag-list" data-graph-target="tagList"></div>
+      </aside>
+    </div>
 
     <aside class="nm-graph__floating nm-graph__floating--right">
+      <section class="nm-graph__panel">
+        <div class="nm-graph__panel-head">
+          <h2>Controles</h2>
+          <button type="button" class="nm-graph__ghost-btn" data-action="graph#resetFocus">Limpar</button>
+        </div>
+
+        <div class="nm-graph__meta" data-graph-target="meta">Carregando dataset...</div>
+
+        <label class="nm-graph__field">
+          <span>Buscar nota</span>
+          <input type="search"
+                 placeholder="Titulo ou resumo"
+                 data-graph-target="search"
+                 data-action="input->graph#updateSearch">
+        </label>
+
+        <label class="nm-graph__field">
+          <span>Profundidade</span>
+          <select data-graph-target="focusDepth" data-action="change->graph#updateDepth">
+            <option value="1">1 salto</option>
+            <option value="2">2 saltos</option>
+            <option value="3" selected>3 saltos</option>
+            <option value="4">4 saltos</option>
+          </select>
+        </label>
+
+        <label class="nm-graph__field">
+          <span>Modo</span>
+          <select data-graph-target="filterMode" data-action="change->graph#updateFilterMode">
+            <option value="all">Tudo</option>
+            <option value="focused-tags">Tags relevantes</option>
+          </select>
+        </label>
+
+        <label class="nm-graph__field">
+          <span>Tags ativas</span>
+          <div class="nm-graph__field-inline">
+            <label class="nm-graph__check nm-graph__check--inline">
+              <input type="checkbox" checked data-graph-target="topNAll" data-action="change->graph#updateTopNMode">
+              <span>Todas</span>
+            </label>
+            <input type="number"
+                   min="1"
+                   step="1"
+                   value="3"
+                   disabled
+                   data-graph-target="topN"
+                   data-action="input->graph#updateTopN">
+          </div>
+        </label>
+      </section>
+
       <section class="nm-graph__panel">
         <div class="nm-graph__panel-head">
           <h2>Hierarquia</h2>
@@ -99,14 +106,6 @@
           <input type="checkbox" value="null" checked data-action="change->graph#toggleRole">
           <span>Sem classificacao</span>
         </label>
-      </section>
-
-      <section class="nm-graph__panel">
-        <div class="nm-graph__panel-head">
-          <h2>Tags ativas</h2>
-          <span class="nm-graph__panel-hint">Ordem define prioridade.</span>
-        </div>
-        <div class="nm-graph__tag-list" data-graph-target="tagList"></div>
       </section>
 
       <section class="nm-graph__panel nm-graph__panel--compact">

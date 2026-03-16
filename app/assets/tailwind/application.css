@@ -220,9 +220,11 @@
   }
   .nm-graph__title {
     margin: 0;
-    font-size: clamp(2.8rem, 5vw, 5.25rem);
-    line-height: 0.94;
-    letter-spacing: -0.04em;
+    font-family: "Avenir Next Condensed", "Franklin Gothic Medium", "Arial Narrow", sans-serif;
+    font-size: clamp(1.7rem, 3vw, 2.4rem);
+    line-height: 0.96;
+    letter-spacing: 0.01em;
+    text-transform: uppercase;
     color: #f8fafc;
   }
   .nm-graph__subtitle {
@@ -320,79 +322,64 @@
   }
   .nm-graph__tag-list {
     display: grid;
-    gap: 10px;
+    gap: 2px;
+    align-content: start;
+  }
+  .nm-graph__tag-gap {
+    height: 10px;
+    border-radius: 6px;
+    transition: height 180ms ease;
   }
   .nm-graph__tag-row {
-    display: flex;
-    justify-content: space-between;
-    gap: 10px;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
     align-items: center;
-    border: 1px solid rgba(148, 163, 184, 0.12);
-    border-radius: 16px;
-    padding: 10px 12px;
-    background: rgba(15, 23, 42, 0.36);
+    min-height: 34px;
+    border: 1px solid transparent;
+    border-radius: 6px;
+    padding: 2px 5px;
+    margin: 0 0 0 2px;
+    background: transparent;
     cursor: grab;
     user-select: none;
-    transition: margin 140ms ease, transform 140ms ease, border-color 140ms ease, background 140ms ease, box-shadow 140ms ease;
+    position: relative;
+    transition: transform 180ms ease, opacity 140ms ease, border-color 140ms ease, background 140ms ease;
+  }
+  .nm-graph__tag-row:hover {
+    background: var(--theme-bg-hover);
   }
   .nm-graph__tag-row.is-highlighted {
-    border-color: rgba(125, 211, 252, 0.36);
-    background: rgba(12, 74, 110, 0.22);
+    background: color-mix(in srgb, var(--theme-accent) 14%, transparent);
   }
   .nm-graph__tag-row.is-attached {
-    border-color: rgba(34, 197, 94, 0.46);
-    box-shadow: inset 0 0 0 1px rgba(34, 197, 94, 0.2);
+    background: color-mix(in srgb, var(--theme-success) 12%, transparent);
   }
   .nm-graph__tag-row.is-dragging {
-    display: none;
-  }
-  .nm-graph__tag-row.is-drop-target {
-    border-color: rgba(251, 191, 36, 0.6);
-    background: rgba(120, 53, 15, 0.18);
-  }
-  .nm-graph__tag-row.is-drop-before {
-    margin-top: 14px;
-  }
-  .nm-graph__tag-row.is-drop-after {
-    margin-bottom: 14px;
+    opacity: 0;
+    transform: scale(0.96);
+    pointer-events: none;
   }
   .nm-graph__tag-row:focus {
     outline: none;
-    border-color: rgba(125, 211, 252, 0.72);
-    box-shadow: 0 0 0 2px rgba(14, 165, 233, 0.2);
+    border-color: var(--theme-accent);
+    background: color-mix(in srgb, var(--theme-accent) 12%, transparent);
   }
   .nm-graph__tag-chip {
-    display: inline-flex;
+    display: inline-grid;
+    grid-template-columns: 16px minmax(0, 1fr);
     align-items: center;
-    gap: 8px;
-    color: #e2e8f0;
-    font-size: 13px;
+    column-gap: 10px;
+    min-width: 0;
+    padding-left: 4px;
+    color: inherit;
+    font-size: 14px;
+    font-weight: 500;
   }
   .nm-graph__tag-dot {
     width: 10px;
     height: 10px;
     border-radius: 999px;
-  }
-  .nm-graph__tag-toggle {
-    border: 0;
-    border-radius: 999px;
-    padding: 6px 10px;
-    cursor: pointer;
-    color: #cbd5e1;
-    background: rgba(51, 65, 85, 0.8);
-    white-space: nowrap;
-    transition: background 140ms ease, color 140ms ease, opacity 140ms ease;
-  }
-  .nm-graph__tag-toggle:hover:not(.is-disabled) {
-    background: rgba(71, 85, 105, 0.92);
-  }
-  .nm-graph__tag-toggle.is-active {
-    background: rgba(22, 163, 74, 0.2);
-    color: #dcfce7;
-  }
-  .nm-graph__tag-toggle.is-disabled {
-    cursor: default;
-    opacity: 0.55;
+    box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.06);
   }
   .nm-graph__stage {
     position: relative;
@@ -896,25 +883,45 @@
     z-index: 4;
     display: grid;
     gap: 14px;
-    width: min(380px, calc(100vw - 40px));
+    width: min(264px, calc(100vw - 40px));
     max-height: calc(100vh - 48px);
-    border: 1px solid rgba(148, 163, 184, 0.16);
+    border: 1px solid var(--theme-border);
     border-radius: 26px;
     padding: 20px;
-    background: rgba(15, 23, 42, 0.74);
-    box-shadow: 0 28px 80px rgba(2, 6, 23, 0.34);
+    background: color-mix(in srgb, var(--theme-bg-secondary) 88%, transparent);
+    box-shadow: 0 28px 80px rgba(0, 0, 0, 0.34);
     backdrop-filter: blur(18px);
     overflow: auto;
+    scrollbar-width: none;
+    -ms-overflow-style: none;
   }
-  .nm-graph__floating--top-left {
+  .nm-graph__floating::-webkit-scrollbar {
+    width: 0;
+    height: 0;
+  }
+  .nm-graph__left-rail {
+    position: absolute;
+    z-index: 4;
     top: 24px;
     left: 24px;
-    max-width: 440px;
+    bottom: 24px;
+    width: min(264px, calc(100vw - 40px));
+    display: grid;
+    grid-template-rows: auto minmax(0, 1fr);
+    gap: 16px;
+  }
+  .nm-graph__floating--top-left {
+    position: relative;
+    inset: auto;
+    width: 100%;
+    max-width: none;
+    max-height: none;
+    overflow: visible;
   }
   .nm-graph__floating--left {
-    left: 24px;
-    top: 332px;
-    bottom: 24px;
+    position: relative;
+    inset: auto;
+    width: 100%;
     max-height: none;
   }
   .nm-graph__floating--right {
@@ -957,11 +964,11 @@
     cursor: pointer;
   }
   .nm-graph__ghost-link {
-    color: #e2e8f0;
-    background: rgba(51, 65, 85, 0.74);
+    color: var(--theme-text-secondary);
+    background: var(--theme-bg-tertiary);
   }
   .nm-graph__ghost-link:hover {
-    background: rgba(71, 85, 105, 0.86);
+    background: var(--theme-bg-hover);
   }
   .nm-graph__ghost-btn--danger {
     color: #fecaca;
@@ -969,7 +976,7 @@
   }
   .nm-graph__session-email {
     margin: 0;
-    color: #94a3b8;
+    color: var(--theme-text-secondary);
     font-size: 13px;
   }
   .nm-graph__panel--compact {
@@ -979,7 +986,50 @@
     min-width: 0;
     padding: 12px 14px;
     border-radius: 16px;
+    border: 1px solid var(--theme-border);
+    background: var(--theme-bg-tertiary);
+    color: var(--theme-text-secondary);
     text-align: left;
+  }
+  .nm-graph__panel {
+    border-color: var(--theme-border);
+    background:
+      linear-gradient(180deg, color-mix(in srgb, var(--theme-bg-secondary) 96%, transparent), color-mix(in srgb, var(--theme-bg-primary) 92%, transparent));
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.2);
+  }
+  .nm-graph__panel h2 {
+    color: var(--theme-text-primary);
+    font-size: 13px;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+  }
+  .nm-graph__panel-hint,
+  .nm-graph__subtitle,
+  .nm-graph__field,
+  .nm-graph__check {
+    color: var(--theme-text-secondary);
+  }
+  .nm-graph__field select,
+  .nm-graph__field input {
+    border-color: var(--theme-border);
+    background: var(--theme-bg-tertiary);
+    color: var(--theme-text-secondary);
+  }
+  .nm-graph__field input::placeholder {
+    color: var(--theme-text-faint);
+  }
+  .nm-graph__field select:focus,
+  .nm-graph__field input:focus {
+    border-color: var(--theme-accent);
+  }
+  .nm-graph__ghost-btn {
+    background: var(--theme-bg-tertiary);
+    color: var(--theme-text-secondary);
+  }
+  .nm-graph__ghost-btn:hover {
+    background: var(--theme-bg-hover);
+    color: var(--theme-text-primary);
   }
   .nm-graph-tooltip {
     display: block;
@@ -1077,15 +1127,17 @@
     .nm-auth__intro {
       max-width: none;
     }
+    .nm-graph__left-rail,
     .nm-graph__floating--top-left,
     .nm-graph__floating--left,
     .nm-graph__floating--right {
       width: min(360px, calc(100vw - 32px));
     }
+    .nm-graph__left-rail {
+      width: min(360px, calc(100vw - 32px));
+    }
     .nm-graph__floating--left {
-      top: auto;
-      bottom: 24px;
-      max-height: min(42vh, calc(100vh - 32px));
+      min-height: 0;
     }
   }
 
