@@ -12,6 +12,9 @@ Rails.application.routes.draw do
 
   resources :tags, only: [:index, :create, :destroy]
 
+  post   "note_tags", to: "note_tags#create", as: :note_tags
+  delete "note_tags", to: "note_tags#destroy"
+
   # Toggle a tag on a specific note_link (body: { note_link_id, tag_id })
   post   "link_tags", to: "link_tags#create",  as: :link_tags
   delete "link_tags", to: "link_tags#destroy"

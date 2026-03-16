@@ -27,3 +27,22 @@ export function moveTag(activeTagsOrdered, tagId, delta) {
   reordered.splice(nextIndex, 0, item)
   return reordered
 }
+
+export function moveTagRelative(activeTagsOrdered, sourceTagId, targetTagId, placement = "before") {
+  const sourceIndex = activeTagsOrdered.indexOf(sourceTagId)
+  const targetIndex = activeTagsOrdered.indexOf(targetTagId)
+  if (sourceIndex < 0 || targetIndex < 0 || sourceIndex === targetIndex) return activeTagsOrdered
+
+  const reordered = [...activeTagsOrdered]
+  const [item] = reordered.splice(sourceIndex, 1)
+  let insertionIndex
+
+  if (placement === "after") {
+    insertionIndex = sourceIndex < targetIndex ? targetIndex : targetIndex + 1
+  } else {
+    insertionIndex = sourceIndex < targetIndex ? targetIndex - 1 : targetIndex
+  }
+
+  reordered.splice(insertionIndex, 0, item)
+  return reordered
+}

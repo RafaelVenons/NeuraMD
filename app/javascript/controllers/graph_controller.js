@@ -3,7 +3,7 @@ import Sigma from "sigma"
 import { createAppState } from "graph/app_state"
 import { buildGraph } from "graph/graph_builder"
 import { buildIndexes } from "graph/graph_indexes"
-import { deriveInitialTagOrder, moveTag } from "graph/graph_tags"
+import { deriveInitialTagOrder, moveTag, moveTagRelative } from "graph/graph_tags"
 import { computeDisplayState } from "graph/graph_filters"
 import { animateNodePositions, applyLayout, assignNodePositions, captureNodePositions } from "graph/graph_layout"
 import { animateCameraToNode } from "graph/graph_focus"
@@ -379,10 +379,20 @@ export default class extends Controller {
   renderSidebar() {
     if (!this.hasTagListTarget) return
 
-    renderTagList(this.tagListTarget, this.state, this.state.indexes, (tagId, delta) => {
-      this.state.ui.activeTagsOrdered = moveTag(this.state.ui.activeTagsOrdered, tagId, delta)
-      this.renderSidebar()
-      this.applyDisplayState({ relayout: false, animateFocus: false })
+    renderTagList(this.tagListTarget, this.state, this.state.indexes, {
+      onShift: (tagId, delta) => {
+        this.applyTagOrderChange(() => {
+          this.state.ui.activeTagsOrdered = moveTag(this.state.ui.activeTagsOrdered, tagId, delta)
+        }, { focusTagId: tagId })
+      },
+      onReorder: (sourceTagId, targetTagId, placement) => {
+        this.applyTagOrderChange(() => {
+          this.state.ui.activeTagsOrdered = moveTagRelative(this.state.ui.activeTagsOrdered, sourceTagId, targetTagId, placement)
+        }, { focusTagId: sourceTagId })
+      },
+      onToggle: async (tagId) => {
+        await this.toggleFocusedNodeTag(tagId)
+      }
     })
   }
 
@@ -402,7 +412,7 @@ export default class extends Controller {
     const visibleEdgeCount = [...this.state.display.edges.values()].filter((edge) => !edge.hidden).length
 
     if (this.hasMetaTarget && !this.embeddedModeValue) {
-      this.metaTarget.textContent = `${visibleNodeCount} notas · ${visibleEdgeCount} links · WebGL ativo`
+      this.metaTarget.textContent = `${visibleNodeCount} notas · ${visibleEdgeCount} links`
     }
     this.emptyTarget.classList.toggle("hidden", visibleNodeCount > 0)
     this.state.renderer.refresh()
@@ -542,6 +552,55 @@ export default class extends Controller {
     if (this.state.renderer?.mouseCaptor) this.state.renderer.mouseCaptor.enabled = enabled
   }
 
+  applyTagOrderChange(mutator, options = {}) {
+    const beforePositions = this.captureTagRowPositions()
+    mutator()
+    this.renderSidebar()
+    this.animateTagRowReorder(beforePositions)
+    this.applyDisplayState({ relayout: false, animateFocus: false })
+    this.focusTagRow(options.focusTagId)
+  }
+
+  captureTagRowPositions() {
+    if (!this.hasTagListTarget) return new Map()
+
+    return new Map(
+      [...this.tagListTarget.querySelectorAll("[data-tag-id]")].map((row) => [
+        row.dataset.tagId,
+        row.getBoundingClientRect().top
+      ])
+    )
+  }
+
+  animateTagRowReorder(beforePositions) {
+    if (!this.hasTagListTarget || !beforePositions?.size) return
+
+    const rows = [...this.tagListTarget.querySelectorAll("[data-tag-id]")]
+    rows.forEach((row) => {
+      const previousTop = beforePositions.get(row.dataset.tagId)
+      if (previousTop == null) return
+
+      const nextTop = row.getBoundingClientRect().top
+      const deltaY = previousTop - nextTop
+      if (Math.abs(deltaY) < 1) return
+
+      row.style.transition = "none"
+      row.style.transform = `translateY(${deltaY}px)`
+
+      requestAnimationFrame(() => {
+        row.style.transition = ""
+        row.style.transform = ""
+      })
+    })
+  }
+
+  focusTagRow(tagId) {
+    if (!tagId || !this.hasTagListTarget) return
+
+    const row = this.tagListTarget.querySelector(`[data-tag-id="${CSS.escape(tagId)}"]`)
+    row?.focus()
+  }
+
   resetMouseCaptorState() {
     const captor = this.state.renderer?.mouseCaptor
     if (!captor) return
@@ -558,5 +617,47 @@ export default class extends Controller {
     captor.lastMouseX = null
     captor.lastMouseY = null
     captor.downStartTime = null
+  }
+
+  async toggleFocusedNodeTag(tagId) {
+    const nodeId = this.state.ui.focusedNodeId
+    if (!nodeId || !this.state.graph?.hasNode(nodeId)) return
+
+    const noteTags = [...(this.state.graph.getNodeAttribute(nodeId, "noteTags") || [])]
+    const isAttached = noteTags.includes(tagId)
+    const method = isAttached ? "DELETE" : "POST"
+    const csrfToken = document.querySelector('meta[name="csrf-token"]')?.content || ""
+    const query = new URLSearchParams({ note_id: nodeId, tag_id: tagId })
+
+    const response = await fetch(isAttached ? `/note_tags?${query.toString()}` : "/note_tags", {
+      method,
+      headers: {
+        "Accept": "application/json",
+        "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
+        "X-CSRF-Token": csrfToken
+      },
+      body: isAttached ? null : query.toString(),
+      credentials: "same-origin"
+    })
+
+    if (!response.ok) {
+      console.error("Failed to toggle note tag", { nodeId, tagId, method, status: response.status })
+      return
+    }
+
+    const nextTags = isAttached
+      ? noteTags.filter((currentTagId) => currentTagId !== tagId)
+      : [...noteTags, tagId]
+
+    this.state.graph.setNodeAttribute(nodeId, "noteTags", [...new Set(nextTags)])
+    this.state.indexes.tagsByNoteId.set(nodeId, [...new Set(nextTags)])
+
+    const currentNoteTags = this.state.dataset.noteTags || []
+    this.state.dataset.noteTags = isAttached
+      ? currentNoteTags.filter((row) => !(row.note_id === nodeId && row.tag_id === tagId))
+      : [...currentNoteTags, { note_id: nodeId, tag_id: tagId }]
+
+    this.renderSidebar()
+    this.applyDisplayState({ relayout: false, animateFocus: false })
   }
 }
