@@ -11,6 +11,8 @@ export function createAppState() {
     layout: {
       basePositions: null,
       animationToken: 0,
+      cameraAnimationToken: 0,
+      cameraAnimationTimeoutId: null,
       manualPositions: new Map()
     },
     ui: {

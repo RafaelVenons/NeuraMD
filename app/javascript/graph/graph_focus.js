@@ -17,6 +17,9 @@ export function animateCameraToNode(renderer, state) {
   if (!targetState) return
 
   const camera = renderer.getCamera()
+  const animationToken = (state.layout.cameraAnimationToken || 0) + 1
+  state.layout.cameraAnimationToken = animationToken
+
   camera.animate(
     targetState,
     {
@@ -30,15 +33,35 @@ export function animateCameraToNode(renderer, state) {
   )
 
   // Recenter near the end so the camera follows the final node positions too.
-  setTimeout(() => {
+  if (state.layout.cameraAnimationTimeoutId) {
+    clearTimeout(state.layout.cameraAnimationTimeoutId)
+  }
+
+  state.layout.cameraAnimationTimeoutId = setTimeout(() => {
+    if (state.layout.cameraAnimationToken !== animationToken) return
+
     const settledState = resolveCameraTargetState(renderer, state)
     if (!settledState) return
 
     camera.animate(settledState, {
-      duration: 240,
-      easing: (t) => t
-    })
+        duration: 240,
+        easing: (t) => t
+      })
   }, 620)
+}
+
+export function cancelCameraAnimation(renderer, state) {
+  if (!renderer || !state?.layout) return
+
+  state.layout.cameraAnimationToken = (state.layout.cameraAnimationToken || 0) + 1
+  if (state.layout.cameraAnimationTimeoutId) {
+    clearTimeout(state.layout.cameraAnimationTimeoutId)
+    state.layout.cameraAnimationTimeoutId = null
+  }
+
+  const camera = renderer.getCamera()
+  if (!camera?.getState || !camera?.setState) return
+  camera.setState(camera.getState())
 }
 
 function resolveCameraTargetState(renderer, state) {

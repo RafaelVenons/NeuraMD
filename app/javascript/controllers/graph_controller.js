@@ -6,13 +6,18 @@ import { buildIndexes } from "graph/graph_indexes"
 import { deriveInitialTagOrder, moveTag, moveTagRelative } from "graph/graph_tags"
 import { computeDisplayState } from "graph/graph_filters"
 import { animateNodePositions, applyLayout, assignNodePositions, captureNodePositions } from "graph/graph_layout"
-import { animateCameraToNode } from "graph/graph_focus"
+import { animateCameraToNode, cancelCameraAnimation } from "graph/graph_focus"
 import { renderTooltip } from "graph/graph_tooltip"
 import { renderTagList } from "graph/graph_sidebar"
 import { createEdgeProgramClasses } from "graph/graph_custom_edge_program"
 import { visitWithPageTransition } from "lib/page_transition"
 
 export default class extends Controller {
+  static NODE_HOLD_MS = 160
+  static NODE_FOCUS_DELAY_MS = 220
+  static NODE_CLICK_MOVE_TOLERANCE = 5
+  static NODE_DRAG_MOVE_TOLERANCE = 4
+
   static targets = [
     "meta",
     "graphHost",
@@ -37,6 +42,8 @@ export default class extends Controller {
     this.state = createAppState()
     window.__graphDebug = this
     this.dragState = null
+    this.nodePressState = null
+    this.pendingFocusState = null
     this.stagePanState = null
     this._boundResize = () => this.positionTooltip()
     this._resizeObserver = new ResizeObserver(() => {
@@ -119,6 +126,9 @@ export default class extends Controller {
 
   destroyRenderer() {
     this.unbindMouseLayerEvents()
+    this.clearNodePressState()
+    this.clearPendingFocusState()
+    this.cancelGraphMotion()
     this.state.renderer?.kill()
     this.state.renderer = null
     this.graphHostTarget.innerHTML = ""
@@ -200,6 +210,8 @@ export default class extends Controller {
 
     const nodeId = this.nodeAtPointer(event)
     if (!nodeId) {
+      this.clearNodePressState()
+      this.clearPendingFocusState()
       if (this.state.ui.focusedNodeId) {
         this.stagePanState = {
           pointerStart: this.pointerFromMouseEvent(event),
@@ -211,36 +223,29 @@ export default class extends Controller {
 
     const pointer = this.pointerFromMouseEvent(event)
     const node = this.state.graph.getNodeAttributes(nodeId)
-    const graphPoint = this.state.renderer.viewportToGraph(pointer)
-
-    this.dragState = {
+    this.clearPendingFocusState()
+    this.cancelGraphMotion()
+    this.nodePressState = {
       nodeId,
+      downAt: Date.now(),
       pointerStart: pointer,
-      offsetX: node.x - graphPoint.x,
-      offsetY: node.y - graphPoint.y,
-      moved: false
+      latestPointer: pointer,
+      startPosition: { x: node.x, y: node.y },
+      holdTimer: window.setTimeout(() => {
+        this.activateNodeDrag()
+      }, this.constructor.NODE_HOLD_MS)
     }
 
-    this.state.ui.draggingNodeId = nodeId
-    this.state.ui.draggedNodeMoved = false
     this.state.ui.hoveredNodeId = nodeId
-    this.setCameraDraggingEnabled(false)
-    this.resetMouseCaptorState()
     event.preventDefault()
     event.stopPropagation()
   }
 
   handleMouseLayerClick(event) {
     const nodeId = this.nodeAtPointer(event)
+    if (nodeId) return
 
-    if (nodeId) {
-      this.state.ui.hoveredNodeId = nodeId
-      this.state.ui.focusedNodeId = nodeId
-      this.state.ui.pinnedTooltipNodeId = nodeId
-      this.applyDisplayState({ relayout: true, animateFocus: true })
-      return
-    }
-
+    this.clearPendingFocusState()
     this.state.ui.hoveredNodeId = null
     this.state.ui.focusedNodeId = null
     this.state.ui.pinnedTooltipNodeId = null
@@ -251,6 +256,7 @@ export default class extends Controller {
     const nodeId = this.nodeAtPointer(event)
     if (!nodeId) return
 
+    this.clearPendingFocusState()
     const slug = this.state.graph.getNodeAttribute(nodeId, "slug")
     this.visit(`/notes/${slug}`, { kind: "graph-to-note" })
   }
@@ -460,6 +466,10 @@ export default class extends Controller {
       return
     }
 
+    if (this.nodePressState) {
+      this.nodePressState.latestPointer = this.pointerFromMouseEvent(event)
+    }
+
     if (!this.stagePanState || this.stagePanState.released) return
 
     const pointer = this.pointerFromMouseEvent(event)
@@ -477,24 +487,45 @@ export default class extends Controller {
   }
 
   handleWindowMouseUp(event) {
-    if (!this.dragState?.nodeId) {
-      this.stagePanState = null
+    if (this.dragState?.nodeId) {
+      const { nodeId } = this.dragState
+
+      this.dragState = null
+      this.state.ui.draggingNodeId = null
+      this.state.ui.draggedNodeMoved = false
+      this.resetMouseCaptorState()
+      this.setCameraDraggingEnabled(true)
+      this.clearNodePressState()
+      event?.preventDefault?.()
+
+      this.state.ui.hoveredNodeId = nodeId
+      this.applyDisplayState({ relayout: false, animateFocus: false })
       return
     }
 
-    const { nodeId, moved } = this.dragState
+    if (this.nodePressState?.nodeId) {
+      const nodePressState = this.nodePressState
+      const pointer = this.pointerFromMouseEvent(event)
+      const movedDistance = pointer
+        ? Math.hypot(
+          pointer.x - nodePressState.pointerStart.x,
+          pointer.y - nodePressState.pointerStart.y
+        )
+        : 0
+      const isQuickClick = (Date.now() - nodePressState.downAt) < this.constructor.NODE_HOLD_MS
+      const nodeId = nodePressState.nodeId
 
-    this.dragState = null
-    this.state.ui.draggingNodeId = null
-    this.state.ui.draggedNodeMoved = false
-    this.resetMouseCaptorState()
-    this.setCameraDraggingEnabled(true)
-    event?.preventDefault?.()
+      this.clearNodePressState()
+      event?.preventDefault?.()
 
-    if (!moved) return
+      if (isQuickClick && movedDistance <= this.constructor.NODE_CLICK_MOVE_TOLERANCE) {
+        this.scheduleFocusMode(nodeId)
+      }
+    }
 
-    this.state.ui.hoveredNodeId = nodeId
-    this.applyDisplayState({ relayout: false, animateFocus: false })
+    if (!this.dragState?.nodeId) {
+      this.stagePanState = null
+    }
   }
 
   releaseFocusForStagePan() {
@@ -517,7 +548,7 @@ export default class extends Controller {
       pointer.y - this.dragState.pointerStart.y
     )
 
-    if (movedDistance >= 4) {
+    if (movedDistance >= this.constructor.NODE_DRAG_MOVE_TOLERANCE) {
       this.dragState.moved = true
       this.state.ui.draggedNodeMoved = true
     }
@@ -531,9 +562,123 @@ export default class extends Controller {
     if (this.state.layout.basePositions?.has(this.dragState.nodeId)) {
       this.state.layout.basePositions.set(this.dragState.nodeId, { x, y })
     }
+    this.applyDragFollowerPositions(x, y)
 
     this.state.renderer.refresh()
     this.positionTooltip()
+  }
+
+  activateNodeDrag() {
+    if (!this.nodePressState?.nodeId || !this.state.renderer || !this.state.graph?.hasNode(this.nodePressState.nodeId)) return
+
+    const { nodeId, latestPointer, startPosition } = this.nodePressState
+    const pointer = latestPointer || this.nodePressState.pointerStart
+    const graphPoint = this.state.renderer.viewportToGraph(pointer)
+
+    this.cancelGraphMotion()
+
+    this.dragState = {
+      nodeId,
+      pointerStart: this.nodePressState.pointerStart,
+      offsetX: startPosition.x - graphPoint.x,
+      offsetY: startPosition.y - graphPoint.y,
+      moved: false,
+      startPosition,
+      followerPositions: this.captureDragFollowerPositions(nodeId)
+    }
+
+    this.state.ui.draggingNodeId = nodeId
+    this.state.ui.draggedNodeMoved = false
+    this.setCameraDraggingEnabled(false)
+    this.resetMouseCaptorState()
+  }
+
+  captureDragFollowerPositions(nodeId) {
+    const followerPositions = new Map()
+
+    this.state.graph.forEachNode((candidateNodeId, attributes) => {
+      if (candidateNodeId === nodeId) return
+
+      const depth = this.resolveDragFollowerDepth(nodeId, candidateNodeId)
+      if (depth > 2) return
+
+      followerPositions.set(candidateNodeId, {
+        x: attributes.x,
+        y: attributes.y,
+        depth
+      })
+    })
+
+    return followerPositions
+  }
+
+  resolveDragFollowerDepth(anchorNodeId, candidateNodeId) {
+    const cache = this.state.indexes?.neighborDepthCache?.get(anchorNodeId)
+    if (cache?.[1]?.has(candidateNodeId)) return 1
+    if (cache?.[2]?.has(candidateNodeId)) return 2
+    return 999
+  }
+
+  applyDragFollowerPositions(nextX, nextY) {
+    if (!this.dragState?.followerPositions?.size) return
+
+    const deltaX = nextX - this.dragState.startPosition.x
+    const deltaY = nextY - this.dragState.startPosition.y
+
+    this.dragState.followerPositions.forEach((entry, followerNodeId) => {
+      const influence = entry.depth === 1 ? 0.34 : 0.16
+      const x = entry.x + (deltaX * influence)
+      const y = entry.y + (deltaY * influence)
+
+      this.state.graph.mergeNodeAttributes(followerNodeId, { x, y })
+      this.state.layout.manualPositions.set(followerNodeId, { x, y })
+      if (this.state.layout.basePositions?.has(followerNodeId)) {
+        this.state.layout.basePositions.set(followerNodeId, { x, y })
+      }
+    })
+  }
+
+  clearNodePressState() {
+    if (this.nodePressState?.holdTimer) {
+      window.clearTimeout(this.nodePressState.holdTimer)
+    }
+    this.nodePressState = null
+  }
+
+  clearPendingFocusState() {
+    if (this.pendingFocusState?.timeoutId) {
+      window.clearTimeout(this.pendingFocusState.timeoutId)
+    }
+    this.pendingFocusState = null
+  }
+
+  enterFocusMode(nodeId) {
+    if (!nodeId) return
+
+    this.clearPendingFocusState()
+    this.state.ui.hoveredNodeId = nodeId
+    this.state.ui.focusedNodeId = nodeId
+    this.state.ui.pinnedTooltipNodeId = nodeId
+    this.state.ui.focusDepth = 2
+    if (this.hasFocusDepthTarget) this.focusDepthTarget.value = "2"
+    this.applyDisplayState({ relayout: true, animateFocus: true })
+  }
+
+  scheduleFocusMode(nodeId) {
+    this.clearPendingFocusState()
+    this.pendingFocusState = {
+      nodeId,
+      timeoutId: window.setTimeout(() => {
+        const pendingNodeId = this.pendingFocusState?.nodeId
+        this.pendingFocusState = null
+        this.enterFocusMode(pendingNodeId)
+      }, this.constructor.NODE_FOCUS_DELAY_MS)
+    }
+  }
+
+  cancelGraphMotion() {
+    this.state.layout.animationToken += 1
+    cancelCameraAnimation(this.state.renderer, this.state)
   }
 
   pointerFromMouseEvent(event) {

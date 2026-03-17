@@ -80,7 +80,7 @@ function arrangeFocusDepthRings(graph, state) {
 
   const baseDistance = resolveBaseHierarchyDistance(graph, focus, anchoredNodeIds)
   const intensity = resolveFocusLayoutIntensity(state)
-  const ringSpacing = interpolate(baseDistance * 0.56, baseDistance * 0.72, intensity)
+  const ringSpacing = interpolate(baseDistance * 0.42, baseDistance * 0.56, intensity)
   const depthRadii = new Map()
 
   for (let depth = 1; depth <= maxDepth; depth += 1) {
@@ -386,9 +386,9 @@ function applyManualPositions(graph, state) {
 }
 
 function resolveFocusLayoutIntensity(state) {
-  if (state.ui.focusDepth === 1) return 0.78
-  if (state.ui.focusDepth === 2) return 0.68
-  return 0.44
+  if (state.ui.focusDepth === 1) return 0.9
+  if (state.ui.focusDepth === 2) return 0.82
+  return 0.58
 }
 
 function interpolate(min, max, t) {
