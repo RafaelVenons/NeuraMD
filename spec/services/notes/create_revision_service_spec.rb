@@ -105,6 +105,5 @@ RSpec.describe Notes::CreateRevisionService do
         expect(result[:revision].author).to be_nil
       end
     end
-
   end
 end
