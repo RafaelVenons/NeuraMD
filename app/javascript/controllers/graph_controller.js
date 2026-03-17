@@ -14,9 +14,9 @@ import { visitWithPageTransition } from "lib/page_transition"
 
 export default class extends Controller {
   static NODE_HOLD_MS = 160
-  static NODE_FOCUS_DELAY_MS = 220
   static NODE_CLICK_MOVE_TOLERANCE = 5
   static NODE_DRAG_MOVE_TOLERANCE = 4
+  static NODE_DOUBLE_CLICK_GRACE_MS = 360
 
   static targets = [
     "meta",
@@ -43,7 +43,7 @@ export default class extends Controller {
     window.__graphDebug = this
     this.dragState = null
     this.nodePressState = null
-    this.pendingFocusState = null
+    this.recentClickState = null
     this.stagePanState = null
     this._boundResize = () => this.positionTooltip()
     this._resizeObserver = new ResizeObserver(() => {
@@ -127,7 +127,6 @@ export default class extends Controller {
   destroyRenderer() {
     this.unbindMouseLayerEvents()
     this.clearNodePressState()
-    this.clearPendingFocusState()
     this.cancelGraphMotion()
     this.state.renderer?.kill()
     this.state.renderer = null
@@ -211,7 +210,6 @@ export default class extends Controller {
     const nodeId = this.nodeAtPointer(event)
     if (!nodeId) {
       this.clearNodePressState()
-      this.clearPendingFocusState()
       if (this.state.ui.focusedNodeId) {
         this.stagePanState = {
           pointerStart: this.pointerFromMouseEvent(event),
@@ -223,7 +221,6 @@ export default class extends Controller {
 
     const pointer = this.pointerFromMouseEvent(event)
     const node = this.state.graph.getNodeAttributes(nodeId)
-    this.clearPendingFocusState()
     this.cancelGraphMotion()
     this.nodePressState = {
       nodeId,
@@ -245,7 +242,6 @@ export default class extends Controller {
     const nodeId = this.nodeAtPointer(event)
     if (nodeId) return
 
-    this.clearPendingFocusState()
     this.state.ui.hoveredNodeId = null
     this.state.ui.focusedNodeId = null
     this.state.ui.pinnedTooltipNodeId = null
@@ -253,10 +249,9 @@ export default class extends Controller {
   }
 
   handleMouseLayerDoubleClick(event) {
-    const nodeId = this.nodeAtPointer(event)
+    const nodeId = this.resolveDoubleClickNodeId(event)
     if (!nodeId) return
 
-    this.clearPendingFocusState()
     const slug = this.state.graph.getNodeAttribute(nodeId, "slug")
     this.visit(`/notes/${slug}`, { kind: "graph-to-note" })
   }
@@ -519,7 +514,8 @@ export default class extends Controller {
       event?.preventDefault?.()
 
       if (isQuickClick && movedDistance <= this.constructor.NODE_CLICK_MOVE_TOLERANCE) {
-        this.scheduleFocusMode(nodeId)
+        this.recordRecentClick(nodeId, pointer || nodePressState.pointerStart)
+        this.enterFocusMode(nodeId)
       }
     }
 
@@ -645,17 +641,9 @@ export default class extends Controller {
     this.nodePressState = null
   }
 
-  clearPendingFocusState() {
-    if (this.pendingFocusState?.timeoutId) {
-      window.clearTimeout(this.pendingFocusState.timeoutId)
-    }
-    this.pendingFocusState = null
-  }
-
   enterFocusMode(nodeId) {
     if (!nodeId) return
 
-    this.clearPendingFocusState()
     this.state.ui.hoveredNodeId = nodeId
     this.state.ui.focusedNodeId = nodeId
     this.state.ui.pinnedTooltipNodeId = nodeId
@@ -664,16 +652,31 @@ export default class extends Controller {
     this.applyDisplayState({ relayout: true, animateFocus: true })
   }
 
-  scheduleFocusMode(nodeId) {
-    this.clearPendingFocusState()
-    this.pendingFocusState = {
+  recordRecentClick(nodeId, pointer) {
+    this.recentClickState = {
       nodeId,
-      timeoutId: window.setTimeout(() => {
-        const pendingNodeId = this.pendingFocusState?.nodeId
-        this.pendingFocusState = null
-        this.enterFocusMode(pendingNodeId)
-      }, this.constructor.NODE_FOCUS_DELAY_MS)
+      at: Date.now(),
+      pointer
     }
+  }
+
+  resolveDoubleClickNodeId(event) {
+    const directNodeId = this.nodeAtPointer(event)
+    if (directNodeId) return directNodeId
+
+    const recentClickState = this.recentClickState
+    if (!recentClickState) return null
+    if ((Date.now() - recentClickState.at) > this.constructor.NODE_DOUBLE_CLICK_GRACE_MS) return null
+
+    const pointer = this.pointerFromMouseEvent(event)
+    if (!pointer || !recentClickState.pointer) return recentClickState.nodeId
+
+    const distance = Math.hypot(
+      pointer.x - recentClickState.pointer.x,
+      pointer.y - recentClickState.pointer.y
+    )
+
+    return distance <= 56 ? recentClickState.nodeId : null
   }
 
   cancelGraphMotion() {
