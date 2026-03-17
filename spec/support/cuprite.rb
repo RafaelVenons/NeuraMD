@@ -9,7 +9,8 @@ Capybara.register_driver(:cuprite) do |app|
     window_size: [1400, 900],
     process_timeout: 30,
     timeout: 10,
-    js_errors: true    # raises on uncaught JS errors
+    js_errors: true,   # raises on uncaught JS errors
+    pending_connection_errors: false
   })
 end
 

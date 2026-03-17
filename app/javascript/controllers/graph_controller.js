@@ -34,7 +34,7 @@ export default class extends Controller {
 
   static values = {
     dataUrl: String,
-    initialFocusedNodeId: Number,
+    initialFocusedNodeId: String,
     embeddedMode: Boolean
   }
 
@@ -86,12 +86,18 @@ export default class extends Controller {
       this.state.ui.activeTagsOrdered = deriveInitialTagOrder(payload)
       if (this.hasInitialFocusedNodeIdValue && graph.hasNode(this.initialFocusedNodeIdValue)) {
         this.state.ui.focusedNodeId = this.initialFocusedNodeIdValue
+        this.state.ui.pinnedTooltipNodeId = this.embeddedModeValue ? null : this.initialFocusedNodeIdValue
+        this.state.ui.focusDepth = 2
+        if (this.hasFocusDepthTarget) this.focusDepthTarget.value = "2"
       }
 
       applyLayout(graph, this.state, { rebuild: true })
       this.mountRenderer()
       this.renderSidebar()
-      this.applyDisplayState({ relayout: false, animateFocus: this.hasInitialFocusedNodeIdValue })
+      this.applyDisplayState({
+        relayout: this.hasInitialFocusedNodeIdValue,
+        animateFocus: this.hasInitialFocusedNodeIdValue
+      })
     } catch (error) {
       this.errorTarget.textContent = error.message
       this.errorTarget.classList.remove("hidden")
@@ -423,6 +429,11 @@ export default class extends Controller {
   }
 
   positionTooltip() {
+    if (this.embeddedModeValue) {
+      this.tooltipLayerTarget.innerHTML = ""
+      return
+    }
+
     const nodeId = this.state.ui.pinnedTooltipNodeId || this.state.ui.hoveredNodeId
     if (!nodeId || !this.state.renderer || !this.state.graph.hasNode(nodeId)) {
       this.tooltipLayerTarget.innerHTML = ""
@@ -515,6 +526,11 @@ export default class extends Controller {
 
       if (isQuickClick && movedDistance <= this.constructor.NODE_CLICK_MOVE_TOLERANCE) {
         this.recordRecentClick(nodeId, pointer || nodePressState.pointerStart)
+        if (this.embeddedModeValue && nodeId !== this.initialFocusedNodeIdValue) {
+          const slug = this.state.graph.getNodeAttribute(nodeId, "slug")
+          this.visit(`/notes/${slug}`, { kind: "graph-to-note" })
+          return
+        }
         this.enterFocusMode(nodeId)
       }
     }

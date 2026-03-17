@@ -207,4 +207,80 @@ RSpec.describe "Graph browser", type: :system do
     expect((drag_result["after"]["y"] - drag_result["before"]["y"]).abs).to be > 0.005
     expect(drag_result["manual"]).not_to be_nil
   end
+
+  it "focuses the current note in the embedded graph and navigates on simple click to another note" do
+    current_note = create(:note, title: "Atual")
+    neighbor_note = create(:note, title: "Vizinha")
+    distant_note = create(:note, title: "Distante")
+
+    [current_note, neighbor_note, distant_note].each do |note|
+      revision = create(:note_revision, note:, content_markdown: "Resumo de #{note.title}")
+      note.update_columns(head_revision_id: revision.id)
+    end
+
+    create(:note_link, src_note: current_note, dst_note: neighbor_note, created_in_revision: current_note.head_revision, hier_role: "target_is_child")
+    create(:note_link, src_note: neighbor_note, dst_note: distant_note, created_in_revision: neighbor_note.head_revision, hier_role: "same_level")
+
+    visit note_path(current_note.slug)
+
+    expect(page).to have_css(".note-graph-embed[data-controller='graph']", wait: 10)
+    expect(page).to have_css(".note-graph-embed .sigma-mouse", wait: 10)
+
+    embedded_state = page.evaluate_script(<<~JS)
+      (() => {
+        const controller = window.__graphDebug
+        return {
+          focusedNodeId: controller.state.ui.focusedNodeId,
+          pinnedTooltipNodeId: controller.state.ui.pinnedTooltipNodeId,
+          focusDepth: controller.state.ui.focusDepth
+        }
+      })()
+    JS
+
+    expect(embedded_state).to include(
+      "focusedNodeId" => current_note.id,
+      "pinnedTooltipNodeId" => nil,
+      "focusDepth" => 2
+    )
+    expect(page).not_to have_css(".nm-graph-tooltip")
+
+    page.execute_script(<<~JS, neighbor_note.id)
+      const nodeId = arguments[0]
+      const controller = window.__graphDebug
+      const renderer = controller.state.renderer
+      const node = renderer.getNodeDisplayData(nodeId)
+      const point = renderer.graphToViewport({ x: node.x, y: node.y })
+      const target = document.querySelector(".note-graph-embed .sigma-mouse")
+      const rect = target.getBoundingClientRect()
+      const options = {
+        bubbles: true,
+        clientX: rect.left + point.x,
+        clientY: rect.top + point.y
+      }
+
+      target.dispatchEvent(new MouseEvent("mousedown", options))
+      window.dispatchEvent(new MouseEvent("mouseup", options))
+    JS
+
+    expect(page).to have_current_path(note_path(neighbor_note.slug), wait: 10)
+    expect(page).to have_css(".note-graph-embed[data-controller='graph']", wait: 10)
+
+    next_embedded_state = page.evaluate_script(<<~JS)
+      (() => {
+        const controller = window.__graphDebug
+        return {
+          focusedNodeId: controller.state.ui.focusedNodeId,
+          pinnedTooltipNodeId: controller.state.ui.pinnedTooltipNodeId,
+          focusDepth: controller.state.ui.focusDepth
+        }
+      })()
+    JS
+
+    expect(next_embedded_state).to include(
+      "focusedNodeId" => neighbor_note.id,
+      "pinnedTooltipNodeId" => nil,
+      "focusDepth" => 2
+    )
+    expect(page).not_to have_css(".nm-graph-tooltip")
+  end
 end
