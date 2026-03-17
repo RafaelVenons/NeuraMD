@@ -10,7 +10,7 @@ RSpec.describe "Graphs", type: :request do
       get graph_path
 
       expect(response).to have_http_status(:ok)
-      expect(response.body).to include("Mapa estrutural")
+      expect(response.body).to include("NeuraMD")
       expect(response.body).to include(api_graph_path)
       expect(response.body).to include("Nova nota")
     end
@@ -39,7 +39,20 @@ RSpec.describe "Graphs", type: :request do
       payload = response.parsed_body
 
       expect(payload.keys).to contain_exactly("notes", "links", "tags", "noteTags", "linkTags", "meta")
-      expect(payload["notes"].first).to include("id", "slug", "title", "excerpt", "updated_at", "created_at")
+      expect(payload["notes"].first).to include(
+        "id",
+        "slug",
+        "title",
+        "excerpt",
+        "updated_at",
+        "created_at",
+        "incoming_link_count",
+        "outgoing_link_count",
+        "has_links",
+        "promise_titles",
+        "promise_count",
+        "has_promises"
+      )
       expect(payload["links"].first).to include(
         "id" => link.id,
         "src_note_id" => tagged_note.id,
@@ -55,6 +68,39 @@ RSpec.describe "Graphs", type: :request do
         "tag_count" => 2
       )
       expect(payload["notes"].find { |note| note["id"] == tagged_note.id }["excerpt"]).to include("Resumo de cardiologia")
+    end
+
+    it "includes metadata for notes without links and unresolved promises" do
+      note_with_promise = create(:note, title: "Planejamento")
+      note_with_promise_revision = create(:note_revision, note: note_with_promise, content_markdown: "Criar [[Nota futura]]")
+      note_with_promise.update_columns(head_revision_id: note_with_promise_revision.id)
+
+      isolated_note = create(:note, title: "Isolada")
+      isolated_revision = create(:note_revision, note: isolated_note, content_markdown: "Sem ligacoes")
+      isolated_note.update_columns(head_revision_id: isolated_revision.id)
+
+      get api_graph_path, headers: { "ACCEPT" => "application/json" }
+
+      expect(response).to have_http_status(:ok)
+      payload = response.parsed_body
+
+      promised = payload["notes"].find { |note| note["id"] == note_with_promise.id }
+      isolated = payload["notes"].find { |note| note["id"] == isolated_note.id }
+
+      expect(promised).to include(
+        "has_links" => false,
+        "has_promises" => true,
+        "promise_count" => 1,
+        "promise_titles" => ["Nota futura"],
+        "incoming_link_count" => 0,
+        "outgoing_link_count" => 0
+      )
+      expect(isolated).to include(
+        "has_links" => false,
+        "has_promises" => false,
+        "promise_count" => 0,
+        "promise_titles" => []
+      )
     end
 
     it "omits links pointing to notes outside the authorized active scope" do

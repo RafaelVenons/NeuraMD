@@ -166,9 +166,130 @@ export function renderTagList(container, state, indexes, callbacks) {
   })
 }
 
+export function renderNoteCollections(targets, state, callbacks = {}) {
+  renderLinklessList(targets.linklessList, state, callbacks)
+  renderPromiseList(targets.promiseList, state, callbacks)
+}
+
+function renderLinklessList(container, state, callbacks) {
+  if (!container) return
+
+  const notes = collectVisibleNotes(state)
+    .filter((note) => !note.hasLinks)
+    .sort((a, b) => compareDatesDesc(a.updatedAt, b.updatedAt) || a.title.localeCompare(b.title, "pt-BR"))
+
+  renderNoteList(container, notes, {
+    emptyText: "Nenhuma nota sem links.",
+    onSelectNote: callbacks.onSelectNote
+  })
+}
+
+function renderPromiseList(container, state, callbacks) {
+  if (!container) return
+
+  const notes = collectVisibleNotes(state)
+    .filter((note) => note.hasPromises)
+    .flatMap((note) => note.promiseTitles.map((promiseTitle) => ({
+      id: note.id,
+      title: promiseTitle,
+      sourceTitle: note.title,
+      updatedAt: note.updatedAt
+    })))
+    .sort((a, b) => compareDatesDesc(a.updatedAt, b.updatedAt) || a.title.localeCompare(b.title, "pt-BR"))
+
+  container.innerHTML = notes.length
+    ? notes.map((note) => `
+      <button type="button" class="nm-graph__note-row" data-promise-title="${escapeHtmlAttribute(note.title)}">
+        <span class="nm-graph__note-title">${escapeHtml(note.title)}</span>
+        <span class="nm-graph__note-meta">${escapeHtml(note.sourceTitle)} · ${escapeHtml(formatDate(note.updatedAt))}</span>
+      </button>
+    `).join("")
+    : `<p class="nm-graph__list-empty">Nenhuma sugestao pendente.</p>`
+
+  bindPromiseCreation(container, callbacks.onCreatePromise)
+}
+
+function renderNoteList(container, notes, options) {
+  container.innerHTML = notes.length
+    ? notes.map((note) => `
+      <button type="button" class="nm-graph__note-row" data-note-id="${note.id}">
+        <span class="nm-graph__note-title">${escapeHtml(note.title)}</span>
+        <span class="nm-graph__note-meta">${escapeHtml(formatDate(note.updatedAt))}</span>
+      </button>
+    `).join("")
+    : `<p class="nm-graph__list-empty">${options.emptyText}</p>`
+
+  bindNoteSelection(container, options.onSelectNote)
+}
+
+function bindNoteSelection(container, onSelectNote) {
+  if (!onSelectNote) return
+
+  container.querySelectorAll("[data-note-id]").forEach((row) => {
+    row.addEventListener("click", () => {
+      onSelectNote(row.dataset.noteId)
+    })
+  })
+}
+
+function bindPromiseCreation(container, onCreatePromise) {
+  if (!onCreatePromise) return
+
+  container.querySelectorAll("[data-promise-title]").forEach((row) => {
+    row.addEventListener("click", () => {
+      onCreatePromise(row.dataset.promiseTitle)
+    })
+  })
+}
+
+function collectVisibleNotes(state) {
+  const notes = []
+
+  state.graph.forEachNode((nodeId, attributes) => {
+    const display = state.display.nodes.get(nodeId)
+    if (display?.hidden) return
+
+    notes.push({
+      id: nodeId,
+      title: attributes.title || attributes.label || nodeId,
+      updatedAt: attributes.updatedAt || attributes.createdAt || null,
+      hasLinks: attributes.hasLinks === true,
+      hasPromises: attributes.hasPromises === true,
+      promiseCount: attributes.promiseCount || 0,
+      promiseTitles: attributes.promiseTitles || []
+    })
+  })
+
+  return notes
+}
+
 function escapeHtml(value) {
   return (value || "")
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;")
+}
+
+function escapeHtmlAttribute(value) {
+  return escapeHtml(value).replace(/"/g, "&quot;")
+}
+
+function formatDate(value) {
+  if (!value) return ""
+
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return ""
+
+  return new Intl.DateTimeFormat("pt-BR", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric"
+  }).format(date)
+}
+
+function compareDatesDesc(left, right) {
+  const leftTime = left ? new Date(left).getTime() : 0
+  const rightTime = right ? new Date(right).getTime() : 0
+
+  return rightTime - leftTime
 }

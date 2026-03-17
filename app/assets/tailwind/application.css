@@ -266,6 +266,7 @@
     padding: 18px;
     display: grid;
     gap: 14px;
+    overflow: visible;
   }
   .nm-graph__panel-head {
     display: flex;
@@ -322,7 +323,7 @@
   }
   .nm-graph__tag-list {
     display: grid;
-    gap: 2px;
+    gap: 1px;
     align-content: start;
   }
   .nm-graph__tag-gap {
@@ -337,8 +338,8 @@
     min-height: 34px;
     border: 1px solid transparent;
     border-radius: 6px;
-    padding: 2px 5px;
-    margin: 0 0 0 2px;
+    padding: 2px 4px;
+    margin: 0;
     background: transparent;
     cursor: grab;
     user-select: none;
@@ -366,20 +367,128 @@
   }
   .nm-graph__tag-chip {
     display: inline-grid;
-    grid-template-columns: 16px minmax(0, 1fr);
+    grid-template-columns: 18px minmax(0, 1fr);
     align-items: center;
-    column-gap: 10px;
+    column-gap: 8px;
     min-width: 0;
-    padding-left: 4px;
+    padding-left: 2px;
     color: inherit;
     font-size: 14px;
     font-weight: 500;
   }
   .nm-graph__tag-dot {
-    width: 10px;
-    height: 10px;
+    width: 12px;
+    height: 12px;
     border-radius: 999px;
     box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.06);
+  }
+  .nm-graph__stack {
+    display: grid;
+    gap: 12px;
+  }
+  .nm-graph__dropdown {
+    position: relative;
+  }
+  .nm-graph__dropdown-button {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    list-style: none;
+    cursor: pointer;
+    padding: 8px 10px;
+    border: 1px solid var(--theme-border);
+    border-radius: 10px;
+    background: color-mix(in srgb, var(--theme-bg-tertiary) 86%, transparent);
+    color: var(--theme-text-primary);
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+  }
+  .nm-graph__dropdown-button::-webkit-details-marker {
+    display: none;
+  }
+  .nm-graph__dropdown-button:hover {
+    background: var(--theme-bg-hover);
+  }
+  .nm-graph__dropdown-caret {
+    color: var(--theme-text-faint);
+    font-size: 14px;
+    line-height: 1;
+    transition: transform 140ms ease;
+  }
+  .nm-graph__dropdown[open] .nm-graph__dropdown-caret {
+    transform: rotate(45deg);
+  }
+  .nm-graph__dropdown-body {
+    position: absolute;
+    top: calc(100% + 8px);
+    left: 0;
+    right: 0;
+    z-index: 8;
+    display: grid;
+    gap: 8px;
+    padding: 10px;
+    border: 1px solid var(--theme-border);
+    border-radius: 12px;
+    background: color-mix(in srgb, var(--theme-bg-secondary) 96%, transparent);
+    box-shadow: 0 18px 40px rgba(0, 0, 0, 0.24);
+    backdrop-filter: blur(14px);
+  }
+  .nm-graph__note-list {
+    display: grid;
+    gap: 4px;
+  }
+  .nm-graph__note-row {
+    display: grid;
+    gap: 4px;
+    width: 100%;
+    padding: 8px 10px;
+    border: 1px solid transparent;
+    border-radius: 8px;
+    background: transparent;
+    text-align: left;
+    cursor: pointer;
+    transition: background 120ms ease, border-color 120ms ease;
+  }
+  .nm-graph__note-row:hover,
+  .nm-graph__note-row:focus {
+    background: var(--theme-bg-hover);
+    border-color: var(--theme-border);
+    outline: none;
+  }
+  .nm-graph__note-title {
+    color: var(--theme-text-primary);
+    font-size: 13px;
+    line-height: 1.35;
+  }
+  .nm-graph__note-meta {
+    color: var(--theme-text-faint);
+    font-size: 11px;
+    line-height: 1.2;
+  }
+  .nm-graph__promise-inline {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+  }
+  .nm-graph__promise-pill {
+    display: inline-flex;
+    align-items: center;
+    padding: 2px 6px;
+    border-radius: 999px;
+    background: color-mix(in srgb, #f59e0b 16%, transparent);
+    color: #fcd34d;
+    font-size: 11px;
+    line-height: 1.2;
+  }
+  .nm-graph__list-empty {
+    margin: 0;
+    padding: 6px 8px;
+    border-radius: 8px;
+    color: var(--theme-text-faint);
+    font-size: 12px;
+    background: color-mix(in srgb, var(--theme-bg-tertiary) 88%, transparent);
   }
   .nm-graph__stage {
     position: relative;
@@ -923,6 +1032,8 @@
     inset: auto;
     width: 100%;
     max-height: calc(100vh - 196px);
+    gap: 10px;
+    padding: 14px 12px;
     align-content: start;
   }
   .nm-graph__floating--right {
@@ -2118,6 +2229,14 @@
     border-radius: 2px;
     padding: 0 2px;
     animation: broken-wikilink-pulse 1.4s ease-in-out infinite;
+  }
+
+  .wikilink-promise {
+    background: color-mix(in srgb, #f59e0b 18%, transparent);
+    color: #fcd34d;
+    border-bottom: 1px dashed #f59e0b;
+    border-radius: 2px;
+    padding: 0 2px;
   }
 
   @keyframes broken-wikilink-pulse {

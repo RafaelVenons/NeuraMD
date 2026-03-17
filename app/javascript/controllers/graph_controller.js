@@ -8,9 +8,9 @@ import { computeDisplayState } from "graph/graph_filters"
 import { animateNodePositions, applyLayout, assignNodePositions, captureNodePositions } from "graph/graph_layout"
 import { animateCameraToNode, cancelCameraAnimation } from "graph/graph_focus"
 import { renderTooltip } from "graph/graph_tooltip"
-import { renderTagList } from "graph/graph_sidebar"
+import { renderTagList, renderNoteCollections } from "graph/graph_sidebar"
 import { createEdgeProgramClasses } from "graph/graph_custom_edge_program"
-import { visitWithPageTransition } from "lib/page_transition"
+import { submitFormWithPageTransition, visitWithPageTransition } from "lib/page_transition"
 
 export default class extends Controller {
   static NODE_HOLD_MS = 160
@@ -25,6 +25,8 @@ export default class extends Controller {
     "empty",
     "error",
     "tagList",
+    "linklessList",
+    "promiseList",
     "filterMode",
     "topN",
     "topNAll",
@@ -54,6 +56,10 @@ export default class extends Controller {
     window.addEventListener("resize", this._boundResize)
     this._boundTooltipClick = (event) => this.handleTooltipClick(event)
     this.tooltipLayerTarget.addEventListener("click", this._boundTooltipClick)
+    this._boundDropdownToggle = (event) => this.handleDropdownToggle(event)
+    this.element.querySelectorAll(".nm-graph__dropdown").forEach((dropdown) => {
+      dropdown.addEventListener("toggle", this._boundDropdownToggle)
+    })
     if (this.hasTopNTarget && this.hasTopNAllTarget) this.topNTarget.disabled = this.topNAllTarget.checked
     this.load()
   }
@@ -63,6 +69,9 @@ export default class extends Controller {
     window.removeEventListener("resize", this._boundResize)
     this._resizeObserver?.disconnect()
     this.tooltipLayerTarget.removeEventListener("click", this._boundTooltipClick)
+    this.element.querySelectorAll(".nm-graph__dropdown").forEach((dropdown) => {
+      dropdown.removeEventListener("toggle", this._boundDropdownToggle)
+    })
     this.destroyRenderer()
   }
 
@@ -384,22 +393,43 @@ export default class extends Controller {
   }
 
   renderSidebar() {
-    if (!this.hasTagListTarget) return
+    if (this.hasTagListTarget) {
+      renderTagList(this.tagListTarget, this.state, this.state.indexes, {
+        onShift: (tagId, delta) => {
+          this.applyTagOrderChange(() => {
+            this.state.ui.activeTagsOrdered = moveTag(this.state.ui.activeTagsOrdered, tagId, delta)
+          }, { focusTagId: tagId })
+        },
+        onReorder: (sourceTagId, targetTagId, placement) => {
+          this.applyTagOrderChange(() => {
+            this.state.ui.activeTagsOrdered = moveTagRelative(this.state.ui.activeTagsOrdered, sourceTagId, targetTagId, placement)
+          }, { focusTagId: sourceTagId })
+        },
+        onToggle: async (tagId) => {
+          await this.toggleFocusedNodeTag(tagId)
+        }
+      })
+    }
 
-    renderTagList(this.tagListTarget, this.state, this.state.indexes, {
-      onShift: (tagId, delta) => {
-        this.applyTagOrderChange(() => {
-          this.state.ui.activeTagsOrdered = moveTag(this.state.ui.activeTagsOrdered, tagId, delta)
-        }, { focusTagId: tagId })
+    renderNoteCollections(
+      {
+        linklessList: this.hasLinklessListTarget ? this.linklessListTarget : null,
+        promiseList: this.hasPromiseListTarget ? this.promiseListTarget : null
       },
-      onReorder: (sourceTagId, targetTagId, placement) => {
-        this.applyTagOrderChange(() => {
-          this.state.ui.activeTagsOrdered = moveTagRelative(this.state.ui.activeTagsOrdered, sourceTagId, targetTagId, placement)
-        }, { focusTagId: sourceTagId })
-      },
-      onToggle: async (tagId) => {
-        await this.toggleFocusedNodeTag(tagId)
+      this.state,
+      {
+        onSelectNote: (noteId) => this.enterFocusMode(noteId),
+        onCreatePromise: (title) => this.createNoteFromPromise(title)
       }
+    )
+  }
+
+  handleDropdownToggle(event) {
+    const openedDropdown = event.currentTarget
+    if (!openedDropdown.open) return
+
+    this.element.querySelectorAll(".nm-graph__dropdown").forEach((dropdown) => {
+      if (dropdown !== openedDropdown) dropdown.open = false
     })
   }
 
@@ -463,6 +493,23 @@ export default class extends Controller {
 
   visit(path, options = {}) {
     visitWithPageTransition(path, options)
+  }
+
+  createNoteFromPromise(title) {
+    const normalizedTitle = title?.trim()
+    if (!normalizedTitle) return
+
+    const form = document.createElement("form")
+    form.method = "post"
+    form.action = "/notes"
+    form.hidden = true
+
+    const csrfToken = document.querySelector('meta[name="csrf-token"]')?.content
+    if (csrfToken) form.appendChild(this.hiddenInput("authenticity_token", csrfToken))
+    form.appendChild(this.hiddenInput("note[title]", normalizedTitle))
+
+    document.body.appendChild(form)
+    submitFormWithPageTransition(form, { kind: "graph-to-note" })
   }
 
   handleWindowMouseMove(event) {
@@ -823,5 +870,13 @@ export default class extends Controller {
 
     this.renderSidebar()
     this.applyDisplayState({ relayout: false, animateFocus: false })
+  }
+
+  hiddenInput(name, value) {
+    const input = document.createElement("input")
+    input.type = "hidden"
+    input.name = name
+    input.value = value
+    return input
   }
 }

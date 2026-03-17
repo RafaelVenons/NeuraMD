@@ -73,5 +73,9 @@ RSpec.describe Links::SyncService do
       content = "[[Deleted|#{dst_note.id}]]"
       expect { call(content) }.not_to change(NoteLink, :count)
     end
+
+    it "does not create links for unresolved promise wikilinks" do
+      expect { call("[[Nota futura]]") }.not_to change(NoteLink, :count)
+    end
   end
 end

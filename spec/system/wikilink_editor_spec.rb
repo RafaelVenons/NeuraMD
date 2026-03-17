@@ -145,6 +145,16 @@ RSpec.describe "Wiki-link editor", type: :system do
       end
     end
 
+    it "renders promise wikilinks without uuid as note suggestions in preview" do
+      type_in_editor("[[Estudar depois]]")
+
+      within(".preview-prose") do
+        expect(page).to have_css(".wikilink-promise", text: "Estudar depois", wait: 5)
+        expect(page).to have_no_css("a.wikilink", wait: 2)
+        expect(page).to have_no_text("[[Estudar depois]]")
+      end
+    end
+
     it "does not open wikilink autocomplete while IME composition is active" do
       page.execute_script(<<~JS)
         const content = document.querySelector(".cm-content")

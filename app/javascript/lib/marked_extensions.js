@@ -65,7 +65,8 @@ export const highlightExtension = {
 }
 
 // Client-side wiki-link extension for the live preview.
-// Converts [[Display Text|uuid]] and [[Display Text|f/c/b:uuid]] to anchor tags.
+// Converts resolved [[Display Text|uuid]] and [[Display Text|f/c/b:uuid]] to
+// anchors, and unresolved [[Future Note]] references to promise spans.
 // Invalid targets are rendered as broken-link spans so raw [[...]] markup never
 // leaks into the preview.
 const WIKILINK_ROLE_CLASS = { f: "wikilink-father", c: "wikilink-child", b: "wikilink-brother" }
@@ -87,9 +88,24 @@ export const wikilinkExtension = {
         uuid: UUID_RE.test(target) ? target.toLowerCase() : null
       }
     }
+
+    const promiseMatch = /^\[\[([^\]\|]+)\]\]/i.exec(src)
+    if (promiseMatch) {
+      return {
+        type: "wikilink",
+        raw: promiseMatch[0],
+        display: promiseMatch[1].trim(),
+        role: null,
+        uuid: null,
+        promise: true
+      }
+    }
   },
   renderer(token) {
     const display   = token.display.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+    if (token.promise) {
+      return `<span class="wikilink-promise" title="Sugestao de nota futura">${display}</span>`
+    }
     if (!token.uuid) {
       return `<span class="wikilink-broken" title="Nota nao encontrada">${display}</span>`
     }
