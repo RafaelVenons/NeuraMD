@@ -96,10 +96,14 @@ function resolveCameraTargetState(renderer, state) {
   if (!Number.isFinite(minX) || !Number.isFinite(minY)) return null
 
   const span = Math.max(maxX - minX, maxY - minY)
+  const isEmbedded = state.ui.isEmbedded === true
+  const minRatio = isEmbedded ? 0.22 : 0.48
+  const maxRatio = isEmbedded ? 0.42 : 0.9
+  const baseOffset = isEmbedded ? 0.08 : 0.16
 
   return {
     x: focusedPoint.x,
     y: focusedPoint.y,
-    ratio: Math.max(0.48, Math.min(0.9, span * 2.0 + 0.16))
+    ratio: Math.max(minRatio, Math.min(maxRatio, span * 2.0 + baseOffset))
   }
 }

@@ -21,13 +21,13 @@ export function labelColorForNode(filterState, isFocused, isHovered) {
 
 export function colorForEdge(priorityTag, hierRole, tagMetaById, isFocusDepth1, isFocusDepth2, isGhost) {
   if (isGhost) return "rgba(100, 116, 139, 0.32)"
-  if (priorityTag) return tagMetaById.get(priorityTag)?.color_hex || "#94a3b8"
-  if (isFocusDepth1) return "#f8fafc"
-  if (isFocusDepth2) return "#94a3b8"
-  if (hierRole === "target_is_parent") return "#f97316"
-  if (hierRole === "target_is_child") return "#0ea5e9"
-  if (hierRole === "same_level") return "#84cc16"
-  return "#64748b"
+  const semanticColor = priorityTag
+    ? (tagMetaById.get(priorityTag)?.color_hex || "#94a3b8")
+    : baseEdgeColor(hierRole)
+
+  if (isFocusDepth1) return mixHexColors(semanticColor, "#ffffff", 0.35)
+  if (isFocusDepth2) return mixHexColors(semanticColor, "#ffffff", 0.18)
+  return semanticColor
 }
 
 export function roleLabel(hierRole) {
@@ -35,4 +35,36 @@ export function roleLabel(hierRole) {
   if (hierRole === "target_is_child") return "target = filho"
   if (hierRole === "same_level") return "mesmo nivel"
   return "sem classificacao"
+}
+
+function baseEdgeColor(hierRole) {
+  if (hierRole === "target_is_parent") return "#f97316"
+  if (hierRole === "target_is_child") return "#0ea5e9"
+  if (hierRole === "same_level") return "#84cc16"
+  return "#64748b"
+}
+
+function mixHexColors(colorA, colorB, ratio) {
+  const normalizedRatio = Math.max(0, Math.min(1, ratio))
+  const [r1, g1, b1] = hexToRgb(colorA)
+  const [r2, g2, b2] = hexToRgb(colorB)
+
+  const r = Math.round(r1 + ((r2 - r1) * normalizedRatio))
+  const g = Math.round(g1 + ((g2 - g1) * normalizedRatio))
+  const b = Math.round(b1 + ((b2 - b1) * normalizedRatio))
+
+  return `rgb(${r}, ${g}, ${b})`
+}
+
+function hexToRgb(hex) {
+  const normalized = String(hex).replace("#", "")
+  const full = normalized.length === 3
+    ? normalized.split("").map((char) => `${char}${char}`).join("")
+    : normalized
+
+  return [
+    Number.parseInt(full.slice(0, 2), 16),
+    Number.parseInt(full.slice(2, 4), 16),
+    Number.parseInt(full.slice(4, 6), 16)
+  ]
 }

@@ -323,10 +323,29 @@ RSpec.describe "Graph browser", type: :system do
     embedded_state = page.evaluate_script(<<~JS)
       (() => {
         const controller = window.__graphDebug
+        const focusedNode = controller.state.graph.getNodeAttributes(controller.state.ui.focusedNodeId)
+        const focusedNodeState = controller.state.display.nodes.get(controller.state.ui.focusedNodeId)
+        const focusedNodeDisplay = controller.state.renderer.getNodeDisplayData(controller.state.ui.focusedNodeId)
+        const firstEdgeId = controller.state.graph.edges()[0]
+        const focusedEdge = controller.state.graph.getEdgeAttributes(firstEdgeId)
+        const focusedEdgeState = controller.state.display.edges.get(firstEdgeId)
+        const focusedEdgeDisplay = controller.state.renderer.getEdgeDisplayData(firstEdgeId)
+        const camera = controller.state.renderer.getCamera().getState()
         return {
           focusedNodeId: controller.state.ui.focusedNodeId,
           pinnedTooltipNodeId: controller.state.ui.pinnedTooltipNodeId,
-          focusDepth: controller.state.ui.focusDepth
+          focusDepth: controller.state.ui.focusDepth,
+          focusedNodeBaseSize: focusedNode.size,
+          focusedNodeStateSize: focusedNodeState.size,
+          focusedNodeDisplaySize: focusedNodeDisplay.size,
+          focusedEdgeSize: focusedEdge.size,
+          focusedEdgeStateSize: focusedEdgeState.size,
+          focusedEdgeDisplaySize: focusedEdgeDisplay.size,
+          focusedEdgeSrcPadding: focusedEdge.srcPadding,
+          focusedEdgeDisplaySrcPadding: focusedEdgeDisplay.srcPadding,
+          focusedEdgeDstPadding: focusedEdge.dstPadding,
+          focusedEdgeDisplayDstPadding: focusedEdgeDisplay.dstPadding,
+          cameraRatio: camera.ratio
         }
       })()
     JS
@@ -336,6 +355,11 @@ RSpec.describe "Graph browser", type: :system do
       "pinnedTooltipNodeId" => nil,
       "focusDepth" => 2
     )
+    expect(embedded_state["focusedNodeDisplaySize"]).to be_within(0.01).of(embedded_state["focusedNodeStateSize"] * 0.5)
+    expect(embedded_state["focusedEdgeDisplaySize"]).to be_within(0.01).of(embedded_state["focusedEdgeStateSize"] * 0.5)
+    expect(embedded_state["focusedEdgeDisplaySrcPadding"]).to be_within(0.01).of(embedded_state["focusedEdgeSrcPadding"] * 0.5)
+    expect(embedded_state["focusedEdgeDisplayDstPadding"]).to be_within(0.01).of(embedded_state["focusedEdgeDstPadding"] * 0.5)
+    expect(embedded_state["cameraRatio"]).to be < 0.48
     expect(page).not_to have_css(".nm-graph-tooltip")
 
     page.execute_script(<<~JS, neighbor_note.id)

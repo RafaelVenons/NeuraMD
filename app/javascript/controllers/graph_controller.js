@@ -45,6 +45,7 @@ export default class extends Controller {
 
   connect() {
     this.state = createAppState()
+    this.state.ui.isEmbedded = this.embeddedModeValue
     window.__graphDebug = this
     this.dragState = null
     this.nodePressState = null
@@ -122,6 +123,7 @@ export default class extends Controller {
 
   mountRenderer() {
     this.destroyRenderer()
+    const embeddedScale = this.embeddedModeValue ? 0.5 : 1
 
     this.state.renderer = new Sigma(this.state.graph, this.graphHostTarget, {
       allowInvalidContainer: true,
@@ -139,8 +141,26 @@ export default class extends Controller {
       hideLabelsOnMove: true,
       enableEdgeEvents: true,
       edgeProgramClasses: createEdgeProgramClasses(),
-      nodeReducer: (nodeId, data) => ({ ...data, ...(this.state.display.nodes.get(nodeId) || {}) }),
-      edgeReducer: (edgeId, data) => ({ ...data, ...(this.state.display.edges.get(edgeId) || {}) })
+      nodeReducer: (nodeId, data) => {
+        const reduced = { ...data, ...(this.state.display.nodes.get(nodeId) || {}) }
+        if (embeddedScale === 1) return reduced
+
+        return {
+          ...reduced,
+          size: (reduced.size || data.size || 1) * embeddedScale
+        }
+      },
+      edgeReducer: (edgeId, data) => {
+        const reduced = { ...data, ...(this.state.display.edges.get(edgeId) || {}) }
+        if (embeddedScale === 1) return reduced
+
+        return {
+          ...reduced,
+          size: (reduced.size || data.size || 1) * embeddedScale,
+          srcPadding: (reduced.srcPadding ?? data.srcPadding ?? 0) * embeddedScale,
+          dstPadding: (reduced.dstPadding ?? data.dstPadding ?? 0) * embeddedScale
+        }
+      }
     })
 
     this.bindMouseLayerEvents()
