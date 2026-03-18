@@ -2,6 +2,7 @@ import { Controller } from "@hotwired/stimulus"
 import Sigma from "sigma"
 import { createAppState } from "graph/app_state"
 import { buildGraph } from "graph/graph_builder"
+import { createNodeProgramClasses } from "graph/graph_custom_node_program"
 import { buildIndexes } from "graph/graph_indexes"
 import { deriveInitialTagOrder, moveTag, moveTagRelative } from "graph/graph_tags"
 import { computeDisplayState } from "graph/graph_filters"
@@ -10,6 +11,8 @@ import { animateCameraToNode, cancelCameraAnimation } from "graph/graph_focus"
 import { renderTooltip } from "graph/graph_tooltip"
 import { renderTagList, renderNoteCollections } from "graph/graph_sidebar"
 import { createEdgeProgramClasses } from "graph/graph_custom_edge_program"
+import { calculateArrowHeadGeometry } from "graph/graph_custom_edge_program"
+import { drawNodeLabelAbove } from "graph/graph_node_label_renderer"
 import { submitFormWithPageTransition, visitWithPageTransition } from "lib/page_transition"
 
 export default class extends Controller {
@@ -55,6 +58,9 @@ export default class extends Controller {
     this._resizeObserver.observe(this.graphHostTarget)
     window.addEventListener("resize", this._boundResize)
     this._boundTooltipClick = (event) => this.handleTooltipClick(event)
+    this._edgeAnimationFrame = null
+    this._edgeAnimationTick = 0
+    this._lastEdgeAnimationAt = 0
     this.tooltipLayerTarget.addEventListener("click", this._boundTooltipClick)
     this._boundDropdownToggle = (event) => this.handleDropdownToggle(event)
     this.element.querySelectorAll(".nm-graph__dropdown").forEach((dropdown) => {
@@ -120,13 +126,16 @@ export default class extends Controller {
     this.state.renderer = new Sigma(this.state.graph, this.graphHostTarget, {
       allowInvalidContainer: true,
       renderEdgeLabels: false,
-      labelDensity: 0.08,
+      labelDensity: 0.12,
       labelSize: "fixed",
-      defaultLabelSize: 14,
-      labelRenderedSizeThreshold: 10,
+      defaultLabelSize: 15,
+      labelRenderedSizeThreshold: 7,
+      labelFont: "\"Avenir Next\", \"Inter\", sans-serif",
+      defaultDrawNodeLabel: drawNodeLabelAbove,
       labelColor: { attribute: "labelColor" },
       defaultEdgeType: "line",
       defaultNodeType: "circle",
+      nodeProgramClasses: createNodeProgramClasses(drawNodeLabelAbove),
       hideLabelsOnMove: true,
       enableEdgeEvents: true,
       edgeProgramClasses: createEdgeProgramClasses(),
@@ -135,6 +144,7 @@ export default class extends Controller {
     })
 
     this.bindMouseLayerEvents()
+    this.startEdgeAnimationLoop()
 
     this.state.renderer.on("afterRender", () => this.positionTooltip())
   }
@@ -145,8 +155,28 @@ export default class extends Controller {
     this.cancelGraphMotion()
     this.state.renderer?.kill()
     this.state.renderer = null
+    if (this._edgeAnimationFrame) cancelAnimationFrame(this._edgeAnimationFrame)
+    this._edgeAnimationFrame = null
     this.graphHostTarget.innerHTML = ""
     this.tooltipLayerTarget.innerHTML = ""
+  }
+
+  startEdgeAnimationLoop() {
+    if (this._edgeAnimationFrame) cancelAnimationFrame(this._edgeAnimationFrame)
+
+    const tick = (now) => {
+      if (!this.state.renderer) return
+
+      if (document.visibilityState === "visible" && now - this._lastEdgeAnimationAt >= 41) {
+        this._edgeAnimationTick += 1
+        this._lastEdgeAnimationAt = now
+        this.state.renderer.refresh()
+      }
+
+      this._edgeAnimationFrame = requestAnimationFrame(tick)
+    }
+
+    this._edgeAnimationFrame = requestAnimationFrame(tick)
   }
 
   bindMouseLayerEvents() {
@@ -495,6 +525,63 @@ export default class extends Controller {
     visitWithPageTransition(path, options)
   }
 
+  edgeArrowGeometry(edgeId) {
+    if (!this.state.graph?.hasEdge(edgeId)) return null
+
+    const sourceId = this.state.graph.source(edgeId)
+    const targetId = this.state.graph.target(edgeId)
+    const edge = this.state.graph.getEdgeAttributes(edgeId)
+    const source = this.state.graph.getNodeAttributes(sourceId)
+    const target = this.state.graph.getNodeAttributes(targetId)
+
+    if (edge.hierRole === "target_is_parent") {
+      return {
+        source: calculateArrowHeadGeometry(source, target, edge, {
+          extremity: "source",
+          shape: "father",
+          pointing: "away-from-extremity"
+        }),
+        target: calculateArrowHeadGeometry(source, target, edge, {
+          extremity: "target",
+          shape: "father",
+          pointing: "toward-extremity"
+        })
+      }
+    }
+
+    if (edge.hierRole === "target_is_child") {
+      return {
+        source: calculateArrowHeadGeometry(source, target, edge, {
+          extremity: "source",
+          shape: "child",
+          pointing: "toward-extremity"
+        }),
+        target: calculateArrowHeadGeometry(source, target, edge, {
+          extremity: "target",
+          shape: "child",
+          pointing: "away-from-extremity"
+        })
+      }
+    }
+
+    if (edge.hierRole === "same_level") {
+      return {
+        target: calculateArrowHeadGeometry(source, target, edge, {
+          extremity: "target",
+          shape: "brother",
+          pointing: "toward-extremity"
+        }),
+        source: calculateArrowHeadGeometry(source, target, edge, {
+          extremity: "source",
+          shape: "brother",
+          pointing: "toward-extremity"
+        })
+      }
+    }
+
+    return null
+  }
+
   createNoteFromPromise(title) {
     const normalizedTitle = title?.trim()
     if (!normalizedTitle) return
@@ -521,6 +608,17 @@ export default class extends Controller {
 
     if (this.nodePressState) {
       this.nodePressState.latestPointer = this.pointerFromMouseEvent(event)
+
+      const movedDistance = Math.hypot(
+        this.nodePressState.latestPointer.x - this.nodePressState.pointerStart.x,
+        this.nodePressState.latestPointer.y - this.nodePressState.pointerStart.y
+      )
+
+      if (movedDistance >= this.constructor.NODE_DRAG_MOVE_TOLERANCE) {
+        this.activateNodeDrag()
+        this.dragNodeToPointer(event)
+        return
+      }
     }
 
     if (!this.stagePanState || this.stagePanState.released) return

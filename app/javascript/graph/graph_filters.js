@@ -1,6 +1,6 @@
 import { resolveNodeDepth } from "graph/graph_focus"
 import { resolvePriorityTag } from "graph/graph_tags"
-import { colorForEdge, colorForNode, labelColorForNode, roleLabel } from "graph/graph_style"
+import { borderColorForNode, colorForEdge, colorForNode, labelColorForNode, roleLabel } from "graph/graph_style"
 
 export function computeDisplayState(state) {
   const nodeDisplay = new Map()
@@ -58,13 +58,7 @@ export function computeDisplayState(state) {
         sourceNode.depthFromFocus === 2 || targetNode.depthFromFocus === 2,
         state.ui.focusedNodeId !== null && (!withinFocus || !incidentToFocus && sourceNode.depthFromFocus >= 1 && targetNode.depthFromFocus >= 1)
       ),
-      size: incidentToFocus
-        ? 3.1
-        : state.ui.focusedNodeId !== null && !withinFocus
-          ? 0.9
-          : sourceNode.depthFromFocus <= 1 || targetNode.depthFromFocus <= 1
-            ? 2.1
-            : 1.3,
+      size: resolveEdgeDisplaySize(attributes.hierRole, incidentToFocus, withinFocus, sourceNode.depthFromFocus, targetNode.depthFromFocus, state.ui.focusedNodeId !== null),
       type: attributes.type,
       label: roleLabel(attributes.hierRole)
     })
@@ -86,7 +80,7 @@ export function computeDisplayState(state) {
     }
 
     const hidden = !base.matchesSearch || filterState === "hidden"
-    const size = isFocused ? 14 : base.depthFromFocus === 1 ? 10 : base.depthFromFocus === 2 ? 8.5 : filterState === "ghost" ? 5.5 : 7
+    const size = resolveNodeDisplaySize(attributes.baseSize, isFocused, base.depthFromFocus, filterState)
 
     nodeDisplay.set(nodeId, {
       ...base,
@@ -94,10 +88,34 @@ export function computeDisplayState(state) {
       hidden,
       size,
       color: colorForNode(base.priorityTagId, filterState, state.indexes.tagMetaById, isFocused, isHovered),
+      borderColor: borderColorForNode(base.priorityTagId, filterState, state.indexes.tagMetaById, isFocused, isHovered),
       labelColor: labelColorForNode(filterState, isFocused, isHovered),
-      forceLabel: isFocused || isHovered || base.depthFromFocus <= 1
+      forceLabel: !hidden && filterState !== "ghost"
     })
   })
 
   return { nodes: nodeDisplay, edges: edgeDisplay }
+}
+
+function resolveEdgeDisplaySize(hierRole, incidentToFocus, withinFocus, sourceDepth, targetDepth, hasFocus) {
+  const baseSize =
+    hierRole === "target_is_parent" ? 4.4 :
+      hierRole === "target_is_child" ? 2.8 :
+        hierRole === "same_level" ? 3.2 :
+          1.7
+
+  if (incidentToFocus) return baseSize + 1.1
+  if (hasFocus && !withinFocus) return Math.max(1.05, baseSize - 0.6)
+  if (sourceDepth <= 1 || targetDepth <= 1) return baseSize + 0.45
+  return baseSize
+}
+
+function resolveNodeDisplaySize(baseSize, isFocused, depthFromFocus, filterState) {
+  const nodeBaseSize = Number(baseSize) || 7.8
+
+  if (isFocused) return nodeBaseSize + 5
+  if (depthFromFocus === 1) return nodeBaseSize + 1.6
+  if (depthFromFocus === 2) return nodeBaseSize + 0.7
+  if (filterState === "ghost") return Math.max(5.8, nodeBaseSize - 2.2)
+  return nodeBaseSize
 }

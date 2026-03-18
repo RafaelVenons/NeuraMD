@@ -5,6 +5,13 @@ export function colorForNode(priorityTag, filterState, tagMetaById, isFocused, i
   return tagMetaById.get(priorityTag)?.color_hex || "#7dd3fc"
 }
 
+export function borderColorForNode(priorityTag, filterState, tagMetaById, isFocused, isHovered) {
+  if (isFocused) return "#fff7cc"
+  if (isHovered) return "#e0f2fe"
+  if (filterState === "ghost") return "#94a3b8"
+  return tagMetaById.get(priorityTag)?.color_hex || "#dbeafe"
+}
+
 export function labelColorForNode(filterState, isFocused, isHovered) {
   if (isFocused) return "#fff7cc"
   if (isHovered) return "#f8fafc"

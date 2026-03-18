@@ -195,12 +195,12 @@ function positionPlacementBucketOnRing(graph, bucket, focus, radius, intensity) 
 }
 
 function angleForBand(side, verticalBand) {
-  if (side === "right" && verticalBand === "up") return Math.PI / 4
-  if (side === "left" && verticalBand === "up") return (3 * Math.PI) / 4
+  if (side === "right" && verticalBand === "up") return (7 * Math.PI) / 4
+  if (side === "left" && verticalBand === "up") return (5 * Math.PI) / 4
   if (side === "left" && verticalBand === "mid") return Math.PI
   if (side === "right" && verticalBand === "mid") return 0
-  if (side === "left" && verticalBand === "down") return (5 * Math.PI) / 4
-  return (7 * Math.PI) / 4
+  if (side === "left" && verticalBand === "down") return (3 * Math.PI) / 4
+  return Math.PI / 4
 }
 
 function arrangeOuterDepthRing(graph, state, focus, focusedNodeId, depth, radius, ringSpacing) {

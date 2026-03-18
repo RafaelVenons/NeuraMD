@@ -20,8 +20,8 @@ RSpec.describe "Graph browser", type: :system do
     NoteTag.create!(note: notes.first, tag: high)
     NoteTag.create!(note: notes.second, tag: low)
 
-    create(:note_link, src_note: notes.first, dst_note: notes.second, created_in_revision: notes.first.head_revision, hier_role: "target_is_parent")
-    create(:note_link, src_note: notes.second, dst_note: notes.third, created_in_revision: notes.second.head_revision, hier_role: "target_is_child")
+    father_link = create(:note_link, src_note: notes.first, dst_note: notes.second, created_in_revision: notes.first.head_revision, hier_role: "target_is_parent")
+    child_link = create(:note_link, src_note: notes.second, dst_note: notes.third, created_in_revision: notes.second.head_revision, hier_role: "target_is_child")
     create(:note_link, src_note: notes.third, dst_note: notes.fourth, created_in_revision: notes.third.head_revision, hier_role: "same_level")
     create(:note_link, src_note: notes.fourth, dst_note: notes.fifth, created_in_revision: notes.fourth.head_revision, hier_role: nil)
     create(:note_link, src_note: notes[4], dst_note: notes[5], created_in_revision: notes[4].head_revision, hier_role: "target_is_parent")
@@ -30,7 +30,7 @@ RSpec.describe "Graph browser", type: :system do
 
     expect(page).to have_css("[data-controller='graph']", wait: 10)
     expect(page).to have_css(".sigma-mouse", wait: 10)
-    expect(page).to have_text("WebGL ativo", wait: 10)
+    expect(page).to have_text("6 notas · 5 links", wait: 10)
 
     graph_stats = page.evaluate_script(<<~JS)
       (() => {
@@ -47,6 +47,100 @@ RSpec.describe "Graph browser", type: :system do
     expect(graph_stats).to include("nodes" => 6, "edges" => 5)
     expect(graph_stats["displayNodes"]).to be >= 5
     expect(graph_stats["displayEdges"]).to be >= 4
+
+    label_state = page.evaluate_script(<<~JS, notes.first.id)
+      (() => {
+        const nodeId = arguments[0]
+        const controller = window.__graphDebug
+        const renderer = controller.state.renderer
+        renderer.refresh()
+
+        return {
+          labelRendererName: renderer.getSetting("defaultDrawNodeLabel")?.name || null,
+          displayedLabels: Array.from(renderer.getNodeDisplayedLabels()),
+          forceLabel: controller.state.display.nodes.get(nodeId)?.forceLabel || false
+        }
+      })()
+    JS
+
+    expect(label_state["labelRendererName"]).to eq("drawNodeLabelAbove")
+    expect(label_state["displayedLabels"]).to include(notes.first.id)
+    expect(label_state["forceLabel"]).to be(true)
+
+    node_visual_state = page.evaluate_script(<<~JS, notes.first.id, notes.second.id)
+      (() => {
+        const [firstNodeId, secondNodeId] = arguments
+        const controller = window.__graphDebug
+        const firstNode = controller.state.graph.getNodeAttributes(firstNodeId)
+        const secondNode = controller.state.graph.getNodeAttributes(secondNodeId)
+        const edge = controller.state.graph.getEdgeAttributes(controller.state.graph.edges()[0])
+
+        return {
+          firstBaseSize: firstNode.baseSize,
+          secondBaseSize: secondNode.baseSize,
+          firstBorderColor: firstNode.borderColor,
+          srcPadding: edge.srcPadding,
+          dstPadding: edge.dstPadding,
+          animationTick: controller._edgeAnimationTick
+        }
+      })()
+    JS
+
+    sleep 0.2
+
+    later_animation_tick = page.evaluate_script("window.__graphDebug._edgeAnimationTick")
+
+    expect(node_visual_state["firstBaseSize"]).to be < node_visual_state["secondBaseSize"]
+    expect(node_visual_state["firstBorderColor"]).to be_present
+    expect(node_visual_state["srcPadding"]).to eq(2)
+    expect(node_visual_state["dstPadding"]).to eq(8)
+    expect(later_animation_tick).to be > node_visual_state["animationTick"]
+
+    arrow_geometry = page.evaluate_script(<<~JS, father_link.id, child_link.id)
+      (() => {
+        const [fatherEdgeId, childEdgeId] = arguments
+        const controller = window.__graphDebug
+        const father = controller.edgeArrowGeometry(fatherEdgeId)
+        const child = controller.edgeArrowGeometry(childEdgeId)
+        const fatherSource = controller.state.graph.getNodeAttributes(controller.state.graph.source(fatherEdgeId))
+        const fatherTarget = controller.state.graph.getNodeAttributes(controller.state.graph.target(fatherEdgeId))
+        const childTarget = controller.state.graph.getNodeAttributes(controller.state.graph.target(childEdgeId))
+        const childSource = controller.state.graph.getNodeAttributes(controller.state.graph.source(childEdgeId))
+
+        return {
+          father,
+          fatherSource,
+          child,
+          childTarget,
+          fatherTarget,
+          childSource
+        }
+      })()
+    JS
+
+    father_dx = arrow_geometry["fatherTarget"]["x"] - arrow_geometry["fatherSource"]["x"]
+    father_dy = arrow_geometry["fatherTarget"]["y"] - arrow_geometry["fatherSource"]["y"]
+    child_dx = arrow_geometry["childTarget"]["x"] - arrow_geometry["childSource"]["x"]
+    child_dy = arrow_geometry["childTarget"]["y"] - arrow_geometry["childSource"]["y"]
+
+    father_source_contact_progress = ((arrow_geometry["father"]["source"]["contact"]["x"] - arrow_geometry["fatherSource"]["x"]) * father_dx) + ((arrow_geometry["father"]["source"]["contact"]["y"] - arrow_geometry["fatherSource"]["y"]) * father_dy)
+    father_target_contact_progress = ((arrow_geometry["father"]["target"]["contact"]["x"] - arrow_geometry["fatherSource"]["x"]) * father_dx) + ((arrow_geometry["father"]["target"]["contact"]["y"] - arrow_geometry["fatherSource"]["y"]) * father_dy)
+    father_source_vertex_progresses = arrow_geometry["father"]["source"]["vertices"].map { |point| ((point["x"] - arrow_geometry["fatherSource"]["x"]) * father_dx) + ((point["y"] - arrow_geometry["fatherSource"]["y"]) * father_dy) }
+    father_target_vertex_progresses = arrow_geometry["father"]["target"]["vertices"].map { |point| ((point["x"] - arrow_geometry["fatherSource"]["x"]) * father_dx) + ((point["y"] - arrow_geometry["fatherSource"]["y"]) * father_dy) }
+
+    child_source_contact_progress = ((arrow_geometry["child"]["source"]["contact"]["x"] - arrow_geometry["childSource"]["x"]) * child_dx) + ((arrow_geometry["child"]["source"]["contact"]["y"] - arrow_geometry["childSource"]["y"]) * child_dy)
+    child_target_contact_progress = ((arrow_geometry["child"]["target"]["contact"]["x"] - arrow_geometry["childSource"]["x"]) * child_dx) + ((arrow_geometry["child"]["target"]["contact"]["y"] - arrow_geometry["childSource"]["y"]) * child_dy)
+    child_source_vertex_progresses = arrow_geometry["child"]["source"]["vertices"].map { |point| ((point["x"] - arrow_geometry["childSource"]["x"]) * child_dx) + ((point["y"] - arrow_geometry["childSource"]["y"]) * child_dy) }
+    child_target_vertex_progresses = arrow_geometry["child"]["target"]["vertices"].map { |point| ((point["x"] - arrow_geometry["childSource"]["x"]) * child_dx) + ((point["y"] - arrow_geometry["childSource"]["y"]) * child_dy) }
+
+    expect(arrow_geometry["father"]["source"]["vertices"].length).to be >= 6
+    expect(arrow_geometry["father"]["target"]["vertices"].length).to be >= 6
+    expect(arrow_geometry["child"]["source"]["vertices"].length).to be >= 6
+    expect(arrow_geometry["child"]["target"]["vertices"].length).to be >= 6
+    expect(father_source_vertex_progresses.max).to be > father_source_contact_progress
+    expect(father_target_vertex_progresses.min).to be < father_target_contact_progress
+    expect(child_source_vertex_progresses.max).to be > child_source_contact_progress
+    expect(child_target_vertex_progresses.min).to be < child_target_contact_progress
 
     page.execute_script(<<~JS, notes.first.id)
       const nodeId = arguments[0]
