@@ -19,6 +19,7 @@ Capybara.javascript_driver = :cuprite     # real browser for JS specs
 
 RSpec.configure do |config|
   config.before(:each, type: :system) do
+    Warden.test_mode!
     driven_by :cuprite
   end
 
