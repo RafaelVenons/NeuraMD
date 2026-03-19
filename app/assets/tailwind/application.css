@@ -274,10 +274,45 @@
     gap: 12px;
     align-items: center;
   }
+  .nm-graph__panel-head--interactive {
+    min-height: 36px;
+  }
   .nm-graph__panel h2 {
     margin: 0;
     font-size: 14px;
     color: #f8fafc;
+  }
+  .nm-graph__panel-title-button {
+    border: 0;
+    padding: 0;
+    background: transparent;
+    color: #f8fafc;
+    font-size: 14px;
+    font-weight: 700;
+    width: 100%;
+    min-height: 36px;
+    display: flex;
+    align-items: center;
+    text-align: left;
+    cursor: pointer;
+  }
+  .nm-graph__panel-title-button:hover {
+    color: #bae6fd;
+  }
+  .nm-graph__panel-search {
+    width: 100%;
+    border-radius: 999px;
+    border: 1px solid rgba(148, 163, 184, 0.2);
+    background: rgba(15, 23, 42, 0.72);
+    padding: 8px 12px;
+    color: #f8fafc;
+    outline: none;
+  }
+  .nm-graph__panel-search:focus {
+    border-color: rgba(125, 211, 252, 0.6);
+  }
+  .nm-graph__panel-search::placeholder {
+    color: #64748b;
   }
   .nm-graph__panel-hint {
     font-size: 11px;
@@ -745,6 +780,7 @@
     padding: 12px 16px;
     box-shadow: 0 18px 44px rgba(2, 6, 23, 0.28);
     backdrop-filter: blur(18px);
+    transition: opacity 180ms ease, transform 180ms ease;
   }
   .nm-app-flash__message--notice {
     background: rgba(20, 83, 45, 0.85);
@@ -753,6 +789,10 @@
   .nm-app-flash__message--alert {
     background: rgba(127, 29, 29, 0.85);
     color: #fee2e2;
+  }
+  .nm-app-flash__message--closing {
+    opacity: 0;
+    transform: translateY(-6px);
   }
 
   .nm-auth {

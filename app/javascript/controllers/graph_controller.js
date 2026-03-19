@@ -4,7 +4,7 @@ import { createAppState } from "graph/app_state"
 import { buildGraph } from "graph/graph_builder"
 import { createNodeProgramClasses } from "graph/graph_custom_node_program"
 import { buildIndexes } from "graph/graph_indexes"
-import { deriveInitialTagOrder, moveTag, moveTagRelative } from "graph/graph_tags"
+import { deriveInitialTagOrder, moveTag, moveTagRelative, moveTagToFront, moveTagsToFront } from "graph/graph_tags"
 import { computeDisplayState } from "graph/graph_filters"
 import { animateNodePositions, applyLayout, assignNodePositions, captureNodePositions } from "graph/graph_layout"
 import { animateCameraToNode, cancelCameraAnimation } from "graph/graph_focus"
@@ -28,6 +28,8 @@ export default class extends Controller {
     "empty",
     "error",
     "tagList",
+    "tagTitle",
+    "tagSearch",
     "linklessList",
     "promiseList",
     "filterMode",
@@ -427,6 +429,41 @@ export default class extends Controller {
   updateSearch() {
     this.state.ui.searchQuery = this.searchTarget.value.trim().toLowerCase()
     this.applyDisplayState({ relayout: false, animateFocus: false })
+  }
+
+  openTagSearch() {
+    if (!this.hasTagTitleTarget || !this.hasTagSearchTarget) return
+
+    this.tagTitleTarget.hidden = true
+    this.tagSearchTarget.hidden = false
+    this.tagSearchTarget.value = this.state.ui.tagSearchQuery || ""
+    this.tagSearchTarget.focus()
+    this.tagSearchTarget.select()
+  }
+
+  closeTagSearch() {
+    if (this.state.ui.tagSearchQuery?.trim()) return
+    this.hideTagSearch()
+  }
+
+  handleTagSearchKeydown(event) {
+    if (event.key !== "Escape") return
+
+    event.preventDefault()
+    this.state.ui.tagSearchQuery = ""
+    this.tagSearchTarget.value = ""
+    this.hideTagSearch()
+    this.renderSidebar()
+  }
+
+  updateTagSearch() {
+    this.state.ui.tagSearchQuery = this.tagSearchTarget.value
+    this.renderSidebar()
+  }
+
+  hideTagSearch() {
+    if (this.hasTagSearchTarget) this.tagSearchTarget.hidden = true
+    if (this.hasTagTitleTarget) this.tagTitleTarget.hidden = false
   }
 
   toggleRole(event) {
@@ -831,6 +868,7 @@ export default class extends Controller {
     this.state.ui.pinnedTooltipNodeId = nodeId
     this.state.ui.focusDepth = 2
     if (this.hasFocusDepthTarget) this.focusDepthTarget.value = "2"
+    this.prioritizeFocusedNodeTags(nodeId)
     this.renderSidebar()
     this.applyDisplayState({ relayout: true, animateFocus: true })
   }
@@ -988,8 +1026,19 @@ export default class extends Controller {
       ? currentNoteTags.filter((row) => !(String(row.note_id) === String(noteId) && String(row.tag_id) === tagKey))
       : [...currentNoteTags, { note_id: noteId, tag_id: tagKey }]
 
+    if (!isAttached) {
+      this.state.ui.activeTagsOrdered = moveTagToFront(this.state.ui.activeTagsOrdered, tagKey)
+    }
+
     this.renderSidebar()
     this.applyDisplayState({ relayout: false, animateFocus: false })
+  }
+
+  prioritizeFocusedNodeTags(nodeId = this.state.ui.focusedNodeId) {
+    if (!nodeId || !this.state.graph?.hasNode(nodeId)) return
+
+    const noteTags = [...(this.state.graph.getNodeAttribute(nodeId, "noteTags") || [])].map(String)
+    this.state.ui.activeTagsOrdered = moveTagsToFront(this.state.ui.activeTagsOrdered, noteTags)
   }
 
   hiddenInput(name, value) {

@@ -3,8 +3,12 @@ export function renderTagList(container, state, indexes, callbacks) {
   const focusedNodeTags = focusedNodeId && state.graph.hasNode(focusedNodeId)
     ? new Set((state.graph.getNodeAttribute(focusedNodeId, "noteTags") || []).map(String))
     : null
+  const searchQuery = (state.ui.tagSearchQuery || "").trim()
+  const tagIds = searchQuery
+    ? rankTagIdsBySearch(state.ui.activeTagsOrdered, indexes, searchQuery)
+    : state.ui.activeTagsOrdered
 
-  container.innerHTML = state.ui.activeTagsOrdered.map((tagId, index) => {
+  container.innerHTML = tagIds.map((tagId, index) => {
     const tag = indexes.tagMetaById.get(tagId)
     if (!tag) return ""
     const tagKey = String(tag.id)
@@ -164,6 +168,71 @@ export function renderTagList(container, state, indexes, callbacks) {
       callbacks.onToggle?.(row.dataset.tagId)
     })
   })
+}
+
+function rankTagIdsBySearch(tagIds, indexes, query) {
+  const normalizedQuery = normalizeSearchText(query)
+  if (!normalizedQuery) return tagIds
+
+  const queryVector = trigramVector(normalizedQuery)
+
+  return tagIds
+    .map((tagId, index) => {
+      const tag = indexes.tagMetaById.get(tagId)
+      if (!tag) return null
+
+      const normalizedName = normalizeSearchText(tag.name)
+      if (!normalizedName) return null
+
+      const score = normalizedName.includes(normalizedQuery)
+        ? 1
+        : cosineSimilarity(trigramVector(normalizedName), queryVector)
+
+      if (score <= 0) return null
+      return { tagId, index, score }
+    })
+    .filter(Boolean)
+    .sort((left, right) => right.score - left.score || left.index - right.index)
+    .map(({ tagId }) => tagId)
+}
+
+function normalizeSearchText(value) {
+  return String(value || "")
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim()
+}
+
+function trigramVector(value) {
+  const compact = `  ${value.replace(/\s+/g, " ")}  `
+  const vector = new Map()
+
+  for (let index = 0; index <= compact.length - 3; index += 1) {
+    const gram = compact.slice(index, index + 3)
+    vector.set(gram, (vector.get(gram) || 0) + 1)
+  }
+
+  return vector
+}
+
+function cosineSimilarity(left, right) {
+  let dot = 0
+  let leftNorm = 0
+  let rightNorm = 0
+
+  left.forEach((value, key) => {
+    leftNorm += value * value
+    dot += value * (right.get(key) || 0)
+  })
+
+  right.forEach((value) => {
+    rightNorm += value * value
+  })
+
+  if (!leftNorm || !rightNorm) return 0
+  return dot / (Math.sqrt(leftNorm) * Math.sqrt(rightNorm))
 }
 
 export function renderNoteCollections(targets, state, callbacks = {}) {

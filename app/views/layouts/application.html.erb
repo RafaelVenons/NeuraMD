@@ -43,7 +43,9 @@
 
     <% if notice.present? %>
       <div class="<%= content_for?(:full_bleed) ? 'nm-app-flash nm-app-flash--immersive' : 'mx-auto max-w-4xl mt-4 px-4' %>">
-        <div class="nm-app-flash__message nm-app-flash__message--notice">
+        <div class="nm-app-flash__message nm-app-flash__message--notice"
+             data-controller="flash"
+             data-flash-delay-value="2600">
           <%= notice %>
         </div>
       </div>

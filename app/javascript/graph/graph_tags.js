@@ -1,12 +1,12 @@
 export function deriveInitialTagOrder(dataset) {
   return [...(dataset.tags || [])]
     .sort((left, right) => left.name.localeCompare(right.name))
-    .map((tag) => tag.id)
+    .map((tag) => String(tag.id))
 }
 
 export function resolvePriorityTag(itemTags, activeTagsOrdered, topN) {
   const allowed = topN == null ? activeTagsOrdered : activeTagsOrdered.slice(0, topN)
-  const itemTagSet = new Set(itemTags || [])
+  const itemTagSet = new Set((itemTags || []).map(String))
 
   for (const tagId of allowed) {
     if (itemTagSet.has(tagId)) return tagId
@@ -45,4 +45,30 @@ export function moveTagRelative(activeTagsOrdered, sourceTagId, targetTagId, pla
 
   reordered.splice(insertionIndex, 0, item)
   return reordered
+}
+
+export function moveTagToFront(activeTagsOrdered, tagId) {
+  const currentIndex = activeTagsOrdered.indexOf(tagId)
+  if (currentIndex <= 0) return activeTagsOrdered
+
+  const reordered = [...activeTagsOrdered]
+  const [item] = reordered.splice(currentIndex, 1)
+  reordered.unshift(item)
+  return reordered
+}
+
+export function moveTagsToFront(activeTagsOrdered, tagIds) {
+  const tagSet = new Set((tagIds || []).map(String))
+  if (!tagSet.size) return activeTagsOrdered
+
+  const promoted = []
+  const remaining = []
+
+  activeTagsOrdered.forEach((tagId) => {
+    if (tagSet.has(tagId)) promoted.push(tagId)
+    else remaining.push(tagId)
+  })
+
+  if (!promoted.length) return activeTagsOrdered
+  return [...promoted, ...remaining]
 }

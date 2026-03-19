@@ -26,8 +26,19 @@
       </header>
 
       <aside class="nm-graph__floating nm-graph__floating--left">
-        <div class="nm-graph__panel-head">
-          <h2>Tags</h2>
+        <div class="nm-graph__panel-head nm-graph__panel-head--interactive">
+          <button type="button"
+                  class="nm-graph__panel-title-button"
+                  data-graph-target="tagTitle"
+                  data-action="click->graph#openTagSearch">
+            Tags
+          </button>
+          <input type="search"
+                 class="nm-graph__panel-search"
+                 placeholder="Buscar tags..."
+                 hidden
+                 data-graph-target="tagSearch"
+                 data-action="input->graph#updateTagSearch blur->graph#closeTagSearch keydown->graph#handleTagSearchKeydown">
         </div>
         <div class="nm-graph__tag-list" data-graph-target="tagList"></div>
       </aside>

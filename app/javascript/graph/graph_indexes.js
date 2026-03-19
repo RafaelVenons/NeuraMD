@@ -19,9 +19,9 @@ export function buildIndexes(dataset, graph) {
     inEdgesByNodeId.get(target)?.push(edgeId)
   })
 
-  for (const tag of dataset.tags || []) tagMetaById.set(tag.id, tag)
-  for (const row of dataset.noteTags || []) tagsByNoteId.get(row.note_id)?.push(row.tag_id)
-  for (const row of dataset.linkTags || []) tagsByLinkId.get(row.note_link_id)?.push(row.tag_id)
+  for (const tag of dataset.tags || []) tagMetaById.set(String(tag.id), tag)
+  for (const row of dataset.noteTags || []) tagsByNoteId.get(row.note_id)?.push(String(row.tag_id))
+  for (const row of dataset.linkTags || []) tagsByLinkId.get(row.note_link_id)?.push(String(row.tag_id))
 
   graph.forEachNode((nodeId) => {
     graph.setNodeAttribute(nodeId, "noteTags", tagsByNoteId.get(nodeId) || [])

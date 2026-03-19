@@ -340,6 +340,115 @@ RSpec.describe "Graph browser", type: :system do
     expect(NoteTag.where(note: focused_note, tag: tag).count).to eq(0)
   end
 
+  it "moves a newly attached tag to the top of the graph sidebar" do
+    focused_note = create(:note, title: "Foco")
+    helper_note = create(:note, title: "Helper")
+    alpha_tag = create(:tag, name: "alpha", color_hex: "#3ba99c", tag_scope: "both")
+    zeta_tag = create(:tag, name: "zeta", color_hex: "#f97316", tag_scope: "both")
+
+    [focused_note, helper_note].each do |note|
+      revision = create(:note_revision, note:, content_markdown: "Resumo")
+      note.update_columns(head_revision_id: revision.id)
+    end
+    NoteTag.create!(note: helper_note, tag: alpha_tag)
+    NoteTag.create!(note: helper_note, tag: zeta_tag)
+
+    visit graph_path
+
+    expect(page).to have_css(".sigma-mouse", wait: 10)
+
+    page.execute_script(<<~JS, focused_note.id)
+      const controller = window.__graphDebug
+      controller.enterFocusMode(arguments[0])
+    JS
+
+    expect(page).to have_css(".nm-graph__tag-row", minimum: 2, wait: 5)
+
+    before_names = page.evaluate_script(<<~JS)
+      Array.from(document.querySelectorAll(".nm-graph__tag-row")).map((row) => row.textContent.trim())
+    JS
+
+    expect(before_names.first(2)).to eq(%w[alpha zeta])
+
+    find("[data-tag-id='#{zeta_tag.id}']").click
+
+    after_names = page.evaluate_script(<<~JS)
+      Array.from(document.querySelectorAll(".nm-graph__tag-row")).map((row) => row.textContent.trim())
+    JS
+
+    expect(after_names.first).to eq("zeta")
+    expect(page).to have_css("[data-tag-id='#{zeta_tag.id}'].is-attached[aria-pressed='true']", wait: 5)
+  end
+
+  it "replaces the tags title with a cosine-ranked search field" do
+    focused_note = create(:note, title: "Foco")
+    helper_note = create(:note, title: "Helper")
+    cardio_long = create(:tag, name: "cardiologia", color_hex: "#3ba99c", tag_scope: "both")
+    cardio_short = create(:tag, name: "cardio geral", color_hex: "#38bdf8", tag_scope: "both")
+    neuro_tag = create(:tag, name: "neurologia", color_hex: "#f97316", tag_scope: "both")
+
+    [focused_note, helper_note].each do |note|
+      revision = create(:note_revision, note:, content_markdown: "Resumo")
+      note.update_columns(head_revision_id: revision.id)
+    end
+    NoteTag.create!(note: focused_note, tag: cardio_long)
+    NoteTag.create!(note: focused_note, tag: cardio_short)
+    NoteTag.create!(note: helper_note, tag: neuro_tag)
+
+    visit graph_path
+
+    expect(page).to have_css(".sigma-mouse", wait: 10)
+    click_button "Tags"
+
+    expect(page).to have_css("[data-graph-target='tagSearch']:not([hidden])", wait: 5)
+
+    find("[data-graph-target='tagSearch']").fill_in with: "cardio"
+
+    names = page.evaluate_script(<<~JS)
+      Array.from(document.querySelectorAll(".nm-graph__tag-row")).map((row) => row.textContent.trim())
+    JS
+
+    expect(names).to eq(["cardio geral", "cardiologia"])
+    expect(page).not_to have_css(".nm-graph__tag-row", text: "neurologia")
+  end
+
+  it "moves the focused node tags to the top of the graph sidebar" do
+    focused_note = create(:note, title: "Foco")
+    helper_note = create(:note, title: "Helper")
+    alpha_tag = create(:tag, name: "alpha", color_hex: "#3ba99c", tag_scope: "both")
+    beta_tag = create(:tag, name: "beta", color_hex: "#38bdf8", tag_scope: "both")
+    zeta_tag = create(:tag, name: "zeta", color_hex: "#f97316", tag_scope: "both")
+
+    [focused_note, helper_note].each do |note|
+      revision = create(:note_revision, note:, content_markdown: "Resumo")
+      note.update_columns(head_revision_id: revision.id)
+    end
+    NoteTag.create!(note: focused_note, tag: zeta_tag)
+    NoteTag.create!(note: focused_note, tag: beta_tag)
+    NoteTag.create!(note: helper_note, tag: alpha_tag)
+
+    visit graph_path
+
+    expect(page).to have_css(".sigma-mouse", wait: 10)
+
+    before_names = page.evaluate_script(<<~JS)
+      Array.from(document.querySelectorAll(".nm-graph__tag-row")).map((row) => row.textContent.trim())
+    JS
+
+    expect(before_names.first(3)).to eq(%w[alpha beta zeta])
+
+    page.execute_script(<<~JS, focused_note.id)
+      const controller = window.__graphDebug
+      controller.enterFocusMode(arguments[0])
+    JS
+
+    after_names = page.evaluate_script(<<~JS)
+      Array.from(document.querySelectorAll(".nm-graph__tag-row")).map((row) => row.textContent.trim())
+    JS
+
+    expect(after_names.first(2)).to eq(%w[beta zeta])
+  end
+
   it "focuses the current note in the embedded graph and navigates on simple click to another note" do
     current_note = create(:note, title: "Atual")
     neighbor_note = create(:note, title: "Vizinha")
