@@ -14,7 +14,7 @@ export function renderTagList(container, state, indexes, callbacks) {
     if (!tag) return ""
     const tagKey = String(tag.id)
 
-    const inTopN = state.ui.topN == null || index < state.ui.topN
+    const inTopN = state.ui.topN != null && index < state.ui.topN
     const attachedToFocusedNode = focusedNodeTags?.has(tagKey) === true
     const selectedForFilter = selectedTagIds.has(tagKey)
     const pressed = focusedNodeId ? attachedToFocusedNode : selectedForFilter
