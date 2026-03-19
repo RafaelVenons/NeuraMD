@@ -449,6 +449,104 @@ RSpec.describe "Graph browser", type: :system do
     expect(after_names.first(2)).to eq(%w[beta zeta])
   end
 
+  it "leaves tag attachment mode on background click and applies tag filters to nodes and edges" do
+    focused_note = create(:note, title: "Foco")
+    neighbor_note = create(:note, title: "Vizinha")
+    edge_src = create(:note, title: "Origem da aresta")
+    edge_dst = create(:note, title: "Destino da aresta")
+    hidden_note = create(:note, title: "Oculta")
+    filter_tag = create(:tag, name: "clinica", color_hex: "#3ba99c", tag_scope: "both")
+
+    [focused_note, neighbor_note, edge_src, edge_dst, hidden_note].each do |note|
+      revision = create(:note_revision, note:, content_markdown: "Resumo de #{note.title}")
+      note.update_columns(head_revision_id: revision.id)
+    end
+
+    ghost_edge = create(:note_link, src_note: focused_note, dst_note: neighbor_note, created_in_revision: focused_note.head_revision, hier_role: "same_level")
+    tagged_edge = create(:note_link, src_note: edge_src, dst_note: edge_dst, created_in_revision: edge_src.head_revision, hier_role: "target_is_parent")
+    create(:note_link, src_note: hidden_note, dst_note: neighbor_note, created_in_revision: hidden_note.head_revision, hier_role: "target_is_child")
+
+    NoteTag.create!(note: focused_note, tag: filter_tag)
+    LinkTag.create!(note_link: tagged_edge, tag: filter_tag)
+
+    visit graph_path
+
+    expect(page).to have_css(".sigma-mouse", wait: 10)
+
+    page.execute_script(<<~JS, focused_note.id)
+      const controller = window.__graphDebug
+      controller.enterFocusMode(arguments[0])
+    JS
+
+    expect(page).to have_css("[data-tag-id='#{filter_tag.id}'].is-attached[aria-pressed='true']", wait: 5)
+
+    page.execute_script(<<~JS)
+      const controller = window.__graphDebug
+      const target = document.querySelector(".sigma-mouse")
+      const rect = target.getBoundingClientRect()
+      const candidates = [
+        { x: rect.width * 0.04, y: rect.height * 0.08 },
+        { x: rect.width * 0.96, y: rect.height * 0.08 },
+        { x: rect.width * 0.04, y: rect.height * 0.92 },
+        { x: rect.width * 0.96, y: rect.height * 0.92 }
+      ]
+      const point = candidates.find((candidate) => {
+        return !controller.nodeAtPointer({
+          clientX: rect.left + candidate.x,
+          clientY: rect.top + candidate.y
+        })
+      }) || candidates[0]
+
+      target.dispatchEvent(new MouseEvent("click", {
+        bubbles: true,
+        clientX: rect.left + point.x,
+        clientY: rect.top + point.y
+      }))
+    JS
+
+    expect(page).to have_css("[data-tag-id='#{filter_tag.id}'][aria-pressed='false']", wait: 5)
+    expect(page).not_to have_css("[data-tag-id='#{filter_tag.id}'].is-attached", wait: 5)
+
+    find("[data-tag-id='#{filter_tag.id}']").click
+
+    expect(page).to have_css("[data-tag-id='#{filter_tag.id}'].is-selected[aria-pressed='true']", wait: 5)
+
+    filter_state = page.evaluate_script(<<~JS, focused_note.id, neighbor_note.id, edge_src.id, edge_dst.id, hidden_note.id, ghost_edge.id, tagged_edge.id)
+      (() => {
+        const [focusedNodeId, neighborNodeId, edgeSrcId, edgeDstId, hiddenNodeId, ghostEdgeId, taggedEdgeId] = arguments
+        const controller = window.__graphDebug
+        const nodes = controller.state.display.nodes
+        const edges = controller.state.display.edges
+
+        const ghostEdgeDisplay = edges.get(ghostEdgeId)
+        const taggedEdgeDisplay = edges.get(taggedEdgeId)
+
+        return {
+          focusedNode: nodes.get(focusedNodeId),
+          neighborNode: nodes.get(neighborNodeId),
+          edgeSrcNode: nodes.get(edgeSrcId),
+          edgeDstNode: nodes.get(edgeDstId),
+          hiddenNode: nodes.get(hiddenNodeId),
+          ghostEdge: ghostEdgeDisplay,
+          taggedEdge: taggedEdgeDisplay
+        }
+      })()
+    JS
+
+    expect(filter_state["focusedNode"]["hidden"]).to be(false)
+    expect(filter_state["focusedNode"]["filterState"]).to eq("normal")
+    expect(filter_state["neighborNode"]["hidden"]).to be(false)
+    expect(filter_state["neighborNode"]["filterState"]).to eq("ghost")
+    expect(filter_state["edgeSrcNode"]["hidden"]).to be(false)
+    expect(filter_state["edgeDstNode"]["hidden"]).to be(false)
+    expect(filter_state["hiddenNode"]["hidden"]).to be(true)
+    expect(filter_state["ghostEdge"]["hidden"]).to be(false)
+    expect(filter_state["ghostEdge"]["ghostedByTagFilter"]).to be(true)
+    expect(filter_state["ghostEdge"]["color"]).to include("rgba(")
+    expect(filter_state["taggedEdge"]["hidden"]).to be(false)
+    expect(filter_state["taggedEdge"]["ghostedByTagFilter"]).to be(false)
+  end
+
   it "focuses the current note in the embedded graph and navigates on simple click to another note" do
     current_note = create(:note, title: "Atual")
     neighbor_note = create(:note, title: "Vizinha")
@@ -547,5 +645,36 @@ RSpec.describe "Graph browser", type: :system do
       "focusDepth" => 2
     )
     expect(page).not_to have_css(".nm-graph-tooltip")
+  end
+
+  it "navigates to /graph on double click over the embedded graph background" do
+    current_note = create(:note, title: "Atual")
+    neighbor_note = create(:note, title: "Vizinha")
+
+    [current_note, neighbor_note].each do |note|
+      revision = create(:note_revision, note:, content_markdown: "Resumo de #{note.title}")
+      note.update_columns(head_revision_id: revision.id)
+    end
+
+    create(:note_link, src_note: current_note, dst_note: neighbor_note, created_in_revision: current_note.head_revision, hier_role: "target_is_child")
+
+    visit note_path(current_note.slug)
+
+    expect(page).to have_css(".note-graph-embed .sigma-mouse", wait: 10)
+
+    page.execute_script(<<~JS)
+      const target = document.querySelector(".note-graph-embed .sigma-mouse")
+      const rect = target.getBoundingClientRect()
+      const options = {
+        bubbles: true,
+        clientX: rect.left + (rect.width * 0.08),
+        clientY: rect.top + (rect.height * 0.12)
+      }
+
+      target.dispatchEvent(new MouseEvent("dblclick", options))
+    JS
+
+    expect(page).to have_current_path(graph_path, wait: 10)
+    expect(page).to have_css("[data-controller='graph']", wait: 10)
   end
 end

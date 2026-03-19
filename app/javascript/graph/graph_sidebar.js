@@ -3,6 +3,7 @@ export function renderTagList(container, state, indexes, callbacks) {
   const focusedNodeTags = focusedNodeId && state.graph.hasNode(focusedNodeId)
     ? new Set((state.graph.getNodeAttribute(focusedNodeId, "noteTags") || []).map(String))
     : null
+  const selectedTagIds = new Set((state.ui.selectedTagIds || []).map(String))
   const searchQuery = (state.ui.tagSearchQuery || "").trim()
   const tagIds = searchQuery
     ? rankTagIdsBySearch(state.ui.activeTagsOrdered, indexes, searchQuery)
@@ -15,13 +16,15 @@ export function renderTagList(container, state, indexes, callbacks) {
 
     const inTopN = state.ui.topN == null || index < state.ui.topN
     const attachedToFocusedNode = focusedNodeTags?.has(tagKey) === true
+    const selectedForFilter = selectedTagIds.has(tagKey)
+    const pressed = focusedNodeId ? attachedToFocusedNode : selectedForFilter
 
     return `
-      <div class="nm-graph__tag-row ${inTopN ? "is-highlighted" : ""} ${attachedToFocusedNode ? "is-attached" : ""}"
+      <div class="nm-graph__tag-row ${inTopN ? "is-highlighted" : ""} ${attachedToFocusedNode ? "is-attached" : ""} ${selectedForFilter ? "is-selected" : ""}"
            draggable="true"
            tabindex="0"
            role="button"
-           aria-pressed="${attachedToFocusedNode ? "true" : "false"}"
+           aria-pressed="${pressed ? "true" : "false"}"
            data-tag-id="${tagKey}"
            data-tag-index="${index}">
         <span class="nm-graph__tag-chip">
@@ -156,16 +159,14 @@ export function renderTagList(container, state, indexes, callbacks) {
         callbacks.onShift?.(row.dataset.tagId, 1)
       } else if (event.key === "Enter" || event.key === " ") {
         event.preventDefault()
-        if (!focusedNodeId) return
-        callbacks.onToggle?.(row.dataset.tagId)
+        callbacks.onActivate?.(row.dataset.tagId)
       }
     })
 
     row.addEventListener("click", (event) => {
       event.preventDefault()
       if (Date.now() < dragState.suppressClickUntil) return
-      if (!focusedNodeId) return
-      callbacks.onToggle?.(row.dataset.tagId)
+      callbacks.onActivate?.(row.dataset.tagId)
     })
   })
 }

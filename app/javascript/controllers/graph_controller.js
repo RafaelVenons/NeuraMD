@@ -312,11 +312,17 @@ export default class extends Controller {
     this.state.ui.hoveredNodeId = null
     this.state.ui.focusedNodeId = null
     this.state.ui.pinnedTooltipNodeId = null
+    this.renderSidebar()
     this.applyDisplayState({ relayout: false, animateFocus: false })
   }
 
   handleMouseLayerDoubleClick(event) {
     const nodeId = this.resolveDoubleClickNodeId(event)
+    if (this.embeddedModeValue && !nodeId) {
+      event.preventDefault()
+      this.visit("/graph", { kind: "note-to-graph" })
+      return
+    }
     if (!nodeId) return
 
     const slug = this.state.graph.getNodeAttribute(nodeId, "slug")
@@ -493,8 +499,9 @@ export default class extends Controller {
             this.state.ui.activeTagsOrdered = moveTagRelative(this.state.ui.activeTagsOrdered, sourceTagId, targetTagId, placement)
           }, { focusTagId: sourceTagId })
         },
-        onToggle: async (tagId) => {
-          await this.toggleFocusedNodeTag(tagId)
+        onActivate: async (tagId) => {
+          if (this.state.ui.focusedNodeId) await this.toggleFocusedNodeTag(tagId)
+          else this.toggleTagFilter(tagId)
         }
       })
     }
@@ -749,6 +756,7 @@ export default class extends Controller {
     this.state.ui.pinnedTooltipNodeId = null
     this.state.ui.hoveredNodeId = null
     this.state.layout.animationToken += 1
+    this.renderSidebar()
     this.applyDisplayState({ relayout: false, animateFocus: false })
   }
 
@@ -1029,6 +1037,24 @@ export default class extends Controller {
     if (!isAttached) {
       this.state.ui.activeTagsOrdered = moveTagToFront(this.state.ui.activeTagsOrdered, tagKey)
     }
+
+    this.renderSidebar()
+    this.applyDisplayState({ relayout: false, animateFocus: false })
+  }
+
+  toggleTagFilter(tagId) {
+    const tagKey = String(tagId)
+    const selectedTagIds = new Set((this.state.ui.selectedTagIds || []).map(String))
+
+    if (selectedTagIds.has(tagKey)) selectedTagIds.delete(tagKey)
+    else selectedTagIds.add(tagKey)
+
+    this.state.ui.selectedTagIds = this.state.ui.activeTagsOrdered.filter((currentTagId) => selectedTagIds.has(String(currentTagId)))
+
+    if (this.hasFilterModeTarget) {
+      this.filterModeTarget.value = this.state.ui.selectedTagIds.length ? "focused-tags" : "all"
+    }
+    this.state.ui.filterMode = this.state.ui.selectedTagIds.length ? "focused-tags" : "all"
 
     this.renderSidebar()
     this.applyDisplayState({ relayout: false, animateFocus: false })

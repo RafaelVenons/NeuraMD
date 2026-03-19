@@ -20,6 +20,7 @@ export function createAppState() {
       pinnedTooltipNodeId: null,
       hoveredNodeId: null,
       activeTagsOrdered: [],
+      selectedTagIds: [],
       tagSearchQuery: "",
       topN: null,
       filterMode: "all",

@@ -6,19 +6,48 @@ export function computeDisplayState(state) {
   const nodeDisplay = new Map()
   const edgeDisplay = new Map()
   const visibleIncidentNodeIds = new Set()
+  const selectedTagIds = new Set((state.ui.selectedTagIds || []).map(String))
+  const tagFilterActive = state.ui.filterMode === "focused-tags" && selectedTagIds.size > 0
+  const tagFilteredNodeIds = new Set()
+  const tagFilteredEdgeIds = new Set()
+  const ghostNodeIds = new Set()
+  const ghostEdgeIds = new Set()
 
   state.graph.forEachNode((nodeId, attributes) => {
     const haystack = `${attributes.label} ${attributes.excerpt || ""}`.toLowerCase()
     const priorityTagId = resolvePriorityTag(attributes.noteTags, state.ui.activeTagsOrdered, state.ui.topN)
     const matchesSearch = !state.ui.searchQuery || haystack.includes(state.ui.searchQuery)
     const depthFromFocus = resolveNodeDepth(nodeId, state.ui.focusedNodeId, state.indexes, state.ui.focusDepth)
+    const matchesSelectedTags = intersectsSelectedTags(attributes.noteTags, selectedTagIds)
+
+    if (tagFilterActive && matchesSelectedTags) tagFilteredNodeIds.add(nodeId)
 
     nodeDisplay.set(nodeId, {
       matchesSearch,
       priorityTagId,
-      depthFromFocus
+      depthFromFocus,
+      matchesSelectedTags
     })
   })
+
+  state.graph.forEachEdge((edgeId, attributes, source, target) => {
+    if (tagFilterActive && intersectsSelectedTags(attributes.linkTags, selectedTagIds)) {
+      tagFilteredEdgeIds.add(edgeId)
+      tagFilteredNodeIds.add(source)
+      tagFilteredNodeIds.add(target)
+    }
+  })
+
+  if (tagFilterActive) {
+    state.graph.forEachEdge((edgeId, _attributes, source, target) => {
+      if (tagFilteredEdgeIds.has(edgeId)) return
+      if (!tagFilteredNodeIds.has(source) && !tagFilteredNodeIds.has(target)) return
+
+      ghostEdgeIds.add(edgeId)
+      if (!tagFilteredNodeIds.has(source)) ghostNodeIds.add(source)
+      if (!tagFilteredNodeIds.has(target)) ghostNodeIds.add(target)
+    })
+  }
 
   state.graph.forEachEdge((edgeId, attributes, source, target) => {
     const roleKey = attributes.hierRole || "null"
@@ -35,11 +64,17 @@ export function computeDisplayState(state) {
       (sourceNode.depthFromFocus <= state.ui.focusDepth && targetNode.depthFromFocus <= state.ui.focusDepth)
     const incidentToFocus = source === state.ui.focusedNodeId || target === state.ui.focusedNodeId
     const visibleBySearch = sourceNode.matchesSearch || targetNode.matchesSearch
+    const selectedByTagFilter = tagFilteredEdgeIds.has(edgeId)
+    const ghostedByTagFilter = ghostEdgeIds.has(edgeId)
 
     const hidden = !visibleBySearch || (
-      state.ui.filterMode === "focused-tags" &&
-      state.ui.activeTagsOrdered.length > 0 &&
-      !relevantToTags
+      tagFilterActive
+        ? (!selectedByTagFilter && !ghostedByTagFilter)
+        : (
+          state.ui.filterMode === "focused-tags" &&
+          state.ui.activeTagsOrdered.length > 0 &&
+          !relevantToTags
+        )
     )
 
     if (!hidden) {
@@ -56,11 +91,20 @@ export function computeDisplayState(state) {
         state.indexes.tagMetaById,
         incidentToFocus || sourceNode.depthFromFocus === 1 || targetNode.depthFromFocus === 1,
         sourceNode.depthFromFocus === 2 || targetNode.depthFromFocus === 2,
-        state.ui.focusedNodeId !== null && (!withinFocus || !incidentToFocus && sourceNode.depthFromFocus >= 1 && targetNode.depthFromFocus >= 1)
+        ghostedByTagFilter || state.ui.focusedNodeId !== null && (!withinFocus || !incidentToFocus && sourceNode.depthFromFocus >= 1 && targetNode.depthFromFocus >= 1)
       ),
-      size: resolveEdgeDisplaySize(attributes.hierRole, incidentToFocus, withinFocus, sourceNode.depthFromFocus, targetNode.depthFromFocus, state.ui.focusedNodeId !== null),
+      size: resolveEdgeDisplaySize(
+        attributes.hierRole,
+        incidentToFocus,
+        withinFocus,
+        sourceNode.depthFromFocus,
+        targetNode.depthFromFocus,
+        state.ui.focusedNodeId !== null,
+        ghostedByTagFilter
+      ),
       type: attributes.type,
-      label: roleLabel(attributes.hierRole)
+      label: roleLabel(attributes.hierRole),
+      ghostedByTagFilter
     })
   })
 
@@ -75,7 +119,11 @@ export function computeDisplayState(state) {
       filterState = "ghost"
     }
 
-    if (state.ui.filterMode === "focused-tags" && state.ui.activeTagsOrdered.length > 0 && !base.priorityTagId) {
+    if (tagFilterActive) {
+      if (tagFilteredNodeIds.has(nodeId)) filterState = "normal"
+      else if (ghostNodeIds.has(nodeId) || hasVisibleIncidentEdge) filterState = "ghost"
+      else filterState = "hidden"
+    } else if (state.ui.filterMode === "focused-tags" && state.ui.activeTagsOrdered.length > 0 && !base.priorityTagId) {
       filterState = hasVisibleIncidentEdge ? "ghost" : "hidden"
     }
 
@@ -97,13 +145,14 @@ export function computeDisplayState(state) {
   return { nodes: nodeDisplay, edges: edgeDisplay }
 }
 
-function resolveEdgeDisplaySize(hierRole, incidentToFocus, withinFocus, sourceDepth, targetDepth, hasFocus) {
+function resolveEdgeDisplaySize(hierRole, incidentToFocus, withinFocus, sourceDepth, targetDepth, hasFocus, ghostedByTagFilter = false) {
   const baseSize =
     hierRole === "target_is_parent" ? 4.4 :
       hierRole === "target_is_child" ? 2.8 :
         hierRole === "same_level" ? 3.2 :
           1.7
 
+  if (ghostedByTagFilter) return Math.max(0.95, baseSize - 0.9)
   if (incidentToFocus) return baseSize + 1.1
   if (hasFocus && !withinFocus) return Math.max(1.05, baseSize - 0.6)
   if (sourceDepth <= 1 || targetDepth <= 1) return baseSize + 0.45
@@ -118,4 +167,9 @@ function resolveNodeDisplaySize(baseSize, isFocused, depthFromFocus, filterState
   if (depthFromFocus === 2) return nodeBaseSize + 0.7
   if (filterState === "ghost") return Math.max(5.8, nodeBaseSize - 2.2)
   return nodeBaseSize
+}
+
+function intersectsSelectedTags(tagIds, selectedTagIds) {
+  if (!selectedTagIds.size) return false
+  return (tagIds || []).some((tagId) => selectedTagIds.has(String(tagId)))
 }
