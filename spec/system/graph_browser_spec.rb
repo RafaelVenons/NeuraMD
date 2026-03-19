@@ -302,6 +302,44 @@ RSpec.describe "Graph browser", type: :system do
     expect(drag_result["manual"]).not_to be_nil
   end
 
+  it "toggles note-tag associations from the graph sidebar when a node is focused" do
+    focused_note = create(:note, title: "Foco")
+    neighbor_note = create(:note, title: "Vizinha")
+    tag = create(:tag, name: "clinica", color_hex: "#3ba99c", tag_scope: "both")
+
+    [focused_note, neighbor_note].each do |note|
+      revision = create(:note_revision, note:, content_markdown: "Resumo de #{note.title}")
+      note.update_columns(head_revision_id: revision.id)
+    end
+
+    create(:note_link, src_note: focused_note, dst_note: neighbor_note, created_in_revision: focused_note.head_revision, hier_role: "same_level")
+    NoteTag.create!(note: neighbor_note, tag: tag)
+
+    visit graph_path
+
+    expect(page).to have_css(".sigma-mouse", wait: 10)
+    expect(page).to have_css("[data-tag-id='#{tag.id}']", wait: 10)
+
+    page.execute_script(<<~JS, focused_note.id)
+      const nodeId = arguments[0]
+      const controller = window.__graphDebug
+      controller.enterFocusMode(nodeId)
+    JS
+
+    expect(page).to have_css("[data-tag-id='#{tag.id}'][aria-pressed='false']", wait: 5)
+
+    find("[data-tag-id='#{tag.id}']").click
+
+    expect(page).to have_css("[data-tag-id='#{tag.id}'].is-attached[aria-pressed='true']", wait: 5)
+    expect(NoteTag.where(note: focused_note, tag: tag).count).to eq(1)
+
+    find("[data-tag-id='#{tag.id}']").click
+
+    expect(page).to have_css("[data-tag-id='#{tag.id}'][aria-pressed='false']", wait: 5)
+    expect(page).not_to have_css("[data-tag-id='#{tag.id}'].is-attached", wait: 5)
+    expect(NoteTag.where(note: focused_note, tag: tag).count).to eq(0)
+  end
+
   it "focuses the current note in the embedded graph and navigates on simple click to another note" do
     current_note = create(:note, title: "Atual")
     neighbor_note = create(:note, title: "Vizinha")
