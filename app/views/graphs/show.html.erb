@@ -71,30 +71,6 @@
           </select>
         </label>
 
-        <label class="nm-graph__field">
-          <span>Modo</span>
-          <select data-graph-target="filterMode" data-action="change->graph#updateFilterMode">
-            <option value="all">Tudo</option>
-            <option value="focused-tags">Tags relevantes</option>
-          </select>
-        </label>
-
-        <label class="nm-graph__field">
-          <span>Tags ativas</span>
-          <div class="nm-graph__field-inline">
-            <label class="nm-graph__check nm-graph__check--inline">
-              <input type="checkbox" checked data-graph-target="topNAll" data-action="change->graph#updateTopNMode">
-              <span>Todas</span>
-            </label>
-            <input type="number"
-                   min="1"
-                   step="1"
-                   value="3"
-                   disabled
-                   data-graph-target="topN"
-                   data-action="input->graph#updateTopN">
-          </div>
-        </label>
       </section>
 
       <section class="nm-graph__panel">
