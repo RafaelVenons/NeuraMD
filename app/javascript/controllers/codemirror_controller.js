@@ -10,6 +10,7 @@ import { markdown, markdownLanguage } from "@codemirror/lang-markdown"
 import { languages } from "@codemirror/language-data"
 import { searchKeymap } from "@codemirror/search"
 import { oneDark } from "@codemirror/theme-one-dark"
+import { wikilinkBrokenExtension } from "editor/wikilink_broken_extension"
 
 export default class extends Controller {
   static targets = ["host"]
@@ -62,6 +63,7 @@ export default class extends Controller {
           indentWithTab,
         ]),
         markdown({ base: markdownLanguage, codeLanguages: languages }),
+        wikilinkBrokenExtension(),
         updateListener,
         scrollListener,
         EditorView.lineWrapping,

@@ -128,11 +128,19 @@ RSpec.describe "Wiki-link editor", type: :system do
     it "renders broken wikilinks as animated red text without showing raw markup" do
       type_in_editor("[[Quebrado|00000000-0000-0000-0000-000000000000]]")
 
+      expect(page).to have_css(".cm-content .wikilink-broken", text: /\[\[Quebrado\|00000000-0000-0000-0000-000000000000\]\]/, wait: 5)
+
       within(".preview-prose") do
         expect(page).to have_css(".wikilink-broken", text: "Quebrado", wait: 5)
         expect(page).to have_no_css("a[href='/notes/00000000-0000-0000-0000-000000000000']", wait: 5)
         expect(page).to have_no_text("[[Quebrado|00000000-0000-0000-0000-000000000000]]")
       end
+    end
+
+    it "marks non-uuid wikilinks as broken directly in the editor" do
+      type_in_editor("[[Quebrado|nao-e-uuid]]")
+
+      expect(page).to have_css(".cm-content .wikilink-broken", text: /\[\[Quebrado\|nao-e-uuid\]\]/, wait: 5)
     end
 
     it "renders non-uuid wikilink targets as broken text in preview" do
