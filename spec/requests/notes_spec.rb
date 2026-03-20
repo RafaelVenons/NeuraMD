@@ -278,6 +278,29 @@ RSpec.describe "Notes", type: :request do
       note.reload
       expect(note.head_revision_id).not_to eq(old_head)
     end
+
+    it "marks checkpoint metadata when accepting an AI request" do
+      request_record = create(
+        :ai_request,
+        note_revision: note.head_revision,
+        status: "succeeded",
+        metadata: {"language" => "pt-BR"}
+      )
+
+      post checkpoint_note_path(note.slug),
+        params: {
+          content_markdown: "# Revisão aceita\n\n" + ("conteúdo. " * 20),
+          ai_request_id: request_record.id
+        }.to_json,
+        headers: headers
+
+      expect(response).to have_http_status(:ok)
+
+      revision = note.reload.note_revisions.order(created_at: :desc).first
+      expect(revision.ai_generated).to be(true)
+      expect(request_record.reload.metadata).to include("accepted_checkpoint_revision_id" => revision.id)
+      expect(request_record.metadata["accepted_at"]).to be_present
+    end
   end
 
   # Regressão: suporte a caracteres CJK (Japonês, Mandarim, Coreano).

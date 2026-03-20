@@ -95,7 +95,8 @@ class NotesController < ApplicationController
     revision = Notes::CheckpointService.call(
       note: @note,
       content: params[:content_markdown].to_s,
-      author: current_user
+      author: current_user,
+      accepted_ai_request: accepted_ai_request_for_checkpoint
     )
     render json: {saved: true, kind: "checkpoint", revision_id: revision.id, created_at: revision.created_at.iso8601}
   rescue => e
@@ -149,6 +150,14 @@ class NotesController < ApplicationController
   end
 
   private
+
+  def accepted_ai_request_for_checkpoint
+    return nil if params[:ai_request_id].blank?
+
+    AiRequest.joins(note_revision: :note)
+      .where(id: params[:ai_request_id], notes: {id: @note.id})
+      .first!
+  end
 
   def set_note
     @note = Note.active.find_by(slug: params[:slug]) ||

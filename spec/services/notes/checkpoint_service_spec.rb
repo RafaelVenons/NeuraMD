@@ -57,5 +57,18 @@ RSpec.describe Notes::CheckpointService do
       revision = call
       expect(revision.base_revision_id).to eq(old_head_id)
     end
+
+    it "marks the checkpoint as AI-generated when linked to an accepted ai request" do
+      request = create(:ai_request, note_revision: note.head_revision, status: "succeeded", metadata: {"language" => "pt-BR"})
+
+      revision = call("# Checkpoint com IA\n\n" + ("content. " * 10), accepted_ai_request: request)
+
+      expect(revision.ai_generated).to be(true)
+      expect(request.reload.metadata).to include(
+        "accepted_checkpoint_revision_id" => revision.id,
+        "accepted_by_id" => nil
+      )
+      expect(request.metadata["accepted_at"]).to be_present
+    end
   end
 end

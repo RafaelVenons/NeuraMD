@@ -5,46 +5,181 @@ require_relative "provider_registry"
 module Ai
   class ReviewService
     CAPABILITIES = %w[suggest rewrite grammar_review].freeze
+    MAX_ATTEMPTS = 3
 
     class << self
       def status
         ProviderRegistry.status
       end
 
-      def call(note:, note_revision:, capability:, text:, language:, provider_name: nil)
+      def enqueue(note:, note_revision:, capability:, text:, language:, provider_name: nil, model_name: nil, requested_by: nil)
         capability = capability.to_s
         raise InvalidCapabilityError, "Capability de IA invalida." unless CAPABILITIES.include?(capability)
         raise Error, "Nenhum texto para processar." if text.to_s.blank?
 
-        provider = ProviderRegistry.build(provider_name)
-        result = provider.review(capability:, text:, language:)
-
-        audit_request!(
-          note_revision:,
-          capability:,
-          text:,
-          result:
+        provider = ProviderRegistry.build(provider_name, model_name:)
+        request = note_revision.ai_requests.create!(
+          provider: provider.name,
+          requested_provider: provider.name,
+          capability: capability,
+          status: "queued",
+          model: provider.model,
+          attempts_count: 0,
+          max_attempts: MAX_ATTEMPTS,
+          input_text: text,
+          prompt_summary: prompt_summary(capability, text),
+          metadata: {
+            "language" => language,
+            "note_id" => note.id,
+            "requested_by_id" => requested_by&.id,
+            "requested_model" => provider.model
+          }
         )
 
-        result
+        Ai::ReviewJob.perform_later(request.id)
+        request
+      end
+
+      def process_request!(request)
+        run_started_at = Time.current
+
+        request.with_lock do
+          return request if request.succeeded?
+          return request if request.failed? || request.canceled?
+
+          request.update!(
+            status: "running",
+            started_at: request.started_at || run_started_at,
+            attempts_count: request.attempts_count + 1,
+            error_message: nil,
+            last_error_at: nil,
+            last_error_kind: nil,
+            next_retry_at: nil
+          )
+        end
+
+        provider = ProviderRegistry.build(request.requested_provider, model_name: request.metadata["requested_model"])
+        result = provider.review(
+          capability: request.capability,
+          text: request.input_text,
+          language: request.metadata["language"]
+        )
+
+        request.update!(
+          status: "succeeded",
+          provider: result.provider,
+          model: result.model,
+          request_hash: request_hash(result:, request:),
+          response_summary: result.content.to_s.truncate(240),
+          output_text: result.content,
+          tokens_in: result.tokens_in,
+          tokens_out: result.tokens_out,
+          last_error_at: nil,
+          last_error_kind: nil,
+          next_retry_at: nil,
+          completed_at: Time.current
+        )
+        :succeeded
+      rescue Ai::Error => e
+        handle_failure!(request, e)
+      end
+
+      def cancel_request!(request)
+        request.with_lock do
+          return request if request.succeeded? || request.failed? || request.canceled?
+
+          request.update!(
+            status: "canceled",
+            next_retry_at: nil,
+            completed_at: Time.current,
+            error_message: nil
+          )
+        end
+
+        request
+      end
+
+      def retry_request!(request)
+        request.with_lock do
+          unless request.failed? || request.canceled?
+            raise Error, "Apenas requests finalizadas com falha ou canceladas podem ser reenfileiradas."
+          end
+
+          request.update!(
+            status: "queued",
+            attempts_count: 0,
+            next_retry_at: nil,
+            started_at: nil,
+            completed_at: nil,
+            last_error_at: nil,
+            last_error_kind: nil,
+            error_message: nil,
+            output_text: nil,
+            request_hash: nil,
+            response_summary: nil,
+            tokens_in: nil,
+            tokens_out: nil
+          )
+        end
+
+        Ai::ReviewJob.perform_later(request.id)
+        request
       end
 
       private
 
-      def audit_request!(note_revision:, capability:, text:, result:)
-        note_revision.ai_requests.create!(
-          provider: result.provider,
-          capability: capability,
-          request_hash: Digest::SHA256.hexdigest([result.provider, result.model, capability, text].join(":")),
-          prompt_summary: prompt_summary(capability, text),
-          response_summary: result.content.to_s.truncate(240),
-          tokens_in: result.tokens_in,
-          tokens_out: result.tokens_out
-        )
+      def handle_failure!(request, error)
+        error_kind = classify_error(error)
+        attrs = {
+          error_message: error.message,
+          response_summary: error.message.to_s.truncate(240),
+          last_error_at: Time.current,
+          last_error_kind: error_kind
+        }
+
+        if error_kind == "transient" && request.retryable?
+          delay = retry_delay(request.attempts_count)
+          request.update!(
+            attrs.merge(
+              status: "retrying",
+              next_retry_at: Time.current + delay,
+              completed_at: nil
+            )
+          )
+          {status: :retrying, wait: delay}
+        else
+          request.update!(
+            attrs.merge(
+              status: "failed",
+              next_retry_at: nil,
+              completed_at: Time.current
+            )
+          )
+          {status: :failed, error: error}
+        end
+      end
+
+      def request_hash(result:, request:)
+        Digest::SHA256.hexdigest([result.provider, result.model, request.capability, request.input_text].join(":"))
       end
 
       def prompt_summary(capability, text)
         "#{capability}: #{text.to_s.truncate(240)}"
+      end
+
+      def classify_error(error)
+        case error
+        when TransientRequestError
+          "transient"
+        when InvalidCapabilityError
+          "validation"
+        else
+          "permanent"
+        end
+      end
+
+      def retry_delay(attempts_count)
+        [2**attempts_count, 30].min.seconds
       end
     end
   end

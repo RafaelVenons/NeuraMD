@@ -1,9 +1,29 @@
 class AiController < ApplicationController
   before_action :set_note
+  before_action :set_request, only: [:show, :destroy]
 
   def status
     authorize @note, :show?
     render json: Ai::ReviewService.status
+  end
+
+  def index
+    authorize @note, :show?
+
+    requests = AiRequest.joins(:note_revision)
+      .where(note_revisions: {note_id: @note.id})
+      .recent_first
+      .first(limit_param)
+
+    render json: {
+      requests: requests.map { |request| serialize_request(request) }
+    }
+  end
+
+  def show
+    authorize @note, :show?
+
+    render json: serialize_request(@request)
   end
 
   def review
@@ -16,23 +36,34 @@ class AiController < ApplicationController
       return render json: { error: "Nenhum texto para processar." }, status: :bad_request
     end
 
-    result = Ai::ReviewService.call(
+    request = Ai::ReviewService.enqueue(
       note: @note,
       note_revision: resolve_note_revision(document_markdown),
       capability: params[:capability],
       text: text,
       language: @note.detected_language,
-      provider_name: params[:provider]
+      provider_name: params[:provider],
+      model_name: params[:model],
+      requested_by: current_user
     )
 
     render json: {
-      original: text,
-      corrected: result.content,
-      provider: result.provider,
-      model: result.model
-    }
+      request_id: request.id,
+      status: request.status
+    }, status: :accepted
   rescue Ai::Error => e
     render json: { error: e.message }, status: :unprocessable_entity
+  end
+
+  def destroy
+    authorize @note, :update?
+
+    request = Ai::ReviewService.cancel_request!(@request)
+
+    render json: {
+      id: request.id,
+      status: request.status
+    }
   end
 
   private
@@ -40,6 +71,12 @@ class AiController < ApplicationController
   def set_note
     @note = Note.active.find_by(slug: params[:slug]) ||
       Note.active.find_by!(id: params[:slug])
+  end
+
+  def set_request
+    @request = AiRequest.joins(:note_revision)
+      .where(id: params[:request_id], note_revisions: {note_id: @note.id})
+      .first!
   end
 
   def resolve_note_revision(document_markdown)
@@ -51,5 +88,16 @@ class AiController < ApplicationController
     return @note.head_revision if @note.head_revision&.content_markdown == current_content
 
     Notes::DraftService.call(note: @note, content: current_content, author: current_user)
+  end
+
+  def serialize_request(request)
+    request.realtime_payload
+  end
+
+  def limit_param
+    value = params[:limit].to_i
+    return 10 if value <= 0
+
+    [value, 50].min
   end
 end

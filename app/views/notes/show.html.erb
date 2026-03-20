@@ -1,4 +1,5 @@
 <% content_for :title, "#{@note.title} — NeuraMD" %>
+<%= turbo_stream_from @note, :ai_requests %>
 
 <div id="editor-root"
      class="flex flex-col"
@@ -15,6 +16,9 @@
      data-editor-head-revision-id-value="<%= @note.head_revision_id %>"
      data-ai-review-status-url-value="<%= ai_status_note_path(@note.slug) %>"
      data-ai-review-review-url-value="<%= ai_review_note_path(@note.slug) %>"
+     data-ai-review-history-url-value="<%= ai_requests_note_path(@note.slug) %>"
+     data-ai-review-request-url-template-value="<%= ai_request_note_path(@note.slug, "__REQUEST_ID__") %>"
+     data-ai-review-cancel-url-template-value="<%= ai_request_note_path(@note.slug, "__REQUEST_ID__") %>"
      data-autosave-draft-url-value="<%= draft_note_path(@note.slug) %>"
      data-autosave-checkpoint-url-value="<%= checkpoint_note_path(@note.slug) %>"
      data-autosave-local-key-value="note-draft-<%= @note.id %>"
@@ -47,6 +51,11 @@
     <span class="flex-shrink-0 rounded bg-gray-800 px-2 py-0.5 text-xs font-mono text-gray-400"
           data-editor-target="langBadge">
       <%= @note.detected_language || "auto" %>
+    </span>
+
+    <span class="nm-ai-transport nm-ai-transport--fallback"
+          data-ai-review-target="transportBadge">
+      Fallback polling
     </span>
 
     <%# Format buttons %>
@@ -133,6 +142,34 @@
         <path d="M8 13h8M8 17h5"/>
       </svg>
     </button>
+
+    <button title="Histórico de IA"
+            class="toolbar-btn"
+            data-action="click->ai-review#openHistory">
+      <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M3 12a9 9 0 1 0 3-6.7"/>
+        <path d="M3 4v5h5"/>
+        <path d="M12 7v5l3 3"/>
+      </svg>
+    </button>
+
+    <div class="hidden flex items-center gap-1.5 rounded border border-[var(--toolbar-border)] bg-[var(--theme-bg-secondary)] px-2 py-1 flex-shrink-0"
+         data-ai-review-target="selectorShell">
+      <label class="sr-only" for="ai-provider-select">Provider de IA</label>
+      <select id="ai-provider-select"
+              class="max-w-28 bg-transparent text-xs text-[var(--theme-text-secondary)] outline-none"
+              data-ai-review-target="providerSelect"
+              data-action="change->ai-review#providerChanged">
+        <option value="">Provider</option>
+      </select>
+      <span class="text-[10px] text-[var(--theme-text-faint)]">/</span>
+      <label class="sr-only" for="ai-model-select">Modelo de IA</label>
+      <select id="ai-model-select"
+              class="max-w-36 bg-transparent text-xs text-[var(--theme-text-secondary)] outline-none"
+              data-ai-review-target="modelSelect">
+        <option value="">Modelo</option>
+      </select>
+    </div>
 
     <%# Typewriter mode toggle %>
     <button title="Modo Typewriter"
@@ -481,8 +518,16 @@
         <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
         <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
       </svg>
-      <p class="text-[var(--theme-text-primary)] font-medium mb-1">Processando com IA</p>
+     <p class="text-[var(--theme-text-primary)] font-medium mb-1">Processando com IA</p>
+      <p data-ai-review-target="processingState" class="text-[var(--theme-text-secondary)] text-sm">Na fila</p>
       <p data-ai-review-target="processingProvider" class="text-[var(--theme-text-muted)] text-sm">AI</p>
+      <p data-ai-review-target="processingMeta" class="text-[var(--theme-text-muted)] text-xs mt-2">Aguardando execução...</p>
+      <p data-ai-review-target="processingError" class="hidden text-amber-300 text-xs mt-1"></p>
+      <button type="button"
+              class="mt-4 px-3 py-1.5 rounded-md border border-[var(--theme-border)] hover:bg-[var(--theme-bg-tertiary)] text-[var(--theme-text-secondary)] text-sm"
+              data-action="click->ai-review#cancelProcessing">
+        Cancelar
+      </button>
     </div>
   </div>
 
@@ -563,6 +608,66 @@ AI_ENABLED_PROVIDERS=openai,anthropic,ollama</pre>
             Aplicar
           </button>
         </div>
+      </div>
+    </div>
+  </dialog>
+
+  <dialog
+    data-ai-review-target="historyDialog"
+    class="w-[92vw] max-w-3xl max-h-[75vh] p-0 rounded-lg shadow-xl bg-[var(--theme-bg-primary)] text-[var(--theme-text-primary)] backdrop:bg-black/50 border border-[var(--theme-border)]"
+  >
+    <div class="flex flex-col h-full">
+      <div class="flex items-center justify-between px-6 py-4 border-b border-[var(--theme-border)]">
+        <div>
+          <h2 class="text-lg font-semibold">Histórico de IA</h2>
+          <p class="text-xs text-[var(--theme-text-muted)]" data-ai-review-target="historyStatus">Carregando execuções recentes...</p>
+        </div>
+        <div class="flex items-center gap-2">
+          <button type="button"
+                  class="toolbar-btn"
+                  title="Atualizar histórico de IA"
+                  data-action="click->ai-review#refreshHistory">
+            ↻
+          </button>
+          <button class="toolbar-btn !p-0.5" data-action="click->ai-review#closeHistory">✕</button>
+        </div>
+      </div>
+
+      <div class="p-6 overflow-y-auto">
+        <div class="mb-4 flex flex-wrap gap-2">
+          <button type="button"
+                  class="ai-history-filter is-active"
+                  data-ai-review-target="historyFilter"
+                  data-filter-value="all"
+                  data-action="click->ai-review#selectHistoryFilter">
+            Todas
+          </button>
+          <button type="button"
+                  class="ai-history-filter"
+                  data-ai-review-target="historyFilter"
+                  data-filter-value="active"
+                  data-action="click->ai-review#selectHistoryFilter">
+            Ativas
+          </button>
+          <button type="button"
+                  class="ai-history-filter"
+                  data-ai-review-target="historyFilter"
+                  data-filter-value="failed"
+                  data-action="click->ai-review#selectHistoryFilter">
+            Falhas
+          </button>
+          <button type="button"
+                  class="ai-history-filter"
+                  data-ai-review-target="historyFilter"
+                  data-filter-value="succeeded"
+                  data-action="click->ai-review#selectHistoryFilter">
+            Concluídas
+          </button>
+        </div>
+        <p class="hidden text-sm text-[var(--theme-text-muted)]" data-ai-review-target="historyEmpty">
+          Nenhuma execução de IA registrada para esta nota.
+        </p>
+        <div class="space-y-3" data-ai-review-target="historyList"></div>
       </div>
     </div>
   </dialog>

@@ -12,11 +12,13 @@ module Ai
     class << self
       def status
         selected = selected_provider_name
+        selected_model = selected ? provider_config(selected)[:model] : nil
         {
           enabled: enabled?,
           provider: selected,
-          model: selected ? provider_config(selected)[:model] : nil,
-          available_providers: available_provider_names
+          model: selected_model,
+          available_providers: available_provider_names,
+          provider_options: provider_options(selected:, selected_model:)
         }
       end
 
@@ -28,9 +30,9 @@ module Ai
         provider_names.select { |name| configured?(name) }
       end
 
-      def build(provider_name = nil)
+      def build(provider_name = nil, model_name: nil)
         resolved_name = resolve_provider_name(provider_name)
-        config = provider_config(resolved_name)
+        config = provider_config(resolved_name, model_name:)
 
         case resolved_name
         when "openai", "azure_openai", "local"
@@ -45,6 +47,21 @@ module Ai
       end
 
       private
+
+      def provider_options(selected:, selected_model:)
+        available_provider_names.map do |name|
+          config = provider_config(name)
+
+          {
+            name: name,
+            label: provider_label(name),
+            default_model: config[:model],
+            models: available_models_for(name),
+            selected: name == selected,
+            selected_model: name == selected ? selected_model : config[:model]
+          }
+        end
+      end
 
       def resolve_provider_name(provider_name)
         candidate = provider_name.to_s.presence || selected_provider_name
@@ -108,16 +125,29 @@ module Ai
           env_value(name, :model).present?
       end
 
-      def provider_config(name)
+      def provider_config(name, model_name: nil)
         record = AiProvider.find_by(name: name)
         record_config = record&.config || {}
+        resolved_model = model_name.to_s.presence ||
+          record&.default_model_text.presence ||
+          record_config["model"].presence ||
+          env_value(name, :model) ||
+          default_model(name)
 
         {
           name: name,
-          model: record&.default_model_text.presence || record_config["model"].presence || env_value(name, :model) || default_model(name),
+          model: resolved_model,
           base_url: record&.base_url.presence || record_config["base_url"].presence || env_value(name, :base_url) || default_base_url(name),
           api_key: env_value(name, :api_key)
         }
+      end
+
+      def available_models_for(name)
+        record = AiProvider.find_by(name: name)
+        record_models = normalize_models(record&.config&.fetch("models", nil))
+        configured_model = provider_config(name)[:model]
+
+        (record_models + [configured_model]).compact_blank.uniq
       end
 
       def env_value(name, field)
@@ -164,6 +194,27 @@ module Ai
 
       def parse_list(value)
         value.to_s.split(",").map(&:strip).reject(&:blank?)
+      end
+
+      def normalize_models(value)
+        case value
+        when Array
+          value.map(&:to_s).map(&:strip).reject(&:blank?)
+        when String
+          parse_list(value)
+        else
+          []
+        end
+      end
+
+      def provider_label(name)
+        {
+          "openai" => "OpenAI",
+          "anthropic" => "Anthropic",
+          "azure_openai" => "Azure OpenAI",
+          "ollama" => "Ollama",
+          "local" => "Local"
+        }[name] || name.humanize
       end
     end
   end

@@ -22,15 +22,18 @@ export default class extends Controller {
     this._lastDraftContent = null
     this._pendingContent   = null
     this._saving = false
+    this._pendingAiAcceptance = null
     this._localSnapshot = this._loadLocalEntry()
     this._ignoreInitialServerEcho = false
 
     this._onEditorChange  = this._handleEditorChange.bind(this)
     this._onBeforeUnload  = this._handleBeforeUnload.bind(this)
     this._onEditorReady   = this._handleEditorReady.bind(this)
+    this._onAiAccepted    = this._handleAiAccepted.bind(this)
 
     this.element.addEventListener("codemirror:change", this._onEditorChange)
     this.element.addEventListener("codemirror:ready", this._onEditorReady)
+    this.element.addEventListener("ai-review:accepted", this._onAiAccepted)
     window.addEventListener("beforeunload", this._onBeforeUnload)
   }
 
@@ -39,6 +42,7 @@ export default class extends Controller {
     clearTimeout(this._draftTimer)
     this.element.removeEventListener("codemirror:change", this._onEditorChange)
     this.element.removeEventListener("codemirror:ready", this._onEditorReady)
+    this.element.removeEventListener("ai-review:accepted", this._onAiAccepted)
     window.removeEventListener("beforeunload", this._onBeforeUnload)
   }
 
@@ -106,6 +110,18 @@ export default class extends Controller {
     navigator.sendBeacon(this.draftUrlValue, new Blob([payload], { type: "application/json" }))
   }
 
+  _handleAiAccepted(event) {
+    const requestId = event.detail?.requestId
+    if (!requestId) return
+
+    this._pendingAiAcceptance = {
+      requestId,
+      capability: event.detail?.capability || null,
+      provider: event.detail?.provider || null,
+      model: event.detail?.model || null
+    }
+  }
+
   _saveLocal(content) {
     if (this.localKeyValue) {
       try {
@@ -171,6 +187,11 @@ export default class extends Controller {
     const csrfToken = document.querySelector("meta[name='csrf-token']")?.content
 
     try {
+      const payload = { content_markdown: content }
+      if (kind === "checkpoint" && this._pendingAiAcceptance?.requestId) {
+        payload.ai_request_id = this._pendingAiAcceptance.requestId
+      }
+
       const response = await fetch(url, {
         method: "POST",
         headers: {
@@ -178,13 +199,14 @@ export default class extends Controller {
           "X-CSRF-Token": csrfToken,
           "Accept": "application/json"
         },
-        body: JSON.stringify({ content_markdown: content })
+        body: JSON.stringify(payload)
       })
       if (!response.ok) throw new Error(`HTTP ${response.status}`)
 
       if (kind === "checkpoint") {
         this._pendingContent = null
         this._localSnapshot = null
+        this._pendingAiAcceptance = null
       }
       this._setStatus(kind === "checkpoint" ? "salvo" : "rascunho")
     } catch (err) {
