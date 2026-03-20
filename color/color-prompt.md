@@ -81,9 +81,9 @@ Após receber a resposta JSON do Claude Code:
 
 ---
 
-## Uso via CLAUDE.md (contexto permanente)
+## Uso via PLAN.md (contexto permanente)
 
-Adicione ao `CLAUDE.md` do seu projeto para que o Claude Code sempre
+Adicione ao `PLAN.md` do seu projeto para que o Claude Code sempre
 considere a paleta ao sugerir estilos:
 
 ```markdown

@@ -1687,6 +1687,24 @@
     color: var(--theme-text-primary);
   }
 
+  .ai-diff-content {
+    color: var(--theme-text-primary);
+  }
+  .ai-diff-equal {
+    color: var(--theme-text-secondary);
+  }
+  .ai-diff-add {
+    background: color-mix(in srgb, var(--theme-success) 18%, transparent);
+    color: var(--theme-text-primary);
+    border-radius: 4px;
+  }
+  .ai-diff-del {
+    background: color-mix(in srgb, var(--theme-error) 18%, transparent);
+    color: var(--theme-text-primary);
+    border-radius: 4px;
+    text-decoration: line-through;
+  }
+
   /* ── Offline banner ── */
   #offline-banner {
     background: color-mix(in srgb, var(--theme-warning) 20%, var(--theme-bg-secondary));

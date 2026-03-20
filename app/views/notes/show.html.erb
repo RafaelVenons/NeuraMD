@@ -3,7 +3,7 @@
 <div id="editor-root"
      class="flex flex-col"
      style="height: 100dvh; background: var(--theme-bg-primary);"
-     data-controller="editor autosave"
+     data-controller="editor autosave ai-review"
      data-editor-autosave-url-value="<%= draft_note_path(@note.slug) %>"
      data-editor-revisions-url-value="<%= revisions_note_path(@note.slug) %>"
      data-editor-slug-value="<%= @note.slug %>"
@@ -13,6 +13,8 @@
      data-editor-initial-revision-id-value="<%= @revision&.id %>"
      data-editor-initial-revision-kind-value="<%= @revision&.revision_kind %>"
      data-editor-head-revision-id-value="<%= @note.head_revision_id %>"
+     data-ai-review-status-url-value="<%= ai_status_note_path(@note.slug) %>"
+     data-ai-review-review-url-value="<%= ai_review_note_path(@note.slug) %>"
      data-autosave-draft-url-value="<%= draft_note_path(@note.slug) %>"
      data-autosave-checkpoint-url-value="<%= checkpoint_note_path(@note.slug) %>"
      data-autosave-local-key-value="note-draft-<%= @note.id %>"
@@ -101,6 +103,34 @@
       <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
         <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
         <circle cx="12" cy="12" r="3"/>
+      </svg>
+    </button>
+
+    <button title="Sugestão com IA"
+            class="toolbar-btn"
+            data-action="click->ai-review#openSuggest">
+      <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M12 3l1.9 4.6L18.5 9l-4.6 1.4L12 15l-1.9-4.6L5.5 9l4.6-1.4L12 3z"/>
+        <path d="M19 15l.95 2.05L22 18l-2.05.95L19 21l-.95-2.05L16 18l2.05-.95L19 15z"/>
+      </svg>
+    </button>
+
+    <button title="Reescrever com IA"
+            class="toolbar-btn"
+            data-action="click->ai-review#openRewrite">
+      <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M4 20h4l10.5-10.5a2.1 2.1 0 0 0-4-4L4 16v4z"/>
+        <path d="M13.5 6.5l4 4"/>
+      </svg>
+    </button>
+
+    <button title="Revisar gramática com IA"
+            class="toolbar-btn"
+            data-action="click->ai-review#openGrammar">
+      <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M4 19.5V5a2 2 0 0 1 2-2h8l6 6v10.5a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2z"/>
+        <path d="M14 3v6h6"/>
+        <path d="M8 13h8M8 17h5"/>
       </svg>
     </button>
 
@@ -443,5 +473,98 @@
               data-action="click->jump-to-line#jump">Ir</button>
     </div>
   </div>
+
+  <%# ── AI Review dialog ───────────────────────────────── %>
+  <div data-ai-review-target="processingOverlay" class="hidden fixed inset-0 z-40 bg-black/30 backdrop-blur-sm flex items-center justify-center">
+    <div class="bg-[var(--theme-bg-secondary)] rounded-lg p-6 shadow-xl border border-[var(--theme-border)] text-center">
+      <svg class="animate-spin w-12 h-12 mx-auto mb-4 text-[var(--theme-accent)]" fill="none" viewBox="0 0 24 24">
+        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+      </svg>
+      <p class="text-[var(--theme-text-primary)] font-medium mb-1">Processando com IA</p>
+      <p data-ai-review-target="processingProvider" class="text-[var(--theme-text-muted)] text-sm">AI</p>
+    </div>
+  </div>
+
+  <dialog
+    data-ai-review-target="dialog"
+    class="w-[90vw] max-w-6xl max-h-[80vh] p-0 rounded-lg shadow-xl bg-[var(--theme-bg-primary)] text-[var(--theme-text-primary)] backdrop:bg-black/50 border border-[var(--theme-border)]"
+  >
+    <div class="flex flex-col h-full">
+      <div class="flex items-center justify-between px-6 py-4 border-b border-[var(--theme-border)]">
+        <div class="flex items-center gap-3">
+          <div>
+            <h2 class="text-lg font-semibold">Revisão com IA</h2>
+            <p data-ai-review-target="scopeLabel" class="text-xs text-[var(--theme-text-muted)]">Documento inteiro</p>
+          </div>
+          <span data-ai-review-target="providerBadge" class="hidden text-xs px-2 py-1 rounded bg-[var(--theme-bg-tertiary)] text-[var(--theme-text-muted)]"></span>
+        </div>
+        <button class="toolbar-btn !p-0.5" data-action="click->ai-review#close">✕</button>
+      </div>
+
+      <div class="hidden p-6 overflow-y-auto" data-ai-review-target="configNotice">
+        <div class="p-6 bg-[var(--theme-bg-tertiary)] rounded-lg border border-[var(--theme-border)]">
+          <h3 class="text-base font-semibold mb-2">IA não configurada</h3>
+          <p class="text-sm text-[var(--theme-text-muted)] mb-4">
+            Configure ao menos um provider por ENV. Exemplos:
+          </p>
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+            <pre class="bg-[var(--theme-code-bg)] p-3 rounded overflow-x-auto">OPENAI_API_KEY=...
+OPENAI_MODEL=gpt-4o-mini</pre>
+            <pre class="bg-[var(--theme-code-bg)] p-3 rounded overflow-x-auto">ANTHROPIC_API_KEY=...
+ANTHROPIC_MODEL=claude-3-5-sonnet-latest</pre>
+            <pre class="bg-[var(--theme-code-bg)] p-3 rounded overflow-x-auto">OLLAMA_API_BASE=http://AIrch:11434
+OLLAMA_MODEL=qwen3.5:4b</pre>
+            <pre class="bg-[var(--theme-code-bg)] p-3 rounded overflow-x-auto">AI_PROVIDER=openai
+AI_ENABLED_PROVIDERS=openai,anthropic,ollama</pre>
+          </div>
+        </div>
+      </div>
+
+      <div class="hidden flex-1 flex flex-col overflow-hidden" data-ai-review-target="diffContent">
+        <div class="flex-1 flex overflow-hidden">
+          <div class="w-1/2 flex flex-col border-r border-[var(--theme-border)]">
+            <div class="px-4 py-2 bg-[var(--theme-bg-secondary)] text-sm font-medium border-b border-[var(--theme-border)] text-[var(--theme-text-muted)]">
+              Original
+            </div>
+            <div class="flex-1 overflow-auto p-4">
+              <div data-ai-review-target="originalText" class="whitespace-pre-wrap font-mono text-sm leading-relaxed ai-diff-content"></div>
+            </div>
+          </div>
+
+          <div class="w-1/2 flex flex-col">
+            <div class="px-4 py-2 bg-[var(--theme-bg-secondary)] text-sm font-medium border-b border-[var(--theme-border)] text-[var(--theme-text-muted)] flex items-center justify-between">
+              <span>Proposta</span>
+              <button
+                type="button"
+                data-action="click->ai-review#toggleEditMode"
+                data-ai-review-target="editToggle"
+                class="text-xs px-2 py-1 rounded bg-[var(--theme-bg-tertiary)] hover:bg-[var(--theme-bg-hover)] text-[var(--theme-text-secondary)]"
+              >
+                Editar
+              </button>
+            </div>
+            <div class="flex-1 overflow-auto p-4 relative">
+              <div data-ai-review-target="correctedDiff" class="whitespace-pre-wrap font-mono text-sm leading-relaxed ai-diff-content"></div>
+              <textarea
+                data-ai-review-target="correctedText"
+                class="hidden absolute inset-0 w-full h-full resize-none font-mono text-sm leading-relaxed bg-[var(--theme-bg-primary)] border-none outline-none text-[var(--theme-text-primary)] p-4"
+                spellcheck="false"
+              ></textarea>
+            </div>
+          </div>
+        </div>
+
+        <div class="flex items-center justify-end gap-3 px-6 py-4 border-t border-[var(--theme-border)]">
+          <button type="button" data-action="click->ai-review#close" class="px-4 py-2 rounded-md border border-[var(--theme-border)] hover:bg-[var(--theme-bg-secondary)] text-[var(--theme-text-secondary)]">
+            Cancelar
+          </button>
+          <button type="button" data-action="click->ai-review#accept" class="px-4 py-2 rounded-md bg-[var(--theme-accent)] text-[var(--theme-accent-text)] hover:bg-[var(--theme-accent-hover)]">
+            Aplicar
+          </button>
+        </div>
+      </div>
+    </div>
+  </dialog>
 
 </div>

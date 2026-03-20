@@ -24,6 +24,8 @@ Rails.application.routes.draw do
       get :search
     end
     member do
+      get  :ai_status, to: "ai#status"
+      post :ai_review, to: "ai#review"
       post :autosave    # legacy — kept for compatibility during transition
       post :draft       # server-side draft (60s debounce, no history)
       post :checkpoint  # manual save (permanent, appears in history)

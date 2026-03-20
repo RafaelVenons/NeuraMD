@@ -1,4 +1,4 @@
-# SPEC — NeuraMD (Rails 8, Hotwire, PostgreSQL, Self-Hosted)
+# PLAN — NeuraMD (Rails 8, Hotwire, PostgreSQL, Self-Hosted)
 
 > **Inspiração base:** FrankMD (`../FrankMD`) — editor Markdown self-hosted em Rails 8, sem banco de dados, filesystem-based.
 > **NeuraMD** evolui o conceito adicionando PostgreSQL, versionamento de conteúdo, grafo semântico de notas, tags, mídia e IA plugável.
@@ -77,6 +77,84 @@ armazenamento local em vez de filesystem + S3.
 | **TTS (ElevenLabs/Fish Audio)** | ❌ Não tem | **Implementar do zero** |
 | **Suporte CJK/Japonês/Coreano** | ❌ Não tem | **Implementar do zero** |
 | **Armazenamento agnóstico** | ❌ S3 hardcoded | **Implementar do zero** |
+
+---
+
+### 3.1 Regras de Reaproveitamento
+
+- **Reaproveitar arquitetura e UX, não copiar acoplamentos antigos.**
+- FrankMD é referência primária para:
+  - controllers Stimulus do editor
+  - ergonomia de toolbar/dialog
+  - fluxo de diff/apply de IA
+  - estratégia de testes de sistema para features interativas do editor
+- FrankMD **não** deve ser copiado literalmente quando a implementação original depende de:
+  - filesystem como source of truth
+  - configuração em `.fed`
+  - serviços ou models inexistentes no NeuraMD
+  - storage S3 hardcoded
+- Sempre que houver divergência:
+  - **UX do FrankMD** pode ser mantida
+  - **persistência, autorização, auditoria e domínio** devem seguir o NeuraMD
+
+### 3.2 Reaproveitamento Específico da Fase 5
+
+Para IA de texto, o FrankMD serve como referência nas seguintes peças:
+
+| Peça no FrankMD | O que aproveitar | O que adaptar no NeuraMD |
+|---|---|---|
+| `app/controllers/ai_controller.rb` | formato dos endpoints de status + processamento | trocar leitura de arquivo por `Note`/`NoteRevision`; usar Pundit; responder por `slug` |
+| `app/services/ai_service.rb` | separação entre escolha de provider, prompt e chamada remota | dividir em `app/services/ai/*`; auditar em `ai_requests`; usar `ai_providers` + ENV |
+| `app/javascript/controllers/ai_grammar_controller.js` | fluxo do modal, overlay de processamento, diff/apply | operar sobre CodeMirror e seleção atual; aplicar em documento inteiro ou trecho |
+| `app/views/notes/dialogs/_ai_diff.html.erb` | estrutura visual do diff lado a lado | encaixar no layout atual do editor sem reintroduzir dependências do app FrankMD |
+| `app/javascript/lib/diff_utils.js` | diff textual puro e testável | manter como utilitário local reaproveitável por outras features |
+
+### 3.4 Ambiente Inicial de IA Local
+
+Para a primeira rodada de testes da Fase 5, considerar o seguinte ambiente como baseline:
+
+- servidor local de IA acessível pelo hostname `AIrch`
+- entrada já resolvida via `/etc/hosts`
+- serviço Ollama escutando em `AIrch:11434`
+- modelo inicial: `qwen3.5:4b`
+
+**Convenção atual do projeto para testes locais de IA:**
+
+- `AI_PROVIDER=ollama`
+- `AI_ENABLED_PROVIDERS=ollama`
+- `OLLAMA_API_BASE=http://AIrch:11434`
+- `OLLAMA_MODEL=qwen3.5:4b`
+
+Isso deve ser tratado como o caminho padrão de validação inicial antes de habilitar providers externos.
+
+**Regra operacional para integrações com `AIrch`:**
+
+- requisições para `AIrch` devem ser tratadas como **assíncronas por padrão**
+- tempo real não é prioridade
+- a UI deve preferir:
+  - enqueue de job
+  - estado persistido no banco
+  - polling leve, Turbo Stream ou refresh manual
+- evitar requests síncronos longos bloqueando o editor
+
+### 3.3 Bibliotecas e Ferramentas de Qualidade a Manter como Referência
+
+Bibliotecas já adotadas no NeuraMD e que devem continuar sendo a base de qualidade:
+
+- `RSpec`
+- `FactoryBot`
+- `Shoulda Matchers`
+- `DatabaseCleaner`
+- `Capybara`
+- `Cuprite` / `Ferrum`
+
+Na fase 5, a regra é:
+
+- testes de request para contratos HTTP e auditoria
+- testes de service para prompts, seleção de provider e tratamento de erro
+- testes de system para fluxo real no editor com dialog, diff e aplicação
+- **não** depender de API real de IA em teste automatizado
+- stubs devem ocorrer no boundary do provider/service, nunca dentro do CodeMirror
 
 ---
 
@@ -349,6 +427,85 @@ Se já existe registro ativo com essa chave → não chama API.
 - Fonte: incluir fallback para CJK no Tailwind (`font-sans` já inclui via system fonts)
 - Busca: `pg_search` com `tsvector` suporta CJK via extensão `zhparser` (Mandarim) ou tokenização por caractere
 
+### 4.5.1 Compartilhamento por Mount para Kokoro e Montreal Forced Aligner
+
+Kokoro e Montreal Forced Aligner devem ser tratados como integrações futuras que compartilham arquivos com o NeuraMD por **mount de host**, não por cópia ad hoc.
+
+**Objetivo:**
+
+- manter assets, cache intermediário e saídas acessíveis por múltiplos serviços
+- evitar duplicação de áudio/transcrições/alinhamentos
+- permitir inspeção manual simples no host
+- facilitar backup de toda a cadeia de IA/TTS/alinhamento
+
+**Recomendação de infraestrutura:**
+
+- criar uma partição ou volume dedicado no host
+- montar em um caminho fixo, por exemplo: `/mnt/neuramd-share`
+- expor esse caminho para a app e futuras ferramentas por bind mount
+
+**Layout sugerido da repartição compartilhada:**
+
+```text
+/mnt/neuramd-share/
+  exchange/
+    inbound/
+    outbound/
+  ollama/
+    cache/
+  kokoro/
+    input/
+    output/
+    voices/
+    cache/
+  mfa/
+    input/
+    output/
+    dictionaries/
+    acoustic_models/
+    temp/
+  tts/
+    rendered/
+    rejected/
+  alignments/
+    textgrids/
+    json/
+```
+
+**Convenções de uso:**
+
+- `exchange/`:
+  - zona neutra para interoperabilidade entre serviços
+  - útil para jobs assíncronos e inspeção manual
+- `kokoro/input` e `kokoro/output`:
+  - entrada e saída cruas de síntese local
+- `mfa/input` e `mfa/output`:
+  - corpus temporário, transcrições e alinhamentos gerados
+- `tts/rendered`:
+  - artefatos finais aprovados para associação com `note_tts_assets`
+- `tts/rejected`:
+  - saídas descartadas que ainda valem auditoria técnica
+- `alignments/textgrids`:
+  - formato principal para Montreal Forced Aligner
+
+**Regras para implementação futura:**
+
+- o NeuraMD continua usando Active Storage para o artefato final persistido na aplicação
+- Kokoro/MFA operam sobre o mount compartilhado como workspace
+- jobs devem mover ou copiar para Active Storage apenas o resultado final aceito
+- nomes de arquivos devem preferir UUID da nota/revisão e timestamps
+- nenhum serviço deve assumir caminhos relativos frágeis fora de `SHARED_AI_ROOT`
+
+**ENV base para essa estratégia:**
+
+```bash
+SHARED_AI_ROOT=/mnt/neuramd-share
+KOKORO_ROOT=/mnt/neuramd-share/kokoro
+MFA_ROOT=/mnt/neuramd-share/mfa
+TTS_RENDER_ROOT=/mnt/neuramd-share/tts/rendered
+ALIGNMENT_ROOT=/mnt/neuramd-share/alignments
+```
+
 ---
 
 ### 4.6 IA Plugável (texto)
@@ -380,6 +537,33 @@ ai_requests (auditoria)
   cost_estimate       numeric
   created_at          timestamp
 ```
+
+**Decisões de implementação da Fase 5:**
+
+- Providers de IA de texto vivem em `app/services/ai/`
+- Seleção de provider:
+  - `ENV["AI_PROVIDER"]` pode forçar provider específico
+  - `ENV["AI_ENABLED_PROVIDERS"]` pode limitar a lista
+  - `ai_providers.enabled` complementa a configuração persistida
+- Secrets ficam **somente em ENV**
+- O modal de IA no editor deve operar em dois escopos:
+  - seleção ativa do CodeMirror
+  - documento inteiro quando não há seleção
+- Toda chamada bem-sucedida deve gerar um registro em `ai_requests`
+- `grammar_review`, `suggest` e `rewrite` compartilham a mesma infraestrutura e mudam apenas o prompt/capability
+- O resultado de IA **não cria checkpoint automaticamente**
+  - primeiro aplica no editor
+  - depois o usuário decide salvar como draft/checkpoint no fluxo normal
+
+**Providers iniciais da Fase 5:**
+
+| Provider | Status | Observação |
+|---|---|---|
+| OpenAI | Inicial | endpoint compatível com `/chat/completions` |
+| Anthropic | Inicial | endpoint `/messages` |
+| Ollama | Inicial | execução local para uso self-hosted |
+| Azure OpenAI | Inicial | via compatibilidade OpenAI com `base_url` específico |
+| Local OpenAI-compatible | Inicial | ex: LM Studio / vLLM / outros gateways |
 
 ---
 
@@ -502,6 +686,7 @@ spec/
   models/
   services/
   system/
+  requests/
 ```
 
 ---
@@ -546,7 +731,7 @@ spec/
 - [x] `Links::SyncService` — diff entre links extraídos e `note_links` existentes; cria/deleta; sem duplicatas por `(src_note_id, dst_note_id)`; só roda em checkpoints
 - [ ] ~~`Links::TitleSyncService`~~ — não necessário; Display Text é livre e não rastreia o título da nota
 - [x] CodeMirror extension: detecta `[[`, abre dropdown Stimulus com sugestões via fetch, navega com `↑`/`↓`, insere com `Enter`/`Tab`, fecha com `Esc`
-- [ ] Decoração de link quebrado: UUID não encontrado no DB → classe CSS `wikilink-broken` (fundo vermelho) no editor via CodeMirror ViewPlugin
+- [x] Decoração de link quebrado: UUID não encontrado no DB → classe CSS `wikilink-broken` (fundo vermelho) no editor via CodeMirror ViewPlugin
 - [x] Preview: render `[[Título|uuid]]` como `<a href="/notes/slug">Título</a>` (client-side no preview controller)
 - [x] Preview: se UUID inexistente, render como `<span class="wikilink-broken">Título</span>`
 - [x] Backlinks no preview: seção no rodapé com notas src linkando para a nota atual
@@ -574,26 +759,74 @@ spec/
 - **Entrega:** produtividade real
 
 ### Fase 4 — Grafo Web
-- [ ] Revisar a feature do grafo partindo de `GRAFO.md`, sem reaproveitar por inércia a implementação atual
-- [ ] Novo `GET /api/graph` com dataset normalizado (`notes`, `links`, `tags`, `noteTags`, `linkTags`)
-- [ ] Nova página `GET /graph` integrada ao Rails e desacoplada da UI atual
-- [ ] Visualização JS com Sigma.js + Graphology
-- [ ] Custom edge renderer para seta em `source` ou `target` e gap assimétrico
-- [ ] Filtros (`hier_role`/tag/profundidade), foco por nó e modos de destaque
-- [ ] Tooltip HTML persistente/transitório
-- [ ] Navegação por clique
-- [ ] CTEs recursivas para insights (descendentes, órfãs, caminho)
-- [ ] Tags em notas (`note_tags` join) visíveis também no nível do nó
-- [ ] Filtro por tag na listagem de notas
+- [x] Revisar a feature do grafo partindo de `GRAFO.md`, sem reaproveitar por inércia a implementação atual
+- [x] Novo `GET /api/graph` com dataset normalizado (`notes`, `links`, `tags`, `noteTags`, `linkTags`)
+- [x] Nova página `GET /graph` integrada ao Rails e desacoplada da UI atual
+- [x] Visualização JS com Sigma.js + Graphology
+- [x] Custom edge renderer para seta em `source` ou `target` e gap assimétrico
+- [x] Filtros (`hier_role`/tag/profundidade), foco por nó e modos de destaque
+- [x] Tooltip HTML persistente/transitório
+- [x] Navegação por clique
+- [x] CTEs recursivas para insights (descendentes, órfãs, caminho)
+- [x] Tags em notas (`note_tags` join) visíveis também no nível do nó
+- [x] Filtro por tag na listagem de notas
 - **Entrega:** grafo útil e navegável
 
 ### Fase 5 — IA Plugável (texto)
-- [ ] Interface `Ai::Provider` (adapter pattern) — base do FrankMD
-- [ ] Sugestão de texto
-- [ ] Revisão gramatical com preview de diff antes de aplicar
-- [ ] `ai_requests` para auditoria
-- [ ] Feature flags via ENV (ativar/desativar providers)
+- [x] Interface `Ai::Provider` (adapter pattern) — base do FrankMD
+- [x] Sugestão de texto
+- [x] Revisão gramatical com preview de diff antes de aplicar
+- [x] `ai_requests` para auditoria
+- [x] Feature flags via ENV (ativar/desativar providers)
+- [x] Rewrite com a mesma infraestrutura de diff/apply
+- [ ] Specs de service para seleção de provider, prompt e falhas remotas
+- [ ] Expor escolha explícita de provider/model no UI quando necessário
+- [ ] Marcar revisões aceitas via IA com metadado mais explícito no fluxo de checkpoint
 - **Entrega:** IA controlável e segura
+
+#### Fase 5 — O que portar do FrankMD e o que não portar
+
+**Portar quase direto:**
+- dialog de diff lado a lado
+- overlay de processamento
+- controller Stimulus para abrir modal, chamar endpoint e aplicar o resultado
+- utilitário de diff puro em JavaScript
+
+**Portar adaptando:**
+- controller HTTP de IA
+- service de roteamento de provider
+- prompts para grammar/suggest/rewrite
+
+**Não portar:**
+- leitura de arquivo em disco como entrada principal
+- configuração `.fed`
+- qualquer decisão que ignore `ai_requests`
+- qualquer fluxo que aplique resultado direto no storage sem passar pelo editor
+
+#### Fase 5 — Matriz mínima de testes
+
+Toda evolução da fase 5 deve manter esta matriz:
+
+- `spec/requests/ai_spec.rb`
+  - status do provider
+  - contrato do endpoint de review
+  - erros de validação
+  - criação de `ai_requests`
+- `spec/services/ai/*`
+  - prompt por capability
+  - seleção de provider por ENV/DB
+  - tratamento de timeout/erro do provider
+  - parsing da resposta de cada provider
+- `spec/system/ai_review_spec.rb`
+  - abrir modal pelo toolbar
+  - processar seleção
+  - processar documento inteiro
+  - aplicar texto no CodeMirror
+  - exibir fallback de “IA não configurada”
+- testes futuros de job
+  - enfileirar requisições para `AIrch`
+  - persistir estado `queued/running/succeeded/failed`
+  - reprocessar falhas transitórias de rede
 
 ### Fase 6 — TTS com Cache (ElevenLabs + Fish Audio)
 - [ ] `Tts::BaseProvider` interface + `ElevenLabsProvider` + `FishAudioProvider`
@@ -603,7 +836,43 @@ spec/
 - [ ] Player embutido na nota
 - [ ] Fluxo de rejeição: "Gerar Novo" com novas configurações
 - [ ] Suporte a zh-CN, zh-TW, ja-JP, ko-KR
+- [ ] Definir bind mounts de workspace para Kokoro e MFA usando `SHARED_AI_ROOT`
+- [ ] Padronizar nomeação de artefatos compartilhados por `note_revision_id`
 - **Entrega:** áudio eficiente e multi-idioma
+
+#### Fase 6 — Preparação de Infra para Ferramentas Locais
+
+Mesmo antes da integração completa com Kokoro ou MFA, a infraestrutura deve ser pensada para:
+
+- mount estável e previsível
+- artefatos legíveis fora do container
+- possibilidade de executar ferramentas localmente no host ou em containers separados
+
+**Bind mount recomendado em compose futuro:**
+
+```yaml
+services:
+  app:
+    volumes:
+      - ${SHARED_AI_ROOT:-/mnt/neuramd-share}:/mnt/neuramd-share
+
+  kokoro:
+    volumes:
+      - ${SHARED_AI_ROOT:-/mnt/neuramd-share}:/mnt/neuramd-share
+
+  mfa:
+    volumes:
+      - ${SHARED_AI_ROOT:-/mnt/neuramd-share}:/mnt/neuramd-share
+```
+
+Esse padrão evita drift entre caminhos internos dos serviços.
+
+**Imagens base atualmente escolhidas para alinhamento inicial:**
+
+- Kokoro: `ghcr.io/remsky/kokoro-fastapi-cpu:v0.2.4`
+- Montreal Forced Aligner: `mmcauliffe/montreal-forced-aligner:latest`
+
+Essas escolhas devem ser revisitadas quando houver benchmark real de CPU/GPU, throughput e footprint no host `AIrch`.
 
 ### Fase 7 — Polimento Editor e UX
 - [ ] Themes (dark + custom) — base FrankMD
@@ -698,13 +967,13 @@ Use este prompt ao iniciar o projeto no CLI:
 
 ```
 Estou construindo uma aplicação Rails 8 de notas self-hosted chamada "NeuraMD".
-Leia o arquivo SPEC.md neste diretório — ele descreve toda a arquitetura.
+Leia o arquivo PLAN.md neste diretório — ele descreve a arquitetura e o plano incremental.
 
 Referência de implementação do editor: ../FrankMD (disponível localmente ao lado deste projeto)
 (Rails 8 + CodeMirror 6 + Hotwire — portar o máximo de funcionalidades de usabilidade,
 adaptando para banco de dados PostgreSQL e Active Storage local em vez de filesystem + S3)
 
-Comece pela Fase 0 do SPEC:
+Comece pela Fase 0 do PLAN:
 1. Scaffold Rails 8 com PostgreSQL e UUID como PK padrão
 2. Docker + docker-compose com postgres e redis
 3. Devise para autenticação

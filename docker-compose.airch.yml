@@ -1,0 +1,96 @@
+# Stack para rodar diretamente no host AIrch.
+#
+# Objetivo:
+# - hospedar serviços auxiliares de IA/TTS/alinhamento no próprio AIrch
+# - usar a mesma repartição compartilhada definida no PLAN.md
+# - manter caminhos estáveis para integração assíncrona a partir do NeuraMD
+#
+# Uso:
+#   docker compose -f docker-compose.airch.yml --profile ai up -d
+#
+# Requisitos no host AIrch:
+# - /mnt/neuramd-share montado localmente
+# - Ollama já disponível em AIrch:11434 fora deste compose
+
+services:
+  ai-bootstrap:
+    image: alpine:3.20
+    profiles: ["ai"]
+    command:
+      - sh
+      - -lc
+      - |
+        mkdir -p \
+          /mnt/neuramd-share/exchange/inbound \
+          /mnt/neuramd-share/exchange/outbound \
+          /mnt/neuramd-share/kokoro/input \
+          /mnt/neuramd-share/kokoro/output \
+          /mnt/neuramd-share/kokoro/voices \
+          /mnt/neuramd-share/kokoro/cache \
+          /mnt/neuramd-share/mfa/input \
+          /mnt/neuramd-share/mfa/output \
+          /mnt/neuramd-share/mfa/dictionaries \
+          /mnt/neuramd-share/mfa/acoustic_models \
+          /mnt/neuramd-share/mfa/temp \
+          /mnt/neuramd-share/tts/rendered \
+          /mnt/neuramd-share/tts/rejected \
+          /mnt/neuramd-share/alignments/textgrids \
+          /mnt/neuramd-share/alignments/json
+    volumes:
+      - ${SHARED_AI_ROOT:-/mnt/neuramd-share}:/mnt/neuramd-share
+    restart: "no"
+
+  kokoro:
+    image: ${KOKORO_IMAGE:-ghcr.io/remsky/kokoro-fastapi-cpu:v0.2.4}
+    profiles: ["ai"]
+    depends_on:
+      ai-bootstrap:
+        condition: service_completed_successfully
+    environment:
+      SHARED_AI_ROOT: ${SHARED_AI_ROOT:-/mnt/neuramd-share}
+      KOKORO_ROOT: ${KOKORO_ROOT:-/mnt/neuramd-share/kokoro}
+      TTS_RENDER_ROOT: ${TTS_RENDER_ROOT:-/mnt/neuramd-share/tts/rendered}
+      ALIGNMENT_ROOT: ${ALIGNMENT_ROOT:-/mnt/neuramd-share/alignments}
+      HOST: 0.0.0.0
+      PORT: 8880
+    volumes:
+      - ${SHARED_AI_ROOT:-/mnt/neuramd-share}:/mnt/neuramd-share
+    working_dir: /mnt/neuramd-share/kokoro
+    ports:
+      - ${KOKORO_BIND:-127.0.0.1}:${KOKORO_PORT:-8880}:8880
+    restart: unless-stopped
+
+  mfa:
+    image: ${MFA_IMAGE:-mmcauliffe/montreal-forced-aligner:latest}
+    profiles: ["ai"]
+    depends_on:
+      ai-bootstrap:
+        condition: service_completed_successfully
+    command: ["sleep", "infinity"]
+    environment:
+      SHARED_AI_ROOT: ${SHARED_AI_ROOT:-/mnt/neuramd-share}
+      MFA_ROOT: ${MFA_ROOT:-/mnt/neuramd-share/mfa}
+      ALIGNMENT_ROOT: ${ALIGNMENT_ROOT:-/mnt/neuramd-share/alignments}
+    volumes:
+      - ${SHARED_AI_ROOT:-/mnt/neuramd-share}:/mnt/neuramd-share
+    working_dir: /mnt/neuramd-share/mfa
+    restart: unless-stopped
+
+  watcher:
+    image: python:3.12-alpine
+    profiles: ["ai"]
+    depends_on:
+      ai-bootstrap:
+        condition: service_completed_successfully
+    command: ["python3", "/usr/local/bin/airch-watcher", "serve"]
+    environment:
+      SHARED_AI_ROOT: ${SHARED_AI_ROOT:-/mnt/neuramd-share}
+      OLLAMA_API_BASE: ${OLLAMA_API_BASE:-http://127.0.0.1:11434}
+      OLLAMA_MODEL: ${OLLAMA_MODEL:-qwen3.5:4b}
+      AI_WATCHER_POLL_INTERVAL: ${AI_WATCHER_POLL_INTERVAL:-2}
+      AI_WATCHER_REQUEST_TIMEOUT: ${AI_WATCHER_REQUEST_TIMEOUT:-180}
+    volumes:
+      - ${SHARED_AI_ROOT:-/mnt/neuramd-share}:/mnt/neuramd-share
+      - ./script/airch_watcher.py:/usr/local/bin/airch-watcher:ro
+    working_dir: /mnt/neuramd-share/exchange
+    restart: unless-stopped
