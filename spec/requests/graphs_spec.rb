@@ -121,5 +121,41 @@ RSpec.describe "Graphs", type: :request do
       expect(response.parsed_body["notes"].map { |item| item["id"] }).to eq([active_note.id])
       expect(response.parsed_body["links"]).to eq([])
     end
+
+    it "keeps the graph available when a note revision cannot be decrypted" do
+      broken_note = create(:note, title: "Quebrada")
+      broken_revision = create(:note_revision, note: broken_note, content_markdown: "Criar [[Promessa quebrada]]")
+      broken_note.update_columns(head_revision_id: broken_revision.id)
+
+      healthy_note = create(:note, title: "Saudavel")
+      healthy_revision = create(:note_revision, note: healthy_note, content_markdown: "Criar [[Promessa valida]]")
+      healthy_note.update_columns(head_revision_id: healthy_revision.id)
+
+      allow_any_instance_of(NoteRevision).to receive(:content_markdown).and_wrap_original do |original, *args|
+        revision = original.receiver
+        if revision.id == broken_revision.id
+          raise ActiveRecord::Encryption::Errors::Decryption
+        end
+
+        original.call(*args)
+      end
+
+      get api_graph_path, headers: { "ACCEPT" => "application/json" }
+
+      expect(response).to have_http_status(:ok)
+      broken_payload = response.parsed_body["notes"].find { |item| item["id"] == broken_note.id }
+      healthy_payload = response.parsed_body["notes"].find { |item| item["id"] == healthy_note.id }
+
+      expect(broken_payload).to include(
+        "promise_titles" => [],
+        "promise_count" => 0,
+        "has_promises" => false
+      )
+      expect(healthy_payload).to include(
+        "promise_titles" => ["Promessa valida"],
+        "promise_count" => 1,
+        "has_promises" => true
+      )
+    end
   end
 end

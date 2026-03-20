@@ -89,8 +89,18 @@ module Graph
 
     def build_promise_titles_by_note_id(notes)
       notes.each_with_object({}) do |note, memo|
-        memo[note.id] = Links::PromiseExtractService.call(note.head_revision&.content_markdown)
+        memo[note.id] = promise_titles_for(note)
       end
+    end
+
+    def promise_titles_for(note)
+      content = note.head_revision&.content_markdown
+      return [] if content.blank?
+
+      Links::PromiseExtractService.call(content)
+    rescue ActiveRecord::Encryption::Errors::Decryption, OpenSSL::Cipher::CipherError => error
+      Rails.logger.warn("graph.dataset_builder skipped promises note=#{note.id} reason=#{error.class.name.demodulize}")
+      []
     end
   end
 end
