@@ -41,12 +41,12 @@ RSpec.configure do |config|
     DatabaseCleaner.start
   end
 
-  config.after(:each) do
+  config.after(:each) do |example|
     DatabaseCleaner.clean
     clear_enqueued_jobs
     clear_performed_jobs
     travel_back
-    Warden.test_reset!
+    Warden.test_reset! if example.metadata[:type] == :system && Warden.respond_to?(:test_reset!)
   end
 
   config.before(:each) do

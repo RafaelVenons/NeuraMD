@@ -31,6 +31,7 @@ Rails.application.routes.draw do
       get :search
     end
     member do
+      post :create_from_promise
       get  :ai_status, to: "ai#status"
       post :ai_review, to: "ai#review"
       get  :ai_requests, to: "ai#index"

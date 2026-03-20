@@ -49,6 +49,21 @@ RSpec.describe Ai::ModelRouter do
       )
     end
 
+    it "routes note seeding to the dedicated ollama model lane" do
+      selection = described_class.route(
+        provider_name: "ollama",
+        configured_model: "qwen2.5:1.5b",
+        capability: "seed_note",
+        text: "a" * 2_200,
+        language: "pt-BR"
+      )
+
+      expect(selection).to include(
+        model: "qwen2.5:3b",
+        selection_reason: "seed_note_long"
+      )
+    end
+
     it "falls back to the configured model for non-ollama providers" do
       selection = described_class.route(
         provider_name: "openai",

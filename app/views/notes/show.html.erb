@@ -322,6 +322,7 @@
          data-controller="codemirror text-format stats-panel typewriter jump-to-line wikilink"
          data-codemirror-initial-value-value="<%= @revision&.content_markdown.to_s %>"
          data-wikilink-search-url-value="<%= search_notes_path %>"
+         data-wikilink-create-promise-url-value="<%= create_from_promise_note_path(@note.slug) %>"
          data-wikilink-current-note-id-value="<%= @note.id %>"
          data-editor-target="editorPane">
       <div id="codemirror-host"

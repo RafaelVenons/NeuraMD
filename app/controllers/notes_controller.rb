@@ -1,5 +1,5 @@
 class NotesController < ApplicationController
-  before_action :set_note, only: [:show, :edit, :update, :destroy, :autosave, :draft, :checkpoint, :revisions, :show_revision, :restore_revision, :link_info]
+  before_action :set_note, only: [:show, :edit, :update, :destroy, :autosave, :draft, :checkpoint, :revisions, :show_revision, :restore_revision, :link_info, :create_from_promise]
   layout "editor", only: [:show, :show_revision]
 
   def index
@@ -146,6 +146,27 @@ class NotesController < ApplicationController
     )
     render json: {saved: true, revision_id: revision.id}
   rescue => e
+    render json: {error: e.message}, status: :unprocessable_entity
+  end
+
+  def create_from_promise
+    authorize @note, :update?
+    authorize Note.new, :create?
+
+    promise_note = Notes::PromiseCreationService.call(
+      source_note: @note,
+      title: params[:title],
+      author: current_user,
+      mode: params[:mode]
+    )
+
+    render json: {
+      note_id: promise_note.id,
+      note_slug: promise_note.slug,
+      note_title: promise_note.title,
+      note_url: note_path(promise_note.slug)
+    }, status: :created
+  rescue Ai::Error, ArgumentError => e
     render json: {error: e.message}, status: :unprocessable_entity
   end
 

@@ -49,6 +49,48 @@ RSpec.describe "Notes", type: :request do
     end
   end
 
+  describe "POST /notes/:slug/create_from_promise" do
+    let(:note) { create(:note, :with_head_revision) }
+
+    it "creates a blank note from a promise title" do
+      note
+      expect {
+        post create_from_promise_note_path(note.slug),
+          params: { title: "Nova promessa", mode: "blank" },
+          as: :json
+      }.to change(Note, :count).by(1)
+
+      expect(response).to have_http_status(:created)
+      created = Note.order(created_at: :desc).first
+      expect(created.title).to eq("Nova promessa")
+      expect(created.detected_language).to eq(note.detected_language)
+      expect(response.parsed_body).to include(
+        "note_id" => created.id,
+        "note_slug" => created.slug,
+        "note_title" => "Nova promessa"
+      )
+    end
+
+    it "creates an AI-seeded note from a promise title" do
+      note
+      provider = instance_double(Ai::OllamaProvider, review: Ai::Result.new(content: "# Nova promessa\n\nCorpo inicial.", provider: "ollama", model: "qwen2.5:1.5b"))
+      allow(Ai::ProviderRegistry).to receive(:enabled?).and_return(true)
+      allow(Ai::ProviderRegistry).to receive(:build).and_return(provider)
+
+      expect {
+        post create_from_promise_note_path(note.slug),
+          params: { title: "Nova promessa", mode: "ai" },
+          as: :json
+      }.to change(Note, :count).by(1)
+        .and change(NoteRevision, :count).by(1)
+
+      expect(response).to have_http_status(:created)
+      created = Note.order(created_at: :desc).first
+      expect(created.head_revision).to be_present
+      expect(created.head_revision.content_markdown).to eq("# Nova promessa\n\nCorpo inicial.")
+    end
+  end
+
   describe "GET /notes/:slug" do
     let(:note) { create(:note, :with_head_revision) }
 

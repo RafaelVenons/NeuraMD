@@ -37,6 +37,12 @@ module Ai
           else
             selection(env_or("OLLAMA_ROUTE_REWRITE_LONG_MODEL", "llama3.2:3b"), reason: "rewrite_long")
           end
+        when "seed_note"
+          if text_length <= threshold("OLLAMA_ROUTE_SEED_NOTE_SHORT_MAX_CHARS", 1800)
+            selection(env_or("OLLAMA_ROUTE_SEED_NOTE_SHORT_MODEL", "qwen2.5:1.5b"), reason: "seed_note_short")
+          else
+            selection(env_or("OLLAMA_ROUTE_SEED_NOTE_LONG_MODEL", "qwen2.5:3b"), reason: "seed_note_long")
+          end
         when "translate"
           route_translation(text_length:, configured_model:, language:, target_language:)
         else

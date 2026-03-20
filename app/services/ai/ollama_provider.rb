@@ -1,5 +1,27 @@
 module Ai
   class OllamaProvider < BaseProvider
+    class << self
+      def available_models(base_url:, open_timeout: 3, read_timeout: 5)
+        uri = URI.parse("#{base_url}/api/tags")
+        request = Net::HTTP::Get.new(uri)
+        http = Net::HTTP.new(uri.host, uri.port)
+        http.use_ssl = uri.scheme == "https"
+        http.open_timeout = open_timeout
+        http.read_timeout = read_timeout
+        response = http.request(request)
+        return [] unless response.is_a?(Net::HTTPSuccess)
+
+        payload = JSON.parse(response.body.presence || "{}")
+        Array(payload["models"])
+          .map { |entry| entry.is_a?(Hash) ? entry["name"] : nil }
+          .compact
+          .reject { |name| name.include?("embed") }
+          .uniq
+      rescue JSON::ParserError, SocketError, Errno::ECONNREFUSED, Net::OpenTimeout, Net::ReadTimeout
+        []
+      end
+    end
+
     def review(capability:, text:, language:, target_language: nil)
       payload = post_json(
         "#{base_url}/api/chat",

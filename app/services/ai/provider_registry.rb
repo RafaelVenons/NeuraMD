@@ -176,9 +176,10 @@ module Ai
       def available_models_for(name)
         record = AiProvider.find_by(name: name)
         record_models = normalize_models(record&.config&.fetch("models", nil))
+        live_models = name == "ollama" ? OllamaProvider.available_models(base_url: provider_config(name)[:base_url]) : []
         configured_model = provider_config(name)[:model]
 
-        (record_models + [configured_model]).compact_blank.uniq
+        (live_models + record_models + [configured_model]).compact_blank.uniq
       end
 
       def env_value(name, field)

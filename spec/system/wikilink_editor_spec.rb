@@ -5,8 +5,10 @@ require "securerandom"
 # Runs in real Chromium via Cuprite — exercises actual JS.
 RSpec.describe "Wiki-link editor", type: :system do
   let(:user) { create(:user) }
+  let(:target_suffix) { SecureRandom.hex(4) }
+  let(:target_title) { "Nota Destino #{target_suffix}" }
   let(:cardio_suffix) { SecureRandom.hex(4) }
-  let!(:target) { create(:note, title: "Nota Destino") }
+  let!(:target) { create(:note, title: target_title) }
   let!(:alt_target) { create(:note, title: "Cardio Geral #{cardio_suffix}") }
   let!(:alt_target_two) { create(:note, title: "Cardiologia Avancada #{cardio_suffix}") }
 
@@ -50,7 +52,7 @@ RSpec.describe "Wiki-link editor", type: :system do
       type_in_editor("[[Nota")
       expect(page).to have_css(".wikilink-dropdown:not([hidden])", wait: 3)
       expect(page).to have_css(".wikilink-suggestion", wait: 3)
-      expect(page).to have_text("Nota Destino")
+      expect(page).to have_text(target_title)
     end
 
     it "orders suggestions by cosine similarity for fuzzy matches" do
@@ -66,18 +68,18 @@ RSpec.describe "Wiki-link editor", type: :system do
 
     it "does not suggest the current note itself" do
       current_note = Note.find_by!(slug: current_path.split("/").last)
-      current_note.update!(title: "Nota Destino")
+      current_note.update!(title: target_title)
 
       visit note_path(current_note.slug)
       expect(page).to have_css(".cm-editor", wait: 5)
 
-      type_in_editor("[[Nota")
-      expect(page).to have_css(".wikilink-suggestion", wait: 3)
+      type_in_editor("[[#{target_title}")
+      expect(page).to have_text(target_title, wait: 3)
       labels = page.evaluate_script(<<~JS)
         Array.from(document.querySelectorAll(".wikilink-suggestion")).map((el) => el.textContent.trim())
       JS
 
-      expect(labels.count("Nota Destino")).to eq(1)
+      expect(labels.count(target_title)).to eq(1)
     end
 
     it "closes on Escape" do
@@ -110,19 +112,19 @@ RSpec.describe "Wiki-link editor", type: :system do
 
     it "inserts wiki-link markup on Enter" do
       type_in_editor("[[Nota")
-      expect(page).to have_css(".wikilink-suggestion", wait: 3)
+      expect(page).to have_text(target_title, wait: 3)
       editor.send_keys(:enter)
 
       # Dropdown closes and markup is in the editor
       expect(page).not_to have_css(".wikilink-dropdown:not([hidden])", wait: 2)
-      expect(editor.text).to match(/\[\[Nota Destino\|[0-9a-f-]{36}\]\]/)
+      expect(editor.text).to match(/\[\[#{Regexp.escape(target_title)}\|[0-9a-f-]{36}\]\]/)
     end
 
     it "inserts wiki-link on Tab" do
       type_in_editor("[[Nota")
-      expect(page).to have_css(".wikilink-suggestion", wait: 3)
+      expect(page).to have_text(target_title, wait: 3)
       editor.send_keys(:tab)
-      expect(editor.text).to match(/\[\[Nota Destino\|[0-9a-f-]{36}\]\]/)
+      expect(editor.text).to match(/\[\[#{Regexp.escape(target_title)}\|[0-9a-f-]{36}\]\]/)
     end
 
     it "renders broken wikilinks as animated red text without showing raw markup" do
@@ -161,6 +163,38 @@ RSpec.describe "Wiki-link editor", type: :system do
         expect(page).to have_no_css("a.wikilink", wait: 2)
         expect(page).to have_no_text("[[Estudar depois]]")
       end
+    end
+
+    it "turns a completed promise wikilink into creation actions" do
+      type_in_editor("[[Nota futura]]")
+
+      expect(page).to have_css(".wikilink-dropdown:not([hidden])", wait: 3)
+      expect(page).to have_text("Gerar nota em branco")
+      expect(page).to have_text("Gerar com IA")
+      expect(page).to have_text("Ignorar")
+    end
+
+    it "creates a note from the completed promise wikilink" do
+      type_in_editor("[[Nota criada]]")
+      expect(page).to have_text("Gerar nota em branco", wait: 3)
+
+      expect {
+        editor.send_keys(:enter)
+        expect(page).to have_no_css(".wikilink-dropdown:not([hidden])", wait: 3)
+      }.to change(Note, :count).by(1)
+
+      created = Note.order(created_at: :desc).first
+      expect(editor.text).to include("[[Nota criada|#{created.id}]]")
+    end
+
+    it "ignores the creation menu when user presses space and continues typing" do
+      type_in_editor("[[Nota solta]]")
+      expect(page).to have_text("Ignorar", wait: 3)
+
+      editor.send_keys(:space, "x")
+
+      expect(page).to have_no_css(".wikilink-dropdown:not([hidden])", wait: 3)
+      expect(editor.text).to include("[[Nota solta]] x")
     end
 
     it "does not open wikilink autocomplete while IME composition is active" do

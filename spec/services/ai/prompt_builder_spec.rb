@@ -28,6 +28,13 @@ RSpec.describe Ai::PromptBuilder do
       expect(prompt).to include("Target language: en-US.")
     end
 
+    it "builds the seed note prompt" do
+      prompt = described_class.system_prompt(capability: "seed_note", language: "pt-BR")
+
+      expect(prompt).to include("note-seeding assistant")
+      expect(prompt).to include("Preferred language of the output: pt-BR.")
+    end
+
     it "rejects unsupported capabilities" do
       expect {
         described_class.system_prompt(capability: "unknown", language: nil)

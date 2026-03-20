@@ -5,6 +5,7 @@ RSpec.describe Ai::ProviderRegistry do
     before do
       allow(ENV).to receive(:[]).and_call_original
       allow(ENV).to receive(:fetch).and_call_original
+      allow(Ai::OllamaProvider).to receive(:available_models).and_return([])
       %w[
         AI_ENABLED
         AI_PROVIDER
@@ -64,6 +65,7 @@ RSpec.describe Ai::ProviderRegistry do
   describe ".build" do
     before do
       allow(ENV).to receive(:[]).and_call_original
+      allow(Ai::OllamaProvider).to receive(:available_models).and_return([])
       allow(ENV).to receive(:[]).with("AI_ENABLED_PROVIDERS").and_return("openai")
       allow(ENV).to receive(:[]).with("OPENAI_API_KEY").and_return("secret")
       allow(ENV).to receive(:[]).with("OPENAI_MODEL").and_return("gpt-4o-mini")
@@ -81,6 +83,7 @@ RSpec.describe Ai::ProviderRegistry do
   describe ".resolve_selection" do
     before do
       allow(ENV).to receive(:[]).and_call_original
+      allow(Ai::OllamaProvider).to receive(:available_models).and_return([])
       allow(ENV).to receive(:[]).with("AI_ENABLED_PROVIDERS").and_return("ollama")
       allow(ENV).to receive(:[]).with("OLLAMA_MODEL").and_return("qwen2.5:1.5b")
       allow(ENV).to receive(:[]).with("OLLAMA_API_BASE").and_return("http://AIrch:11434")
@@ -112,6 +115,15 @@ RSpec.describe Ai::ProviderRegistry do
       expect(selection[:model]).to eq("llama3.2:3b")
       expect(selection[:selection_strategy]).to eq("manual_override")
       expect(selection[:selection_reason]).to eq("ui_override")
+    end
+
+    it "includes live Ollama models discovered from AIrch in provider options" do
+      allow(Ai::OllamaProvider).to receive(:available_models).and_return(["qwen2:1.5b", "qwen2.5:3b", "llama3.2:3b"])
+
+      status = described_class.status
+      ollama = status[:provider_options].find { |option| option[:name] == "ollama" }
+
+      expect(ollama[:models]).to include("qwen2.5:1.5b", "qwen2:1.5b", "qwen2.5:3b", "llama3.2:3b")
     end
   end
 end

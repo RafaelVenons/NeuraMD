@@ -9,7 +9,7 @@ import { Controller } from "@hotwired/stimulus"
 // [[Display|uuid]] and dispatches wikilink:cursor so tag_sidebar_controller
 // can react (link-focus mode vs global mode).
 export default class extends Controller {
-  static values = { searchUrl: String, currentNoteId: String }
+  static values = { searchUrl: String, createPromiseUrl: String, currentNoteId: String }
   static targets = ["dropdown"]
 
   // Cycle order for hier_role; null = plain reference
@@ -28,6 +28,8 @@ export default class extends Controller {
     this._currentRole  = null   // null | 'f' | 'c' | 'b'
     this._lastFocusedUUID = null
     this._isComposing = false
+    this._dropdownMode = "search"
+    this._promiseTitle = null
 
     this._onEditorChange = this._handleEditorChange.bind(this)
     this.element.addEventListener("codemirror:change", this._onEditorChange)
@@ -91,11 +93,23 @@ export default class extends Controller {
       return
     }
 
-    // Detect mid-typing trigger [[ ... (dropdown autocomplete)
     const lineUpToCursor = this._lineUpToCursor(value, cursorPos)
+    const promiseMatch = lineUpToCursor.match(/\[\[([^\]|]+)\]\]$/)
+
+    if (promiseMatch) {
+      clearTimeout(this._debounceTimer)
+      this._promiseTitle = promiseMatch[1].trim()
+      this._insertStart = cursorPos - promiseMatch[0].length
+      this._showPromiseActions()
+      this._detectCursorInLink(value, cursorPos)
+      return
+    }
+
+    // Detect mid-typing trigger [[ ... (dropdown autocomplete)
     const triggerMatch   = lineUpToCursor.match(/\[\[([^\]|]*)$/)
 
     if (triggerMatch) {
+      this._dropdownMode = "search"
       this._searchTerm  = triggerMatch[1]
       this._insertStart = cursorPos - triggerMatch[0].length
       this._scheduleSearch(this._searchTerm)
@@ -165,13 +179,20 @@ export default class extends Controller {
       case "Enter":
       case "Tab":
         if (this._activeIndex >= 0) {
-          this._insertSuggestion(this._suggestions[this._activeIndex])
+          if (this._dropdownMode === "promise") this._selectPromiseAction(this._suggestions[this._activeIndex])
+          else this._insertSuggestion(this._suggestions[this._activeIndex])
         }
         return true
 
       case "Escape":
         this._closeDropdown()
         return true
+
+      case " ":
+        if (this._dropdownMode === "promise") {
+          this._closeDropdown({ preserveFocus: true })
+        }
+        return false
 
       default:
         return false
@@ -189,17 +210,20 @@ export default class extends Controller {
 
   _scheduleSearch(query) {
     clearTimeout(this._debounceTimer)
-    this._debounceTimer = setTimeout(() => this._fetchSuggestions(query), 150)
+    this._showSearchLoading()
+    this._debounceTimer = setTimeout(() => this._fetchSuggestions(query), 75)
   }
 
   async _fetchSuggestions(query) {
     try {
+      if (this._dropdownMode !== "search") return
       const params = new URLSearchParams({ q: query })
       if (this.currentNoteIdValue) params.set("exclude_id", this.currentNoteIdValue)
       const url = `${this.searchUrlValue}?${params.toString()}`
       const response = await fetch(url, { headers: { Accept: "application/json" } })
       if (!response.ok) return
       const suggestions = await response.json()
+      if (this._dropdownMode !== "search" || this._searchTerm !== query) return
       this._suggestions = this._rankSuggestionsByCosineSimilarity(suggestions, query)
       this._activeIndex = this._suggestions.length > 0 ? 0 : -1
       this._renderDropdown()
@@ -208,10 +232,39 @@ export default class extends Controller {
     }
   }
 
+  _showPromiseActions() {
+    if (!this._promiseTitle) {
+      this._closeDropdown({ preserveFocus: true })
+      return
+    }
+
+    this._dropdownMode = "promise"
+    this._suggestions = [
+      { action: "blank", label: "Gerar nota em branco", description: "Cria a nota e substitui o wikilink pela versao com UUID." },
+      { action: "ai", label: "Gerar com IA", description: "Cria a nota e pede um rascunho inicial ao provider configurado." },
+      { action: "ignore", label: "Ignorar", description: "Mantem o wikilink sem UUID. Espaco fecha este menu." }
+    ]
+    this._activeIndex = 0
+    this._renderDropdown()
+  }
+
+  _showSearchLoading() {
+    this._dropdownMode = "search"
+    this._suggestions = [
+      {
+        label: "Buscando notas...",
+        description: "Continue digitando para filtrar os resultados.",
+        loading: true
+      }
+    ]
+    this._activeIndex = -1
+    this._renderDropdown()
+  }
+
   // ── Insertion ────────────────────────────────────────────
 
   _insertSuggestion(note) {
-    if (!note) return
+    if (!note || note.loading) return
     const rolePrefix = this._currentRole ? `${this._currentRole}:` : ""
     const markup = `[[${note.title}|${rolePrefix}${note.id}]]`
     this.element.dispatchEvent(new CustomEvent("wikilink:insert", {
@@ -219,6 +272,42 @@ export default class extends Controller {
       bubbles: true
     }))
     this._closeDropdown()
+  }
+
+  async _selectPromiseAction(option) {
+    if (!option) return
+    if (option.action === "ignore") {
+      this._closeDropdown({ preserveFocus: true })
+      return
+    }
+
+    try {
+      const response = await fetch(this.createPromiseUrlValue, {
+        method: "POST",
+        credentials: "same-origin",
+        headers: {
+          "Content-Type": "application/json",
+          "Accept": "application/json",
+          "X-CSRF-Token": this._csrfToken()
+        },
+        body: JSON.stringify({
+          title: this._promiseTitle,
+          mode: option.action
+        })
+      })
+      const data = await response.json()
+      if (!response.ok || data.error) throw new Error(data.error || "Falha ao criar nota.")
+
+      const rolePrefix = this._currentRole ? `${this._currentRole}:` : ""
+      const markup = `[[${data.note_title}|${rolePrefix}${data.note_id}]]`
+      this.element.dispatchEvent(new CustomEvent("wikilink:insert", {
+        detail: { markup, insertStart: this._insertStart },
+        bubbles: true
+      }))
+      this._closeDropdown()
+    } catch (error) {
+      window.alert(error.message || "Falha ao criar nota.")
+    }
   }
 
   // ── Dropdown rendering ───────────────────────────────────
@@ -244,7 +333,10 @@ export default class extends Controller {
           class="wikilink-suggestion ${i === this._activeIndex ? "active" : ""}"
           data-index="${i}"
           type="button"
-        >${this._escapeHtml(note.title)}</button>
+        >
+          <span>${this._escapeHtml(note.title || note.label)}</span>
+          ${note.description ? `<span class="block mt-1 text-xs opacity-70">${this._escapeHtml(note.description)}</span>` : ""}
+        </button>
       `).join("")}
     `
 
@@ -252,7 +344,8 @@ export default class extends Controller {
       btn.addEventListener("mousedown", (e) => {
         e.preventDefault()
         this._activeIndex = i
-        this._insertSuggestion(this._suggestions[i])
+        if (this._dropdownMode === "promise") this._selectPromiseAction(this._suggestions[i])
+        else this._insertSuggestion(this._suggestions[i])
       })
     })
 
@@ -295,6 +388,9 @@ export default class extends Controller {
     this._suggestions   = []
     this._activeIndex   = -1
     this._currentRole   = null
+    this._insertStart   = null
+    this._promiseTitle  = null
+    this._dropdownMode  = "search"
     if (!preserveFocus && !this._isComposing) this._cm?.focus()
   }
 
@@ -370,5 +466,9 @@ export default class extends Controller {
 
   _escapeHtml(str) {
     return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+  }
+
+  _csrfToken() {
+    return document.querySelector('meta[name="csrf-token"]')?.content || ""
   }
 }
