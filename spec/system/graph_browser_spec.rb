@@ -7,6 +7,23 @@ RSpec.describe "Graph browser", type: :system do
     login_as user, scope: :user
   end
 
+  it "shows a controlled error when the graph endpoint returns HTML instead of JSON" do
+    visit graph_path
+
+    expect(page).to have_css("[data-controller='graph']", wait: 10)
+
+    page.execute_script(<<~JS)
+      (() => {
+        const controller = window.__graphDebug
+        controller.dataUrlValue = "/users/sign_in"
+        controller.load()
+      })()
+    JS
+
+    expect(page).to have_css("[data-graph-target='error']", text: "retornou HTML em vez de JSON", wait: 10)
+    expect(page).not_to have_text("Unexpected token <")
+  end
+
   it "renders the graph with sigma, supports hover/click, and centers focus" do
     notes = Array.new(6) do |index|
       note = create(:note, title: "Node #{index + 1}")

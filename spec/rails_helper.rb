@@ -6,6 +6,7 @@ require "rspec/rails"
 require "active_job/test_helper"
 require "active_support/testing/time_helpers"
 require "turbo/broadcastable/test_helper"
+require "warden/test/helpers"
 
 Rails.root.glob("spec/support/**/*.rb").sort_by(&:to_s).each { |f| require f }
 
@@ -27,6 +28,7 @@ RSpec.configure do |config|
   config.include Turbo::Broadcastable::TestHelper, type: :model
   config.include Devise::Test::IntegrationHelpers, type: :request
   config.include Devise::Test::ControllerHelpers, type: :controller
+  config.include Warden::Test::Helpers, type: :system
 
   config.before(:suite) do
     DatabaseCleaner.clean_with(:truncation)
@@ -44,6 +46,7 @@ RSpec.configure do |config|
     clear_enqueued_jobs
     clear_performed_jobs
     travel_back
+    Warden.test_reset!
   end
 
   config.before(:each) do

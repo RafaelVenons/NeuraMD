@@ -92,7 +92,7 @@ export default class extends Controller {
       const response = await fetch(this.dataUrlValue, {
         headers: { Accept: "application/json" }
       })
-      const payload = await response.json()
+      const payload = await this.parseGraphResponse(response)
       if (!response.ok) throw new Error(payload.error || "Falha ao carregar o grafo.")
 
       const { graph, dropped } = buildGraph(payload)
@@ -121,6 +121,25 @@ export default class extends Controller {
       this.errorTarget.classList.remove("hidden")
       if (this.hasMetaTarget) this.metaTarget.textContent = ""
     }
+  }
+
+  async parseGraphResponse(response) {
+    const contentType = response.headers.get("content-type") || ""
+    if (contentType.includes("application/json")) return await response.json()
+
+    const rawBody = await response.text()
+    const normalized = rawBody.trim().toLowerCase()
+    const htmlLike = normalized.startsWith("<!doctype") || normalized.startsWith("<html")
+
+    if (response.redirected || response.status === 401 || response.status === 403) {
+      throw new Error("Sessao expirada ou acesso negado. Recarregue a pagina e tente novamente.")
+    }
+
+    if (htmlLike) {
+      throw new Error("O endpoint do grafo retornou HTML em vez de JSON. Recarregue a pagina e tente novamente.")
+    }
+
+    throw new Error("O endpoint do grafo retornou uma resposta invalida.")
   }
 
   mountRenderer() {
