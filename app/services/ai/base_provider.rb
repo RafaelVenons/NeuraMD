@@ -26,20 +26,63 @@ module Ai
 
       http = Net::HTTP.new(uri.host, uri.port)
       http.use_ssl = uri.scheme == "https"
+      http.open_timeout = provider_open_timeout
+      http.read_timeout = provider_read_timeout
+      http.write_timeout = provider_write_timeout if http.respond_to?(:write_timeout=)
       response = http.request(request)
 
       payload = JSON.parse(response.body.presence || "{}")
       return payload if response.is_a?(Net::HTTPSuccess)
 
-      raise RequestError, extract_error(payload) || "Falha na chamada ao provider #{name}."
+      message = extract_error(payload) || "Falha na chamada ao provider #{name}."
+      error_class = retryable_response?(response) ? TransientRequestError : RequestError
+      raise error_class, message
     rescue JSON::ParserError
       raise RequestError, "Resposta invalida do provider #{name}."
     rescue SocketError, Errno::ECONNREFUSED, Net::OpenTimeout, Net::ReadTimeout => e
-      raise RequestError, "#{name} indisponivel: #{e.message}"
+      raise TransientRequestError, "#{name} indisponivel: #{e.message}"
     end
 
     def extract_error(payload)
       payload["error"].is_a?(Hash) ? payload["error"]["message"] : payload["error"]
+    end
+
+    def retryable_response?(response)
+      response.is_a?(Net::HTTPTooManyRequests) || response.is_a?(Net::HTTPServerError)
+    end
+
+    def provider_open_timeout
+      env_timeout(provider_timeout_key("OPEN_TIMEOUT"), default: 5)
+    end
+
+    def provider_read_timeout
+      env_timeout(provider_timeout_key("READ_TIMEOUT"), default: default_read_timeout)
+    end
+
+    def provider_write_timeout
+      env_timeout(provider_timeout_key("WRITE_TIMEOUT"), default: 30)
+    end
+
+    def env_timeout(key, default:)
+      value = ENV[key].to_i
+      value.positive? ? value : default
+    end
+
+    def provider_timeout_key(suffix)
+      case name
+      when "ollama"
+        "OLLAMA_#{suffix}"
+      when "anthropic"
+        "ANTHROPIC_#{suffix}"
+      when "openai", "azure_openai"
+        "OPENAI_#{suffix}"
+      else
+        "AI_PROVIDER_#{suffix}"
+      end
+    end
+
+    def default_read_timeout
+      name == "ollama" ? 7200 : 180
     end
   end
 end

@@ -130,5 +130,16 @@ RSpec.describe "AI providers" do
       expect(result.tokens_in).to eq(21)
       expect(result.tokens_out).to eq(14)
     end
+
+    it "uses a long default read timeout for ollama providers" do
+      provider = described_class.new(
+        name: "ollama",
+        model: "qwen3.5:4b",
+        base_url: "http://AIrch:11434",
+        api_key: nil
+      )
+
+      expect(provider.send(:provider_read_timeout)).to eq(7200)
+    end
   end
 end

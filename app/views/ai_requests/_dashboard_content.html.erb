@@ -1,0 +1,240 @@
+<div data-ai-ops-refresh-target="content"
+     data-ai-ops-refresh-fragment
+     data-active-count="<%= @summary[:active_count] %>">
+  <section class="nm-ai-ops__auto-refresh">
+    <span class="nm-ai-ops__auto-refresh-dot <%= 'is-live' if @summary[:active_count].positive? %>"></span>
+    <span data-ai-ops-refresh-target="status">
+      <%= @summary[:active_count].positive? ? "Tempo real indisponível • fallback polling em 10s" : "Tempo real indisponível • polling pausado" %>
+    </span>
+  </section>
+
+  <section class="nm-ai-ops__filters">
+    <% filters = {
+      "Todas" => nil,
+      "Ativas" => "running",
+      "Repetindo" => "retrying",
+      "Falhas" => "failed",
+      "Concluídas" => "succeeded",
+      "Canceladas" => "canceled"
+    } %>
+    <% filters.each do |label, value| %>
+      <% active = @status_filter == value || (@status_filter.blank? && value.nil?) %>
+      <%= link_to label,
+          ai_requests_dashboard_path(status: value.presence, provider: @provider_filter.presence, model: @model_filter.presence, sort: @sort_filter.presence, limit: params[:limit].presence),
+          class: "nm-ai-ops__filter#{' is-active' if active}" %>
+    <% end %>
+  </section>
+
+  <section class="nm-ai-ops__scope">
+    <%= form_with url: ai_requests_dashboard_path, method: :get, local: true, class: "nm-ai-ops__scope-form" do %>
+      <%= hidden_field_tag :status, @status_filter.presence %>
+      <%= hidden_field_tag :limit, params[:limit].presence %>
+
+      <label class="nm-ai-ops__scope-field">
+        <span>Provider</span>
+        <%= select_tag :provider,
+            options_for_select([["Todos", ""]] + @provider_options.map { |provider| [provider, provider] }, @provider_filter),
+            class: "nm-ai-ops__scope-select" %>
+      </label>
+
+      <label class="nm-ai-ops__scope-field">
+        <span>Modelo</span>
+        <%= select_tag :model,
+            options_for_select([["Todos", ""]] + @model_options.map { |model| [model, model] }, @model_filter),
+            class: "nm-ai-ops__scope-select" %>
+      </label>
+
+      <label class="nm-ai-ops__scope-field">
+        <span>Ordenar por</span>
+        <%= select_tag :sort,
+            options_for_select(@sort_options.map { |value, label| [label, value] }, @sort_filter),
+            class: "nm-ai-ops__scope-select" %>
+      </label>
+
+      <div class="nm-ai-ops__scope-actions">
+        <%= submit_tag "Aplicar", class: "nm-ai-ops__bulk-btn" %>
+        <%= link_to "Limpar",
+            ai_requests_dashboard_path(status: @status_filter.presence, limit: params[:limit].presence),
+            class: "nm-ai-ops__ghost-btn" %>
+      </div>
+    <% end %>
+  </section>
+
+  <section class="nm-ai-ops__summary">
+    <div class="nm-ai-ops__stat">
+      <span class="nm-ai-ops__stat-label">Visíveis</span>
+      <strong><%= @summary[:visible_count] %></strong>
+    </div>
+    <div class="nm-ai-ops__stat">
+      <span class="nm-ai-ops__stat-label">Ativas</span>
+      <strong><%= @summary[:active_count] %></strong>
+    </div>
+    <div class="nm-ai-ops__stat">
+      <span class="nm-ai-ops__stat-label">Falhas</span>
+      <strong><%= @summary[:failed_count] %></strong>
+    </div>
+    <div class="nm-ai-ops__stat">
+      <span class="nm-ai-ops__stat-label">Concluídas</span>
+      <strong><%= @summary[:succeeded_count] %></strong>
+    </div>
+    <div class="nm-ai-ops__stat">
+      <span class="nm-ai-ops__stat-label">Repetindo</span>
+      <strong><%= @summary[:retrying_count] %></strong>
+    </div>
+    <div class="nm-ai-ops__stat">
+      <span class="nm-ai-ops__stat-label">Latência média</span>
+      <strong><%= @summary[:avg_duration_ms] ? "#{@summary[:avg_duration_ms]} ms" : "—" %></strong>
+    </div>
+    <div class="nm-ai-ops__stat">
+      <span class="nm-ai-ops__stat-label">Pico</span>
+      <strong><%= @summary[:max_duration_ms] ? "#{@summary[:max_duration_ms]} ms" : "—" %></strong>
+    </div>
+    <div class="nm-ai-ops__stat">
+      <span class="nm-ai-ops__stat-label">Providers</span>
+      <strong><%= @summary[:provider_count] %></strong>
+    </div>
+    <div class="nm-ai-ops__stat">
+      <span class="nm-ai-ops__stat-label">Falhas transitórias</span>
+      <strong><%= @summary[:transient_failures_count] %></strong>
+    </div>
+    <div class="nm-ai-ops__stat">
+      <span class="nm-ai-ops__stat-label">Presas</span>
+      <strong><%= @summary[:stuck_count] %></strong>
+    </div>
+  </section>
+
+  <% if @primary_alert.present? %>
+    <section class="nm-ai-ops__hero-alert nm-ai-ops__hero-alert--<%= @primary_alert[:level] %>" aria-label="Incidente principal">
+      <% if @primary_alert[:kicker].present? %>
+        <p class="nm-ai-ops__hero-alert-kicker"><%= @primary_alert[:kicker] %></p>
+      <% end %>
+      <div class="nm-ai-ops__hero-alert-head">
+        <div>
+          <p class="nm-ai-ops__hero-alert-title"><%= @primary_alert[:title] %></p>
+          <p class="nm-ai-ops__hero-alert-body"><%= @primary_alert[:body] %></p>
+        </div>
+        <span class="nm-ai-ops__hero-alert-severity nm-ai-ops__hero-alert-severity--<%= @primary_alert[:level] %>">
+          <%= @primary_alert[:level].upcase %>
+        </span>
+      </div>
+      <% if @primary_alert[:primary_action].present? || @primary_alert[:secondary_action].present? %>
+        <div class="nm-ai-ops__alert-actions">
+          <% [@primary_alert[:primary_action], @primary_alert[:secondary_action]].compact.each do |action| %>
+            <% classes = ["nm-ai-ops__alert-btn"] %>
+            <% classes << "nm-ai-ops__alert-btn--#{action[:style]}" if action[:style].present? %>
+            <% if action[:method] == :get %>
+              <%= link_to action[:label], action[:path], class: classes.join(" ") %>
+            <% else %>
+              <%= button_to action[:label], action[:path], method: action[:method], class: classes.join(" ") %>
+            <% end %>
+          <% end %>
+        </div>
+      <% end %>
+    </section>
+  <% end %>
+
+  <% if @secondary_alerts.any? %>
+    <section class="nm-ai-ops__alerts" aria-label="Alertas operacionais">
+      <% @secondary_alerts.each do |alert| %>
+      <article class="nm-ai-ops__alert nm-ai-ops__alert--<%= alert[:level] %>">
+        <% if alert[:kicker].present? %>
+          <p class="nm-ai-ops__alert-kicker"><%= alert[:kicker] %></p>
+        <% end %>
+        <p class="nm-ai-ops__alert-title"><%= alert[:title] %></p>
+        <p class="nm-ai-ops__alert-body"><%= alert[:body] %></p>
+        <% if alert[:primary_action].present? || alert[:secondary_action].present? %>
+          <div class="nm-ai-ops__alert-actions">
+            <% [alert[:primary_action], alert[:secondary_action]].compact.each do |action| %>
+              <% classes = ["nm-ai-ops__alert-btn"] %>
+              <% classes << "nm-ai-ops__alert-btn--#{action[:style]}" if action[:style].present? %>
+              <% if action[:method] == :get %>
+                <%= link_to action[:label], action[:path], class: classes.join(" ") %>
+              <% else %>
+                <%= button_to action[:label], action[:path], method: action[:method], class: classes.join(" ") %>
+              <% end %>
+            <% end %>
+          </div>
+        <% end %>
+      </article>
+      <% end %>
+    </section>
+  <% end %>
+
+  <section class="nm-ai-ops__bulk">
+    <%= button_to "Cancelar ativas visíveis",
+        cancel_visible_ai_requests_path(status: @status_filter.presence, provider: @provider_filter.presence, model: @model_filter.presence, sort: @sort_filter.presence, limit: params[:limit].presence),
+        method: :delete,
+        class: "nm-ai-ops__bulk-btn nm-ai-ops__bulk-btn--danger" %>
+    <%= button_to "Reprocessar falhas visíveis",
+        retry_visible_ai_requests_path(status: @status_filter.presence, provider: @provider_filter.presence, model: @model_filter.presence, sort: @sort_filter.presence, limit: params[:limit].presence),
+        method: :post,
+        class: "nm-ai-ops__bulk-btn" %>
+  </section>
+
+  <section class="nm-ai-ops__list">
+    <% if @requests.empty? %>
+      <p class="nm-ai-ops__empty">Nenhuma execução encontrada para o filtro atual.</p>
+    <% else %>
+      <% @requests.each do |request| %>
+        <% note = request.note_revision&.note %>
+        <article class="nm-ai-ops__card<%= ' is-stuck' if request.stuck? %>">
+          <div class="nm-ai-ops__card-head">
+            <div>
+              <p class="nm-ai-ops__card-title"><%= request.capability.humanize %></p>
+              <p class="nm-ai-ops__card-meta">
+                <%= request.provider %><% if request.model.present? %>: <%= request.model %><% end %>
+                <% if note.present? %>
+                  ·
+                  <%= link_to note.title, note_path(note.slug), class: "nm-ai-ops__note-link" %>
+                <% end %>
+              </p>
+            </div>
+            <div class="nm-ai-ops__card-badges">
+              <% if request.remote_long_job? %>
+                <span class="nm-ai-ops__badge nm-ai-ops__badge--stuck">Job remoto longo</span>
+              <% end %>
+              <% if request.stuck? %>
+                <span class="nm-ai-ops__badge nm-ai-ops__badge--stuck"><%= request.stuck_reason %></span>
+              <% end %>
+              <span class="nm-ai-ops__status nm-ai-ops__status--<%= request.status %>"><%= request.status %></span>
+            </div>
+          </div>
+
+          <div class="nm-ai-ops__grid">
+            <p>Tentativas: <strong><%= request.attempts_count %>/<%= request.max_attempts %></strong></p>
+            <p>Duração: <strong><%= request.duration_human %></strong></p>
+            <p>Criado: <strong><%= request.created_at.strftime("%d/%m %H:%M") %></strong></p>
+            <p>Próxima tentativa: <strong><%= request.next_retry_at ? request.next_retry_at.strftime("%d/%m %H:%M") : "—" %></strong></p>
+          </div>
+
+          <% if request.remote_status_hint.present? %>
+            <p class="nm-ai-ops__error"><%= request.remote_status_hint %></p>
+          <% end %>
+
+          <% if request.failed? || request.canceled? || request.retrying? || request.running? || request.queued? %>
+            <div class="nm-ai-ops__card-actions">
+              <% if request.failed? || request.canceled? %>
+                <%= button_to "Reprocessar",
+                    retry_ai_request_path(request, status: @status_filter.presence, provider: @provider_filter.presence, model: @model_filter.presence, sort: @sort_filter.presence, limit: params[:limit].presence),
+                    method: :post,
+                    class: "nm-ai-ops__retry-btn" %>
+              <% end %>
+              <% if request.retrying? || request.running? || request.queued? %>
+                <%= button_to "Cancelar",
+                    ai_request_dashboard_path(request, status: @status_filter.presence, provider: @provider_filter.presence, model: @model_filter.presence, sort: @sort_filter.presence, limit: params[:limit].presence),
+                    method: :delete,
+                    class: "nm-ai-ops__cancel-btn" %>
+              <% end %>
+            </div>
+          <% end %>
+
+          <% if request.output_text.present? %>
+            <p class="nm-ai-ops__snippet"><%= truncate(request.output_text, length: 180) %></p>
+          <% elsif request.error_message.present? %>
+            <p class="nm-ai-ops__error"><%= request.error_message %></p>
+          <% end %>
+        </article>
+      <% end %>
+    <% end %>
+  </section>
+</div>

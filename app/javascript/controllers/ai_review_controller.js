@@ -20,6 +20,7 @@ export default class extends Controller {
     "processingOverlay",
     "processingState",
     "processingProvider",
+    "processingHint",
     "processingMeta",
     "processingError",
     "providerSelect",
@@ -277,6 +278,9 @@ export default class extends Controller {
     const model = this.selectedModel()
     this.processingProviderTarget.textContent = provider && model ? `${provider}: ${model}` : "AI"
     this.processingStateTarget.textContent = "Na fila"
+    this.processingHintTarget.textContent = provider === "ollama"
+      ? "Job remoto no AIrch. Pode fechar e voltar depois."
+      : "Processamento assíncrono em andamento."
     this.processingMetaTarget.textContent = "Aguardando execução..."
     this.processingErrorTarget.textContent = ""
     this.processingErrorTarget.classList.add("hidden")
@@ -405,13 +409,28 @@ export default class extends Controller {
 
     if (data.status === "retrying") {
       this.processingStateTarget.textContent = "Tentando novamente"
-      this.processingMetaTarget.textContent = this._retryMessage(data.next_retry_at, attemptsCount, maxAttempts)
+      this.processingHintTarget.textContent = data.remote_hint || "Nova tentativa agendada."
+      this.processingMetaTarget.textContent = this._joinMeta(
+        this._retryMessage(data.next_retry_at, attemptsCount, maxAttempts),
+        this._durationLabel(data)
+      )
     } else if (data.status === "running") {
       this.processingStateTarget.textContent = "Processando"
-      this.processingMetaTarget.textContent = this._attemptLabel(attemptsCount, maxAttempts)
+      this.processingHintTarget.textContent = data.remote_hint || "Processamento assíncrono em andamento."
+      this.processingMetaTarget.textContent = this._joinMeta(
+        this._attemptLabel(attemptsCount, maxAttempts),
+        this._durationLabel(data)
+      )
     } else if (data.status === "queued") {
       this.processingStateTarget.textContent = "Na fila"
-      this.processingMetaTarget.textContent = this._attemptLabel(attemptsCount, maxAttempts) || "Aguardando execução..."
+      this.processingHintTarget.textContent = data.remote_hint || "Aguardando execução na fila."
+      this.processingMetaTarget.textContent = this._joinMeta(
+        this._attemptLabel(attemptsCount, maxAttempts) || "Aguardando execução...",
+        this._durationLabel(data)
+      )
+    } else {
+      this.processingHintTarget.textContent = data.remote_hint || ""
+      this.processingMetaTarget.textContent = this._durationLabel(data)
     }
 
     if (data.last_error_kind === "transient" && data.error) {
@@ -612,8 +631,11 @@ export default class extends Controller {
   _historyCard(request) {
     const provider = request.provider && request.model ? `${request.provider}: ${request.model}` : (request.provider || "IA")
     const statusClass = this._statusClass(request.status)
-    const duration = request.duration_ms ? `${request.duration_ms} ms` : "em andamento"
+    const duration = this._durationLabel(request)
     const error = request.error ? `<p class="mt-2 text-xs text-amber-300">${this._escapeHtml(request.error)}</p>` : ""
+    const remoteHint = request.remote_hint
+      ? `<p class="mt-2 text-xs ${request.remote_long_job ? "text-amber-300" : "text-[var(--theme-text-secondary)]"}">${this._escapeHtml(request.remote_hint)}</p>`
+      : ""
     const preview = request.corrected
       ? `<p class="mt-2 text-xs text-[var(--theme-text-secondary)]">${this._escapeHtml(this._truncate(request.corrected, 120))}</p>`
       : ""
@@ -635,6 +657,7 @@ export default class extends Controller {
           <p>Criado: ${this._escapeHtml(this._formatTimestamp(request.created_at))}</p>
           <p>Concluído: ${this._escapeHtml(this._formatTimestamp(request.completed_at))}</p>
         </div>
+        ${remoteHint}
         ${preview}
         ${error}
       </article>
@@ -727,6 +750,16 @@ export default class extends Controller {
   _truncate(text, limit) {
     if (!text || text.length <= limit) return text
     return `${text.slice(0, limit - 1)}…`
+  }
+
+  _durationLabel(request) {
+    if (request.duration_human) return request.duration_human
+    if (request.duration_ms) return `${request.duration_ms} ms`
+    return "em andamento"
+  }
+
+  _joinMeta(...parts) {
+    return parts.filter(Boolean).join(" • ")
   }
 
   _escapeHtml(text) {

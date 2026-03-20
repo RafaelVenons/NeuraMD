@@ -4,20 +4,26 @@ default: &default
   max_connections: <%= ENV.fetch("RAILS_MAX_THREADS") { 5 } %>
 
 development:
-  <<: *default
-  database: neura_md_development
-  username: <%= ENV.fetch("POSTGRES_USER", "postgres") %>
-  password: <%= ENV.fetch("POSTGRES_PASSWORD", "") %>
-  host: <%= ENV.fetch("POSTGRES_HOST", "localhost") %>
-  port: <%= ENV.fetch("POSTGRES_PORT", 5432) %>
+  primary: &primary_development
+    <<: *default
+    database: neura_md_development
+    username: <%= ENV.fetch("POSTGRES_USER", "postgres") %>
+    password: <%= ENV.fetch("POSTGRES_PASSWORD", "") %>
+    host: <%= ENV.fetch("POSTGRES_HOST", "127.0.0.1") %>
+    port: <%= ENV.fetch("POSTGRES_PORT", 5432) %>
+  queue:
+    <<: *primary_development
+    database: neura_md_development_queue
+    migrations_paths: db/queue_migrate
 
 test:
-  <<: *default
-  database: neura_md_test
-  username: <%= ENV.fetch("POSTGRES_USER", "postgres") %>
-  password: <%= ENV.fetch("POSTGRES_PASSWORD", "") %>
-  host: <%= ENV.fetch("POSTGRES_HOST", "localhost") %>
-  port: <%= ENV.fetch("POSTGRES_PORT", 5432) %>
+  primary: &primary_test
+    <<: *default
+    database: neura_md_test
+    username: <%= ENV.fetch("POSTGRES_USER", "postgres") %>
+    password: <%= ENV.fetch("POSTGRES_PASSWORD", "") %>
+    host: <%= ENV.fetch("POSTGRES_HOST", "127.0.0.1") %>
+    port: <%= ENV.fetch("POSTGRES_PORT", 5432) %>
 
 production:
   primary: &primary_production

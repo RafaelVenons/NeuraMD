@@ -1,4 +1,5 @@
 require_relative "error"
+require_relative "model_router"
 require_relative "openai_compatible_provider"
 require_relative "anthropic_provider"
 require_relative "ollama_provider"
@@ -30,11 +31,17 @@ module Ai
         provider_names.select { |name| configured?(name) }
       end
 
-      def build(provider_name = nil, model_name: nil)
-        resolved_name = resolve_provider_name(provider_name)
-        config = provider_config(resolved_name, model_name:)
+      def build(provider_name = nil, model_name: nil, capability: nil, text: nil, language: nil, target_language: nil)
+        config = resolve_selection(
+          provider_name,
+          model_name: model_name,
+          capability: capability,
+          text: text,
+          language: language,
+          target_language: target_language
+        )
 
-        case resolved_name
+        case config[:name]
         when "openai", "azure_openai", "local"
           OpenaiCompatibleProvider.new(**config.slice(:name, :model, :base_url, :api_key))
         when "anthropic"
@@ -42,8 +49,32 @@ module Ai
         when "ollama"
           OllamaProvider.new(**config.slice(:name, :model, :base_url, :api_key))
         else
-          raise ProviderUnavailableError, "Provider #{resolved_name} nao suportado."
+          raise ProviderUnavailableError, "Provider #{config[:name]} nao suportado."
         end
+      end
+
+      def resolve_selection(provider_name = nil, model_name: nil, capability: nil, text: nil, language: nil, target_language: nil)
+        resolved_name = resolve_provider_name(provider_name)
+        config = provider_config(resolved_name)
+        selection =
+          if model_name.to_s.presence
+            {
+              model: model_name.to_s,
+              selection_strategy: "manual_override",
+              selection_reason: "ui_override"
+            }
+          else
+            ModelRouter.route(
+              provider_name: resolved_name,
+              configured_model: config[:model],
+              capability: capability,
+              text: text,
+              language: language,
+              target_language: target_language
+            )
+          end
+
+        config.merge(selection)
       end
 
       private

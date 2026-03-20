@@ -1,0 +1,25 @@
+<% content_for :title, "Operações de IA — NeuraMD" %>
+<% turbo_refreshes_with method: :morph, scroll: :preserve %>
+<%= turbo_stream_from "ai_requests_dashboard" %>
+
+<section class="nm-ai-ops"
+         data-controller="ai-ops-refresh"
+         data-ai-ops-refresh-refresh-url-value="<%= ai_requests_dashboard_path(status: @status_filter.presence, provider: @provider_filter.presence, model: @model_filter.presence, sort: @sort_filter.presence, limit: params[:limit].presence, partial: 1) %>"
+         data-ai-ops-refresh-interval-ms-value="10000"
+         data-ai-ops-refresh-active-count-value="<%= @summary[:active_count] %>">
+  <header class="nm-ai-ops__header">
+    <div>
+      <p class="nm-ai-ops__eyebrow">Observabilidade</p>
+      <h1 class="nm-ai-ops__title">Operações de IA</h1>
+      <p class="nm-ai-ops__subtitle">Execuções recentes de revisão, reescrita e sugestão em toda a base.</p>
+    </div>
+    <div class="nm-ai-ops__actions">
+      <%= link_to "Voltar ao grafo", graph_path, class: "nm-ai-ops__ghost-btn" %>
+      <%= link_to "Atualizar",
+          ai_requests_dashboard_path(status: @status_filter.presence, provider: @provider_filter.presence, model: @model_filter.presence, sort: @sort_filter.presence, limit: params[:limit].presence),
+          class: "nm-ai-ops__primary-btn" %>
+    </div>
+  </header>
+
+  <%= render "dashboard_content" %>
+</section>

@@ -77,4 +77,41 @@ RSpec.describe Ai::ProviderRegistry do
       expect(provider.model).to eq("gpt-4.1-mini")
     end
   end
+
+  describe ".resolve_selection" do
+    before do
+      allow(ENV).to receive(:[]).and_call_original
+      allow(ENV).to receive(:[]).with("AI_ENABLED_PROVIDERS").and_return("ollama")
+      allow(ENV).to receive(:[]).with("OLLAMA_MODEL").and_return("qwen2.5:1.5b")
+      allow(ENV).to receive(:[]).with("OLLAMA_API_BASE").and_return("http://AIrch:11434")
+      allow(ENV).to receive(:[]).with("AI_PROVIDER").and_return("ollama")
+    end
+
+    it "automatically selects an ollama model based on capability and text length" do
+      selection = described_class.resolve_selection(
+        "ollama",
+        capability: "grammar_review",
+        text: "Texto curto com erro.",
+        language: "pt-BR"
+      )
+
+      expect(selection[:model]).to eq("qwen2.5:0.5b")
+      expect(selection[:selection_strategy]).to eq("automatic")
+      expect(selection[:selection_reason]).to eq("grammar_short")
+    end
+
+    it "keeps the manual override when a model is explicitly chosen" do
+      selection = described_class.resolve_selection(
+        "ollama",
+        model_name: "llama3.2:3b",
+        capability: "rewrite",
+        text: "a" * 2_000,
+        language: "pt-BR"
+      )
+
+      expect(selection[:model]).to eq("llama3.2:3b")
+      expect(selection[:selection_strategy]).to eq("manual_override")
+      expect(selection[:selection_reason]).to eq("ui_override")
+    end
+  end
 end

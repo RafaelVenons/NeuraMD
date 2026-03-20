@@ -7,6 +7,14 @@ RSpec.describe Ai::ReviewService do
   describe ".enqueue" do
     it "creates a queued ai_request and enqueues the job" do
       provider = instance_double(Ai::OpenaiCompatibleProvider, name: "openai", model: "gpt-4o-mini")
+      allow(Ai::ProviderRegistry).to receive(:resolve_selection).and_return(
+        {
+          name: "openai",
+          model: "gpt-4o-mini",
+          selection_strategy: "configured_default",
+          selection_reason: "provider_non_ollama"
+        }
+      )
       allow(Ai::ProviderRegistry).to receive(:build).and_return(provider)
 
       expect {
@@ -19,6 +27,7 @@ RSpec.describe Ai::ReviewService do
         )
       }.to change(AiRequest, :count).by(1)
         .and have_enqueued_job(Ai::ReviewJob)
+        .on_queue("ai_remote")
 
       request = AiRequest.recent_first.first
       expect(request.status).to eq("queued")
@@ -33,6 +42,21 @@ RSpec.describe Ai::ReviewService do
     it "persists the explicit provider/model requested by the UI" do
       provider = instance_double(Ai::OpenaiCompatibleProvider, name: "openai", model: "gpt-4.1-mini")
       allow(Ai::ProviderRegistry).to receive(:build).with("openai", model_name: "gpt-4.1-mini").and_return(provider)
+      allow(Ai::ProviderRegistry).to receive(:resolve_selection).with(
+        "openai",
+        model_name: "gpt-4.1-mini",
+        capability: "grammar_review",
+        text: "Texto com erro.",
+        language: "pt-BR",
+        target_language: nil
+      ).and_return(
+        {
+          name: "openai",
+          model: "gpt-4.1-mini",
+          selection_strategy: "manual_override",
+          selection_reason: "ui_override"
+        }
+      )
 
       described_class.enqueue(
         note: note,
@@ -48,6 +72,34 @@ RSpec.describe Ai::ReviewService do
       expect(request.requested_provider).to eq("openai")
       expect(request.model).to eq("gpt-4.1-mini")
       expect(request.metadata["requested_model"]).to eq("gpt-4.1-mini")
+      expect(request.metadata["model_selection_strategy"]).to eq("manual_override")
+      expect(request.metadata["model_selection_reason"]).to eq("ui_override")
+    end
+
+    it "persists the automatic model selection metadata for ollama routing" do
+      provider = instance_double(Ai::OllamaProvider, name: "ollama", model: "qwen2.5:0.5b")
+      allow(Ai::ProviderRegistry).to receive(:resolve_selection).and_return(
+        {
+          name: "ollama",
+          model: "qwen2.5:0.5b",
+          selection_strategy: "automatic",
+          selection_reason: "grammar_short"
+        }
+      )
+      allow(Ai::ProviderRegistry).to receive(:build).with("ollama", model_name: "qwen2.5:0.5b").and_return(provider)
+
+      described_class.enqueue(
+        note: note,
+        note_revision: note_revision,
+        capability: "grammar_review",
+        text: "Texto curto com erro.",
+        language: "pt-BR"
+      )
+
+      request = AiRequest.recent_first.first
+      expect(request.model).to eq("qwen2.5:0.5b")
+      expect(request.metadata["model_selection_strategy"]).to eq("automatic")
+      expect(request.metadata["model_selection_reason"]).to eq("grammar_short")
     end
   end
 

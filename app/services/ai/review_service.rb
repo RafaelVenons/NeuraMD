@@ -12,12 +12,23 @@ module Ai
         ProviderRegistry.status
       end
 
-      def enqueue(note:, note_revision:, capability:, text:, language:, provider_name: nil, model_name: nil, requested_by: nil)
+      def enqueue(note:, note_revision:, capability:, text:, language:, provider_name: nil, model_name: nil, requested_by: nil, target_language: nil)
         capability = capability.to_s
         raise InvalidCapabilityError, "Capability de IA invalida." unless CAPABILITIES.include?(capability)
         raise Error, "Nenhum texto para processar." if text.to_s.blank?
 
-        provider = ProviderRegistry.build(provider_name, model_name:)
+        selection = ProviderRegistry.resolve_selection(
+          provider_name,
+          model_name: model_name,
+          capability: capability,
+          text: text,
+          language: language,
+          target_language: target_language
+        )
+        provider = ProviderRegistry.build(
+          selection[:name],
+          model_name: selection[:model]
+        )
         request = note_revision.ai_requests.create!(
           provider: provider.name,
           requested_provider: provider.name,
@@ -30,9 +41,12 @@ module Ai
           prompt_summary: prompt_summary(capability, text),
           metadata: {
             "language" => language,
+            "target_language" => target_language,
             "note_id" => note.id,
             "requested_by_id" => requested_by&.id,
-            "requested_model" => provider.model
+            "requested_model" => provider.model,
+            "model_selection_strategy" => selection[:selection_strategy],
+            "model_selection_reason" => selection[:selection_reason]
           }
         )
 

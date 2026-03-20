@@ -19,11 +19,7 @@ Capybara.javascript_driver = :cuprite     # real browser for JS specs
 
 RSpec.configure do |config|
   config.before(:each, type: :system) do
-    Warden.test_mode!
+    Capybara.reset_sessions!
     driven_by :cuprite
   end
-
-  # Sign-in helper for system specs (works with Devise + Cuprite).
-  config.include Warden::Test::Helpers, type: :system
-  config.after(:each, type: :system) { Warden.test_reset! }
 end

@@ -213,6 +213,28 @@ RSpec.describe "AI review", type: :system do
     expect(revision.ai_generated).to be(true)
   end
 
+  it "shows an explicit remote long-job hint while an ollama request is still running" do
+    running_request = create(
+      :ai_request,
+      note_revision: note.head_revision,
+      capability: "grammar_review",
+      provider: "ollama",
+      requested_provider: "ollama",
+      model: "qwen2:1.5b",
+      status: "running",
+      input_text: note.head_revision.content_markdown,
+      started_at: 2.minutes.ago
+    )
+
+    allow(Ai::ReviewService).to receive(:enqueue).and_return(running_request)
+
+    find("button[title='Revisar gramática com IA']").click
+
+    expect(page).to have_text("Job remoto longo no AIrch. Pode fechar e voltar depois.", wait: 5)
+    expect(page).to have_text("qwen2:1.5b")
+    expect(page).to have_text(/2min/, wait: 5)
+  end
+
   it "shows the fallback when AI is not configured" do
     ENV["AI_ENABLED"] = "false"
     visit note_path(note.slug)

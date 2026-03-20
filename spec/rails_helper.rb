@@ -3,6 +3,9 @@ ENV["RAILS_ENV"] ||= "test"
 require_relative "../config/environment"
 abort("The Rails environment is running in production mode!") if Rails.env.production?
 require "rspec/rails"
+require "active_job/test_helper"
+require "active_support/testing/time_helpers"
+require "turbo/broadcastable/test_helper"
 
 Rails.root.glob("spec/support/**/*.rb").sort_by(&:to_s).each { |f| require f }
 
@@ -19,6 +22,9 @@ RSpec.configure do |config|
   config.filter_rails_from_backtrace!
 
   config.include FactoryBot::Syntax::Methods
+  config.include ActiveJob::TestHelper
+  config.include ActiveSupport::Testing::TimeHelpers
+  config.include Turbo::Broadcastable::TestHelper, type: :model
   config.include Devise::Test::IntegrationHelpers, type: :request
   config.include Devise::Test::ControllerHelpers, type: :controller
 
@@ -35,6 +41,13 @@ RSpec.configure do |config|
 
   config.after(:each) do
     DatabaseCleaner.clean
+    clear_enqueued_jobs
+    clear_performed_jobs
+    travel_back
+  end
+
+  config.before(:each) do
+    ActiveJob::Base.queue_adapter = :test
   end
 end
 

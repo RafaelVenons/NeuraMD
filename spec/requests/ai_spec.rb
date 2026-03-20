@@ -151,6 +151,7 @@ RSpec.describe "AI", type: :request do
         "corrected" => "Texto corrigido."
       )
       expect(response.parsed_body["duration_ms"]).to be >= 1000
+      expect(response.parsed_body["duration_human"]).to be_present
       expect(response.parsed_body["created_at"]).to be_present
     end
   end

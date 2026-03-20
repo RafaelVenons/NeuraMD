@@ -779,9 +779,10 @@ spec/
 - [x] `ai_requests` para auditoria
 - [x] Feature flags via ENV (ativar/desativar providers)
 - [x] Rewrite com a mesma infraestrutura de diff/apply
-- [ ] Specs de service para seleção de provider, prompt e falhas remotas
-- [ ] Expor escolha explícita de provider/model no UI quando necessário
-- [ ] Marcar revisões aceitas via IA com metadado mais explícito no fluxo de checkpoint
+- [x] Specs de service para seleção de provider, prompt e falhas remotas
+- [x] Expor escolha explícita de provider/model no UI quando necessário
+- [x] Marcar revisões aceitas via IA com metadado mais explícito no fluxo de checkpoint
+- [x] Roteamento automático de modelo para Ollama com override manual na UI
 - **Entrega:** IA controlável e segura
 
 #### Fase 5 — O que portar do FrankMD e o que não portar
@@ -795,6 +796,7 @@ spec/
 **Portar adaptando:**
 - controller HTTP de IA
 - service de roteamento de provider
+- service de roteamento de model por capability/tamanho quando o provider for `ollama`
 - prompts para grammar/suggest/rewrite
 
 **Não portar:**
@@ -827,6 +829,31 @@ Toda evolução da fase 5 deve manter esta matriz:
   - enfileirar requisições para `AIrch`
   - persistir estado `queued/running/succeeded/failed`
   - reprocessar falhas transitórias de rede
+
+#### Fase 5 — Benchmarks `AIrch` CPU-only (2026-03-20)
+
+Benchmarks reais no host `AIrch` indicam:
+
+- evitar `qwen3*` e `qwen3.5*` como default nesse host; custo alto e recorrência de respostas vazias por `thinking/length`
+- `grammar_review` curto: `qwen2.5:0.5b`
+- `grammar_review` maior: `qwen2.5:1.5b`
+- `suggest` curto: `qwen2:1.5b`
+- `suggest` maior: `qwen2.5:3b`
+- `rewrite` curto: `qwen2.5:1.5b`
+- `rewrite` maior e quando qualidade pesa mais que latência: `llama3.2:3b`
+- tradução `pt -> en` curta: `qwen2:1.5b`
+- tradução `pt -> en` maior ou mais crítica: `qwen2.5:3b`
+
+Essas decisões devem permanecer em ENV e em service de roteamento, nunca hardcoded apenas na UI.
+
+### Fase 5.5 — Tradução Assistida com Nota Irmã
+- [ ] Nova capability `translate`
+- [ ] Criar nota irmã (`brother`) a partir de uma nota existente para armazenar a tradução
+- [ ] Vincular idioma de origem/destino na nota e na request
+- [ ] UI para escolher idioma alvo e confirmar criação da nota irmã
+- [ ] Fluxo inicial priorizando `pt-BR -> en`
+- [ ] Benchmarks adicionais com textos maiores e Markdown real
+- **Entrega:** tradução controlada, auditável e sem misturar idiomas na mesma nota
 
 ### Fase 6 — TTS com Cache (ElevenLabs + Fish Audio)
 - [ ] `Tts::BaseProvider` interface + `ElevenLabsProvider` + `FishAudioProvider`

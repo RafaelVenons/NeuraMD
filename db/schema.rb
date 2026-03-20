@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_03_05_131429) do
+ActiveRecord::Schema[8.1].define(version: 2026_03_19_230715) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
   enable_extension "pg_trgm"
@@ -61,19 +61,37 @@ ActiveRecord::Schema[8.1].define(version: 2026_03_05_131429) do
   end
 
   create_table "ai_requests", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.integer "attempts_count", default: 0, null: false
     t.string "capability", null: false
+    t.datetime "completed_at"
     t.decimal "cost_estimate", precision: 10, scale: 6
     t.datetime "created_at", null: false
+    t.text "error_message"
+    t.text "input_text"
+    t.datetime "last_error_at"
+    t.string "last_error_kind"
+    t.integer "max_attempts", default: 3, null: false
+    t.jsonb "metadata", default: {}, null: false
+    t.string "model"
+    t.datetime "next_retry_at"
     t.uuid "note_revision_id", null: false
+    t.text "output_text"
     t.text "prompt_summary"
     t.string "provider", null: false
     t.string "request_hash"
+    t.string "requested_provider"
     t.text "response_summary"
+    t.datetime "started_at"
+    t.string "status", default: "queued", null: false
     t.integer "tokens_in"
     t.integer "tokens_out"
     t.datetime "updated_at", null: false
     t.index ["created_at"], name: "index_ai_requests_on_created_at"
+    t.index ["last_error_kind"], name: "index_ai_requests_on_last_error_kind"
+    t.index ["next_retry_at"], name: "index_ai_requests_on_next_retry_at"
     t.index ["note_revision_id"], name: "index_ai_requests_on_note_revision_id"
+    t.index ["requested_provider"], name: "index_ai_requests_on_requested_provider"
+    t.index ["status"], name: "index_ai_requests_on_status"
   end
 
   create_table "link_tags", id: false, force: :cascade do |t|
@@ -113,9 +131,9 @@ ActiveRecord::Schema[8.1].define(version: 2026_03_05_131429) do
     t.uuid "note_id", null: false
     t.enum "revision_kind", default: "checkpoint", null: false, enum_type: "note_revision_kind"
     t.datetime "updated_at", null: false
-    t.index ["content_plain"], name: "index_note_revisions_on_content_plain", opclass: :gin_trgm_ops, using: :gin
     t.index "to_tsvector('simple'::regconfig, COALESCE(content_plain, ''::text))", name: "index_note_revisions_on_content_plain_tsvector", using: :gin
     t.index ["author_id"], name: "index_note_revisions_on_author_id"
+    t.index ["content_plain"], name: "index_note_revisions_on_content_plain", opclass: :gin_trgm_ops, using: :gin
     t.index ["created_at"], name: "index_note_revisions_on_created_at"
     t.index ["note_id", "revision_kind"], name: "index_note_revisions_draft_per_note", where: "(revision_kind = 'draft'::note_revision_kind)"
     t.index ["note_id"], name: "index_note_revisions_on_note_id"
