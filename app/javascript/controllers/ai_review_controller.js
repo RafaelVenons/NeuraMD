@@ -28,7 +28,10 @@ export default class extends Controller {
     "providerSelect",
     "scopeLabel",
     "selectorShell",
-    "transportBadge"
+    "transportBadge",
+    "translationMeta",
+    "translationSummary",
+    "translationTitle"
   ]
 
   static values = {
@@ -110,7 +113,7 @@ export default class extends Controller {
     this.lastCompletedRequest = null
     this.scopeLabelTarget.textContent =
       capability === "translate"
-        ? `Tradução ${this.noteLanguageValue || "origem"} -> ${targetLanguage || "destino"}`
+        ? `Traducao ${this._languageLabel(this.noteLanguageValue || "origem")} -> ${this._languageLabel(targetLanguage || "destino")}`
         : (selection ? "Trecho selecionado" : "Documento inteiro")
 
     this._showProcessing()
@@ -198,10 +201,17 @@ export default class extends Controller {
     const correctedText = this.correctedTextTarget.value
 
     if (this.pendingApplyMode === "translation_note") {
+      const previousLabel = this.acceptButtonTarget.textContent
+      this.acceptButtonTarget.disabled = true
+      this.acceptButtonTarget.textContent = "Criando nota..."
+
       try {
         await this._createTranslatedNote(correctedText)
       } catch (error) {
         window.alert(error.message || "Falha ao criar nota traduzida.")
+      } finally {
+        this.acceptButtonTarget.disabled = false
+        this.acceptButtonTarget.textContent = previousLabel
       }
       return
     }
@@ -285,6 +295,7 @@ export default class extends Controller {
     this.correctedTextTarget.classList.add("hidden")
     this.correctedDiffTarget.classList.remove("hidden")
     this.editToggleTarget.textContent = "Editar"
+    this._syncTranslationMeta(corrected)
 
     if (provider && model) {
       this.providerBadgeTarget.textContent = `${provider}: ${model}`
@@ -776,6 +787,50 @@ export default class extends Controller {
     this.modelSelectTarget.disabled = !this.aiEnabled || models.length <= 1
   }
 
+  _syncTranslationMeta(correctedText) {
+    if (!this.hasTranslationMetaTarget || !this.hasTranslationSummaryTarget || !this.hasTranslationTitleTarget) return
+
+    const active = this.pendingApplyMode === "translation_note"
+    this.translationMetaTarget.classList.toggle("hidden", !active)
+    if (!active) return
+
+    const targetLanguage = this.lastCompletedRequest?.targetLanguage || this.selectedTargetLanguage()
+    this.translationSummaryTarget.textContent = `Uma nova nota irma sera criada em ${this._languageLabel(targetLanguage)} e vinculada a esta nota.`
+    this.translationTitleTarget.value = this._defaultTranslatedTitle(correctedText, targetLanguage)
+  }
+
+  _defaultTranslatedTitle(content, targetLanguage) {
+    const headingMatch = String(content || "").match(/^\s*#\s+(.+)$/m)
+    if (headingMatch?.[1]) return headingMatch[1].trim()
+
+    const baseTitle = this.noteTitleValue || "Nota traduzida"
+    return `${baseTitle} (${this._languageLabel(targetLanguage)})`
+  }
+
+  _languageLabel(languageCode) {
+    if (!languageCode) return "Idioma"
+
+    if (this.hasTargetLanguageSelectTarget) {
+      const match = Array.from(this.targetLanguageSelectTarget.options).find((option) => option.value === languageCode)
+      if (match) return match.textContent.trim()
+    }
+
+    const labels = {
+      "pt-BR": "Portugues",
+      "en-US": "English",
+      es: "Espanol",
+      de: "Deutsch",
+      fr: "Francais",
+      it: "Italiano",
+      "zh-CN": "Chinese (Simplified)",
+      "zh-TW": "Chinese (Traditional)",
+      "ja-JP": "Japanese",
+      "ko-KR": "Korean"
+    }
+
+    return labels[languageCode] || languageCode
+  }
+
   _truncate(text, limit) {
     if (!text || text.length <= limit) return text
     return `${text.slice(0, limit - 1)}…`
@@ -838,6 +893,7 @@ export default class extends Controller {
       },
       body: JSON.stringify({
         content,
+        title: this.hasTranslationTitleTarget ? this.translationTitleTarget.value : "",
         target_language: this.lastCompletedRequest?.targetLanguage || this.selectedTargetLanguage()
       })
     })

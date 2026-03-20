@@ -189,7 +189,7 @@
               class="max-w-28 bg-transparent text-xs text-[var(--theme-text-secondary)] outline-none"
               data-ai-review-target="targetLanguageSelect">
         <% Note::SUPPORTED_LANGUAGES.reject { |lang| lang == @note.detected_language }.each do |language| %>
-          <option value="<%= language %>" <%= "selected" if language == "en-US" %>><%= language %></option>
+          <option value="<%= language %>" <%= "selected" if language == "en-US" %>><%= Notes::TranslationNoteService::LANGUAGE_LABELS[language] || language %></option>
         <% end %>
       </select>
     </div>
@@ -622,6 +622,23 @@ AI_ENABLED_PROVIDERS=openai,anthropic,ollama</pre>
               ></textarea>
             </div>
           </div>
+        </div>
+
+        <div data-ai-review-target="translationMeta"
+             class="hidden border-t border-[var(--theme-border)] bg-[var(--theme-bg-secondary)] px-6 py-4">
+          <p data-ai-review-target="translationSummary" class="text-sm text-[var(--theme-text-secondary)]">
+            Uma nova nota irma sera criada a partir desta traducao.
+          </p>
+          <label class="mt-3 block" for="ai-translation-title">
+            <span class="mb-1 block text-xs font-medium uppercase tracking-wide text-[var(--theme-text-muted)]">
+              Titulo da nova nota
+            </span>
+            <input type="text"
+                   id="ai-translation-title"
+                   data-ai-review-target="translationTitle"
+                   class="w-full rounded-md border border-[var(--theme-border)] bg-[var(--theme-bg-primary)] px-3 py-2 text-sm text-[var(--theme-text-primary)] outline-none focus:border-[var(--theme-accent)]"
+                   placeholder="Titulo da nota traduzida">
+          </label>
         </div>
 
         <div class="flex items-center justify-end gap-3 px-6 py-4 border-t border-[var(--theme-border)]">

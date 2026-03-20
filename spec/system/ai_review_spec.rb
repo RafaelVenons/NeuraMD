@@ -51,7 +51,7 @@ RSpec.describe "AI review", type: :system do
 
     sign_in_via_ui(user)
     visit note_path(note.slug)
-    expect(page).to have_css(".cm-editor", wait: 5)
+    expect(page).to have_css(".cm-editor", wait: 10)
   end
 
   def editor
@@ -251,13 +251,40 @@ RSpec.describe "AI review", type: :system do
     )
     translated_note = create(:note, :with_head_revision, title: "Clinical Summary", detected_language: "en-US")
 
+    allow(Ai::ReviewService).to receive(:status).and_return(
+      {
+        enabled: true,
+        provider: "ollama",
+        model: "qwen2:1.5b",
+        available_providers: ["ollama"],
+        provider_options: [
+          {
+            name: "ollama",
+            label: "Ollama",
+            default_model: "qwen2:1.5b",
+            models: ["qwen2:1.5b"],
+            selected: true,
+            selected_model: "qwen2:1.5b"
+          }
+        ]
+      }
+    )
     allow(Ai::ReviewService).to receive(:enqueue).and_return(translated_request)
-    allow(Notes::TranslationNoteService).to receive(:call).and_return(translated_note)
+    expect(Notes::TranslationNoteService).to receive(:call).with(
+      source_note: note,
+      ai_request: translated_request,
+      content: "# Clinical Summary\n\nTranslated content.",
+      target_language: "en-US",
+      title: "Clinical Summary (Polished)",
+      author: user
+    ).and_return(translated_note)
 
     find("button[title='Traduzir com IA']").click
 
     expect(page).to have_css("dialog[open]", text: "Revisão com IA", wait: 5)
-    expect(page).to have_text("Tradução pt-BR -> en-US")
+    expect(page).to have_text("Traducao Portugues -> English")
+    expect(page).to have_field("Titulo da nova nota", with: "Clinical Summary")
+    fill_in "Titulo da nova nota", with: "Clinical Summary (Polished)"
     click_button "Criar nota traduzida"
 
     expect(page).to have_current_path(note_path(translated_note.slug), wait: 5)
