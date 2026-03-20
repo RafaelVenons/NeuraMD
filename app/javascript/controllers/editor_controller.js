@@ -37,6 +37,7 @@ export default class extends Controller {
     }
     this._selectedRevisionContent = this._initialEditorContent()
     this._workingContent = this._selectedRevisionContent
+    this._aiStageActive = false
     this._onDocumentClick = this._handleDocumentClick.bind(this)
     this._layoutStorageKey = `editor-layout:${this.slugValue}`
     this._boundPointerMove = (event) => this._handlePointerMove(event)
@@ -46,6 +47,7 @@ export default class extends Controller {
     this._bindKeyboardShortcuts()
     this._bindTitleInput()
     this._bindAutosaveStatus()
+    this._bindAiStageState()
     this._bindNoteNavigation()
     this._restoreLayoutState()
     this._syncPrimaryAction()
@@ -77,6 +79,15 @@ export default class extends Controller {
     }
   }
 
+  showPreview() {
+    if (this._previewVisible) return
+
+    this._previewVisible = true
+    this.previewPaneTarget.classList.remove("hidden")
+    this.previewToggleBtnTarget.classList.add("toolbar-btn--active")
+    this._applyPreviewWidth(this._previewWidthRatio || 0.5)
+  }
+
   startPreviewResize(event) {
     if (!this._previewVisible) return
     event.preventDefault()
@@ -97,6 +108,7 @@ export default class extends Controller {
   }
 
   async toggleRevisions(event) {
+    if (this._aiStageActive) return
     event.preventDefault()
     event.stopPropagation()
 
@@ -110,6 +122,11 @@ export default class extends Controller {
 
   async handlePrimaryAction(event) {
     event.preventDefault()
+
+    if (this._aiStageActive) {
+      window.alert("Aplique ou descarte a sugestao da IA antes de salvar.")
+      return
+    }
 
     if (this._shouldShowRestoreAction()) {
       await this._restoreSelectedRevision()
@@ -192,6 +209,16 @@ export default class extends Controller {
     // Listen for autosave status changes
     this.element.addEventListener("autosave:statuschange", (e) => {
       this._onSaveStatus(e.detail)
+    })
+  }
+
+  _bindAiStageState() {
+    this.element.addEventListener("ai-review:stagechange", (event) => {
+      this._aiStageActive = !!event.detail?.active
+      this.primaryActionButtonTarget.disabled = this._aiStageActive
+      this.revisionsButtonTarget.disabled = this._aiStageActive
+      this.primaryActionButtonTarget.classList.toggle("opacity-25", this._aiStageActive)
+      this.revisionsButtonTarget.classList.toggle("opacity-25", this._aiStageActive)
     })
   }
 

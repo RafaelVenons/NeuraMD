@@ -3,31 +3,27 @@ import { computeWordDiff } from "lib/diff_utils"
 
 export default class extends Controller {
   static targets = [
-    "dialog",
+    "workspace",
+    "previewShell",
+    "requestMenu",
+    "requestMenuTitle",
+    "requestMenuList",
     "configNotice",
-    "diffContent",
-    "historyDialog",
-    "historyFilter",
-    "historyList",
-    "historyEmpty",
-    "historyStatus",
-    "modelSelect",
-    "targetLanguageSelect",
-    "originalText",
-    "correctedText",
-    "correctedDiff",
-    "providerBadge",
-    "editToggle",
-    "acceptButton",
-    "processingOverlay",
+    "processingBox",
     "processingState",
     "processingProvider",
     "processingHint",
     "processingMeta",
     "processingError",
-    "providerSelect",
-    "scopeLabel",
-    "selectorShell",
+    "resultBox",
+    "proposalDiff",
+    "correctedText",
+    "historyDialog",
+    "historyFilter",
+    "historyList",
+    "historyEmpty",
+    "historyStatus",
+    "acceptButton",
     "transportBadge",
     "translationMeta",
     "translationSummary",
@@ -42,7 +38,9 @@ export default class extends Controller {
     cancelUrlTemplate: String,
     createTranslatedNoteUrlTemplate: String,
     noteTitle: String,
-    noteLanguage: String
+    noteLanguage: String,
+    languageOptions: Array,
+    languageLabels: Object
   }
 
   connect() {
@@ -60,61 +58,108 @@ export default class extends Controller {
     this.historyFilter = "all"
     this.realtimeConnected = false
     this.streamObserver = null
+    this.pendingMenu = null
+    this.activeTriggerButton = null
+    this.activeTriggerHtml = null
+    this.aiSuggestedText = ""
+    this.preferredTargetLanguage = "en-US"
+    this._boundDocumentClick = (event) => this._handleDocumentClick(event)
     this._handleRequestUpdate = (event) => this._handleStreamRequestUpdate(event)
     this.element.addEventListener("ai-request:update", this._handleRequestUpdate)
+    document.addEventListener("click", this._boundDocumentClick)
     this._observeStreamSource()
     this.checkAvailability()
   }
 
   disconnect() {
     this.element.removeEventListener("ai-request:update", this._handleRequestUpdate)
+    document.removeEventListener("click", this._boundDocumentClick)
     this.streamObserver?.disconnect()
     this._stopPolling()
+    this._clearProposalStage()
+    this._clearActiveTrigger()
   }
 
-  openGrammar() {
-    this.open("grammar_review")
+  openGrammar(event) {
+    this.openMenu("grammar_review", event)
   }
 
-  openSuggest() {
-    this.open("suggest")
+  openSuggest(event) {
+    this.openMenu("suggest", event)
   }
 
-  openRewrite() {
-    this.open("rewrite")
+  openRewrite(event) {
+    this.openMenu("rewrite", event)
   }
 
-  openTranslate() {
-    this.open("translate")
+  openTranslate(event) {
+    this.openMenu("translate", event)
   }
 
-  async open(capability) {
+  async openMenu(capability, event) {
+    event?.stopPropagation?.()
+    this.lastOpenCapability = capability
+    const trigger = event?.currentTarget || null
+
+    try {
+      await this.checkAvailability()
+
+      if (!this.aiEnabled) {
+        this._showConfigNotice()
+        return
+      }
+
+      const editor = this._editor()
+      const documentMarkdown = editor.getValue()
+      const selection = editor.getSelection()
+      const targetLanguage = capability === "translate" ? this.selectedTargetLanguage() : null
+      const text = capability === "translate" ? documentMarkdown : (selection || documentMarkdown)
+
+      if (!text.trim()) {
+        window.alert("Nenhum texto para processar.")
+        return
+      }
+
+      this.pendingMenu = {
+        capability,
+        documentMarkdown,
+        selectionRange: editor.getSelectionRange?.() || { from: 0, to: 0 },
+        mode: capability === "translate" ? "translation_note" : (selection ? "selection" : "document"),
+        targetLanguage,
+        text,
+        triggerButton: trigger
+      }
+      this._showRequestMenu(trigger, capability, this._buildExecutionOptions({ capability, text, targetLanguage }))
+    } catch (error) {
+      this._showProcessingFailure(error.message || "Falha ao abrir as opcoes de IA.")
+    }
+  }
+
+  async runSelectedOption(event) {
+    if (!this.pendingMenu) return
+
     await this._cancelCurrentRequest()
-    await this.checkAvailability()
+    this._setActiveTrigger(this.pendingMenu.triggerButton)
+    this._hideRequestMenu()
+    this._ensurePreviewVisible()
 
-    if (!this.aiEnabled) {
-      this._showConfigNotice()
-      return
-    }
-
-    const editor = this._editor()
-    const documentMarkdown = editor.getValue()
-    const selection = editor.getSelection()
-    const targetLanguage = capability === "translate" ? this.selectedTargetLanguage() : null
-    const text = capability === "translate" ? documentMarkdown : (selection || documentMarkdown)
-
-    if (!text.trim()) {
-      window.alert("Nenhum texto para processar.")
-      return
-    }
-
-    this.pendingApplyMode = capability === "translate" ? "translation_note" : (selection ? "selection" : "document")
-    this.pendingOriginalText = text
+    this.pendingApplyMode = this.pendingMenu.mode
+    this.pendingOriginalText = this.pendingMenu.mode === "translation_note"
+      ? this.pendingMenu.text
+      : this.pendingMenu.documentMarkdown
     this.lastCompletedRequest = null
-    this.scopeLabelTarget.textContent =
-      capability === "translate"
-        ? `Traducao ${this._languageLabel(this.noteLanguageValue || "origem")} -> ${this._languageLabel(targetLanguage || "destino")}`
-        : (selection ? "Trecho selecionado" : "Documento inteiro")
+    this.aiSuggestedText = ""
+    this.pendingMenu.providerName = event.currentTarget.dataset.provider || this.aiProvider
+    this.pendingMenu.modelName = event.currentTarget.dataset.strategy === "automatic"
+      ? this._autoModelFor(
+          this.pendingMenu.capability,
+          this.pendingMenu.text,
+          this.preferredTargetLanguage,
+          this._providerModels(this.pendingMenu.providerName),
+          this._providerDefaultModel(this.pendingMenu.providerName)
+        )
+      : event.currentTarget.dataset.model
+    this.preferredTargetLanguage = event.currentTarget.dataset.targetLanguage || this.pendingMenu.targetLanguage || this.preferredTargetLanguage
 
     this._showProcessing()
 
@@ -128,12 +173,12 @@ export default class extends Controller {
           "X-CSRF-Token": this._csrfToken()
         },
         body: JSON.stringify({
-          capability,
-          provider: this.selectedProvider(),
-          model: this.selectedModel(),
-          target_language: targetLanguage,
-          text,
-          document_markdown: documentMarkdown
+          capability: this.pendingMenu.capability,
+          provider: event.currentTarget.dataset.provider,
+          model: event.currentTarget.dataset.strategy === "automatic" ? "" : event.currentTarget.dataset.model,
+          target_language: this.preferredTargetLanguage,
+          text: this.pendingMenu.text,
+          document_markdown: this.pendingMenu.documentMarkdown
         })
       })
 
@@ -143,15 +188,15 @@ export default class extends Controller {
       this._startPolling(data.request_id)
       this.refreshHistory()
     } catch (error) {
-      window.alert(error.message || "Falha ao processar com IA.")
-      this._stopPolling()
-    } finally {
+      this._showProcessingFailure(error.message || "Falha ao processar com IA.")
+      this._clearActiveTrigger()
     }
   }
 
   close() {
     this._cancelCurrentRequest()
-    this.dialogTarget.close()
+    this._clearProposalStage()
+    this._hideWorkspace()
   }
 
   async openHistory() {
@@ -165,7 +210,8 @@ export default class extends Controller {
   }
 
   cancelProcessing() {
-    this._cancelCurrentRequest({ hideOverlay: true })
+    this._cancelCurrentRequest({ keepWorkspace: true })
+    this._hideWorkspace()
   }
 
   async refreshHistory() {
@@ -198,7 +244,7 @@ export default class extends Controller {
 
   async accept() {
     const editor = this._editor()
-    const correctedText = this.correctedTextTarget.value
+    const correctedText = this.hasCorrectedTextTarget ? this.correctedTextTarget.value : ""
 
     if (this.pendingApplyMode === "translation_note") {
       const previousLabel = this.acceptButtonTarget.textContent
@@ -216,11 +262,8 @@ export default class extends Controller {
       return
     }
 
-    if (this.pendingApplyMode === "selection") {
-      editor.replaceSelection(correctedText)
-    } else {
-      editor.setValue(correctedText)
-    }
+    editor.setValue(correctedText)
+    this._clearProposalStage()
 
     this.dispatch("accepted", {
       detail: {
@@ -233,22 +276,17 @@ export default class extends Controller {
     })
 
     editor.focus()
-    this.close()
+    this._hideWorkspace()
   }
 
-  toggleEditMode() {
-    const editing = !this.correctedTextTarget.classList.contains("hidden")
+  proposalChanged() {
+    this._renderProposal()
+  }
 
-    if (editing) {
-      this.correctedTextTarget.classList.add("hidden")
-      this.correctedDiffTarget.classList.remove("hidden")
-      this.editToggleTarget.textContent = "Editar"
-    } else {
-      this.correctedDiffTarget.classList.add("hidden")
-      this.correctedTextTarget.classList.remove("hidden")
-      this.correctedTextTarget.focus()
-      this.editToggleTarget.textContent = "Ver diff"
-    }
+  proposalEditorChanged() {
+    if (!this.hasProposalDiffTarget || !this.hasCorrectedTextTarget) return
+    this.correctedTextTarget.value = this._proposalEditorText()
+    this._renderProposal()
   }
 
   async checkAvailability() {
@@ -263,69 +301,128 @@ export default class extends Controller {
       this.aiProvider = data.provider
       this.aiModel = data.model
       this.providerOptions = data.provider_options || []
-      this._renderSelectors()
     } catch (_) {
       this.aiEnabled = false
       this.aiProvider = null
       this.aiModel = null
       this.providerOptions = []
-      this._renderSelectors()
     }
-  }
-
-  providerChanged() {
-    this._renderModelOptions(this.selectedProvider())
+    this._syncPreferredTargetLanguage()
   }
 
   _showConfigNotice() {
-    this.providerBadgeTarget.classList.add("hidden")
+    this._clearProposalStage()
+    this._showWorkspace()
+    this._clearActiveTrigger()
     this.configNoticeTarget.classList.remove("hidden")
-    this.diffContentTarget.classList.add("hidden")
-    this.dialogTarget.showModal()
-  }
-
-  _showDiff(original, corrected, provider, model) {
-    const diff = computeWordDiff(original, corrected)
-    this.configNoticeTarget.classList.add("hidden")
-    this.diffContentTarget.classList.remove("hidden")
-    this.diffContentTarget.classList.add("flex")
-    this.originalTextTarget.innerHTML = this._renderDiff(diff, "original")
-    this.correctedDiffTarget.innerHTML = this._renderDiff(diff, "corrected")
-    this.correctedTextTarget.value = corrected
-    this.correctedTextTarget.classList.add("hidden")
-    this.correctedDiffTarget.classList.remove("hidden")
-    this.editToggleTarget.textContent = "Editar"
-    this._syncTranslationMeta(corrected)
-
-    if (provider && model) {
-      this.providerBadgeTarget.textContent = `${provider}: ${model}`
-      this.providerBadgeTarget.classList.remove("hidden")
-    } else {
-      this.providerBadgeTarget.classList.add("hidden")
-    }
-
-    this.acceptButtonTarget.textContent =
-      this.pendingApplyMode === "translation_note" ? "Criar nota traduzida" : "Aplicar"
-
-    this.dialogTarget.showModal()
+    this.processingBoxTarget.classList.add("hidden")
+    this.resultBoxTarget.classList.add("hidden")
   }
 
   _showProcessing() {
-    const provider = this.selectedProvider()
-    const model = this.selectedModel()
-    this.processingProviderTarget.textContent = provider && model ? `${provider}: ${model}` : "AI"
+    this._clearProposalStage()
+    const provider = this.pendingMenu?.providerName || this.aiProvider
+    const model = this.pendingMenu?.modelName || this.aiModel
+
+    this._showWorkspace()
+    this.configNoticeTarget.classList.add("hidden")
+    this.resultBoxTarget.classList.add("hidden")
+    this.processingBoxTarget.classList.remove("hidden")
+    this.processingBoxTarget.classList.add("flex")
+    this.processingProviderTarget.textContent = provider && model ? `${provider}: ${model}` : "IA"
     this.processingStateTarget.textContent = "Na fila"
     this.processingHintTarget.textContent = provider === "ollama"
-      ? "Job remoto no AIrch. Pode fechar e voltar depois."
+      ? "Job remoto no AIrch. Pode continuar usando a aplicacao enquanto a tarefa roda."
       : "Processamento assíncrono em andamento."
     this.processingMetaTarget.textContent = "Aguardando execução..."
     this.processingErrorTarget.textContent = ""
     this.processingErrorTarget.classList.add("hidden")
-    this.processingOverlayTarget.classList.remove("hidden")
   }
 
-  _hideProcessing() {
-    this.processingOverlayTarget.classList.add("hidden")
+  _showProcessingFailure(message) {
+    this._clearProposalStage()
+    this._showWorkspace()
+    this.configNoticeTarget.classList.add("hidden")
+    this.resultBoxTarget.classList.add("hidden")
+    this.processingBoxTarget.classList.remove("hidden")
+    this.processingBoxTarget.classList.add("flex")
+    this.processingStateTarget.textContent = "Falhou"
+    this.processingHintTarget.textContent = "A requisição não pôde ser concluída."
+    this.processingMetaTarget.textContent = ""
+    this.processingErrorTarget.textContent = message
+    this.processingErrorTarget.classList.remove("hidden")
+  }
+
+  _showProposal(corrected) {
+    const editor = this._editor()
+    const suggestionForPreview = this.pendingApplyMode === "translation_note"
+      ? corrected
+      : this._buildSuggestedDocument(corrected)
+
+    this.aiSuggestedText = suggestionForPreview
+    this.correctedTextTarget.value = suggestionForPreview
+
+    this._showWorkspace()
+    this.configNoticeTarget.classList.add("hidden")
+    this.processingBoxTarget.classList.add("hidden")
+    this.resultBoxTarget.classList.remove("hidden")
+    this.resultBoxTarget.classList.add("flex")
+    this.acceptButtonTarget.textContent =
+      this.pendingApplyMode === "translation_note" ? "Criar nota traduzida" : "Aplicar"
+    if (this.pendingApplyMode !== "translation_note") {
+      editor.showAiDiff({
+        originalText: editor.getValue(),
+        aiSuggestedText: suggestionForPreview
+      })
+      this._setStageState(true)
+    }
+    this._renderProposal()
+    this._syncTranslationMeta(suggestionForPreview)
+  }
+
+  _showWorkspace() {
+    this.workspaceTarget.classList.remove("hidden")
+    this.workspaceTarget.classList.add("flex")
+    this.previewShellTarget.classList.add("hidden")
+  }
+
+  _hideWorkspace() {
+    this.workspaceTarget.classList.add("hidden")
+    this.workspaceTarget.classList.remove("flex")
+    this.previewShellTarget.classList.remove("hidden")
+    this.configNoticeTarget.classList.add("hidden")
+    this.processingBoxTarget.classList.add("hidden")
+    this.resultBoxTarget.classList.add("hidden")
+    this.translationMetaTarget.classList.add("hidden")
+    this._hideRequestMenu()
+    this.pendingMenu = null
+    this.aiSuggestedText = ""
+    this._clearActiveTrigger()
+  }
+
+  _setStageState(active) {
+    this.element.dispatchEvent(new CustomEvent("ai-review:stagechange", {
+      detail: { active },
+      bubbles: true
+    }))
+  }
+
+  _buildSuggestedDocument(replacement) {
+    const source = this.pendingMenu?.documentMarkdown || this._editor().getValue()
+    if (this.pendingApplyMode !== "selection") return replacement
+
+    const range = this.pendingMenu?.selectionRange || { from: 0, to: 0 }
+    const from = Math.max(0, range?.from || 0)
+    const to = Math.max(from, range?.to || from)
+    return `${source.slice(0, from)}${replacement}${source.slice(to)}`
+  }
+
+  _clearProposalStage() {
+    const editorPane = this.element.querySelector('[data-controller~="codemirror"]')
+    const editor = editorPane && this.application.getControllerForElementAndIdentifier(editorPane, "codemirror")
+    editor?.clearAiDiff?.()
+    this.aiSuggestedText = ""
+    this._setStageState(false)
   }
 
   _startPolling(requestId) {
@@ -349,8 +446,6 @@ export default class extends Controller {
 
       if (data.provider && data.model) {
         this.processingProviderTarget.textContent = `${data.provider}: ${data.model}`
-      } else if (data.provider) {
-        this.processingProviderTarget.textContent = data.provider
       }
 
       this._updateProcessingState(data)
@@ -363,39 +458,32 @@ export default class extends Controller {
           model: data.model,
           targetLanguage: data.target_language || this.selectedTargetLanguage()
         }
-        this._hideProcessing()
-        this._showDiff(this.pendingOriginalText, data.corrected, data.provider, data.model)
+        this._showProposal(data.corrected)
         this._stopPolling()
         this.currentRequestId = null
+        this._clearActiveTrigger()
         this.refreshHistory()
         return
       }
 
-      if (data.status === "failed") {
-        throw new Error(data.error || "Falha ao processar com IA.")
-      }
+      if (data.status === "failed") throw new Error(data.error || "Falha ao processar com IA.")
 
       if (data.status === "canceled") {
-        this._hideProcessing()
         this._stopPolling()
         this.currentRequestId = null
+        this._hideWorkspace()
         this.refreshHistory()
         return
       }
 
-      if (this.pollAttempt >= 60) {
-        throw new Error("Tempo limite excedido aguardando a resposta da IA.")
-      }
+      if (this.pollAttempt >= 60) throw new Error("Tempo limite excedido aguardando a resposta da IA.")
 
-      this.pollTimer = window.setTimeout(
-        () => this._pollRequest(requestId),
-        this._pollDelayMs(data)
-      )
+      this.pollTimer = window.setTimeout(() => this._pollRequest(requestId), this._pollDelayMs(data))
     } catch (error) {
-      this._hideProcessing()
       this._stopPolling()
       this.currentRequestId = null
-      window.alert(error.message || "Falha ao processar com IA.")
+      this._showProcessingFailure(error.message || "Falha ao processar com IA.")
+      this._clearActiveTrigger()
     }
   }
 
@@ -406,12 +494,12 @@ export default class extends Controller {
     }
   }
 
-  async _cancelCurrentRequest({ hideOverlay = false } = {}) {
+  async _cancelCurrentRequest({ keepWorkspace = false } = {}) {
     const requestId = this.currentRequestId
     this._stopPolling()
 
     if (!requestId) {
-      if (hideOverlay) this._hideProcessing()
+      if (!keepWorkspace) this._clearActiveTrigger()
       return
     }
 
@@ -429,7 +517,7 @@ export default class extends Controller {
     } catch (_) {
     } finally {
       this.refreshHistory()
-      if (hideOverlay) this._hideProcessing()
+      this._clearActiveTrigger()
     }
   }
 
@@ -448,24 +536,15 @@ export default class extends Controller {
     if (data.status === "retrying") {
       this.processingStateTarget.textContent = "Tentando novamente"
       this.processingHintTarget.textContent = data.remote_hint || "Nova tentativa agendada."
-      this.processingMetaTarget.textContent = this._joinMeta(
-        this._retryMessage(data.next_retry_at, attemptsCount, maxAttempts),
-        this._durationLabel(data)
-      )
+      this.processingMetaTarget.textContent = this._joinMeta(this._retryMessage(data.next_retry_at, attemptsCount, maxAttempts), this._durationLabel(data))
     } else if (data.status === "running") {
       this.processingStateTarget.textContent = "Processando"
       this.processingHintTarget.textContent = data.remote_hint || "Processamento assíncrono em andamento."
-      this.processingMetaTarget.textContent = this._joinMeta(
-        this._attemptLabel(attemptsCount, maxAttempts),
-        this._durationLabel(data)
-      )
+      this.processingMetaTarget.textContent = this._joinMeta(this._attemptLabel(attemptsCount, maxAttempts), this._durationLabel(data))
     } else if (data.status === "queued") {
       this.processingStateTarget.textContent = "Na fila"
       this.processingHintTarget.textContent = data.remote_hint || "Aguardando execução na fila."
-      this.processingMetaTarget.textContent = this._joinMeta(
-        this._attemptLabel(attemptsCount, maxAttempts) || "Aguardando execução...",
-        this._durationLabel(data)
-      )
+      this.processingMetaTarget.textContent = this._joinMeta(this._attemptLabel(attemptsCount, maxAttempts) || "Aguardando execução...", this._durationLabel(data))
     } else {
       this.processingHintTarget.textContent = data.remote_hint || ""
       this.processingMetaTarget.textContent = this._durationLabel(data)
@@ -485,21 +564,10 @@ export default class extends Controller {
     if (!request?.id) return
 
     this._upsertHistoryRequest(request)
-
-    if (this.historyDialogTarget?.open) {
-      this._renderHistory()
-    }
-
+    if (this.historyDialogTarget?.open) this._renderHistory()
     if (String(request.id) !== String(this.currentRequestId)) return
 
     this._stopPolling()
-
-    if (request.provider && request.model) {
-      this.processingProviderTarget.textContent = `${request.provider}: ${request.model}`
-    } else if (request.provider) {
-      this.processingProviderTarget.textContent = request.provider
-    }
-
     this._updateProcessingState(request)
 
     if (request.status === "succeeded") {
@@ -510,22 +578,23 @@ export default class extends Controller {
         model: request.model,
         targetLanguage: request.target_language || this.selectedTargetLanguage()
       }
-      this._hideProcessing()
-      this._showDiff(this.pendingOriginalText, request.corrected, request.provider, request.model)
       this.currentRequestId = null
+      this._showProposal(request.corrected)
+      this._clearActiveTrigger()
       return
     }
 
     if (request.status === "failed") {
-      this._hideProcessing()
       this.currentRequestId = null
-      window.alert(request.error || "Falha ao processar com IA.")
+      this._showProcessingFailure(request.error || "Falha ao processar com IA.")
+      this._clearActiveTrigger()
       return
     }
 
     if (request.status === "canceled") {
-      this._hideProcessing()
       this.currentRequestId = null
+      this._hideWorkspace()
+      this._clearActiveTrigger()
     }
   }
 
@@ -537,9 +606,7 @@ export default class extends Controller {
     }
 
     this._setTransportState(source.hasAttribute("connected"))
-    this.streamObserver = new MutationObserver(() => {
-      this._setTransportState(source.hasAttribute("connected"))
-    })
+    this.streamObserver = new MutationObserver(() => this._setTransportState(source.hasAttribute("connected")))
     this.streamObserver.observe(source, { attributes: true, attributeFilter: ["connected"] })
   }
 
@@ -554,12 +621,8 @@ export default class extends Controller {
 
   _upsertHistoryRequest(request) {
     const existingIndex = this.historyRequests.findIndex((item) => String(item.id) === String(request.id))
-
-    if (existingIndex >= 0) {
-      this.historyRequests.splice(existingIndex, 1, request)
-    } else {
-      this.historyRequests.unshift(request)
-    }
+    if (existingIndex >= 0) this.historyRequests.splice(existingIndex, 1, request)
+    else this.historyRequests.unshift(request)
 
     this.historyRequests = this.historyRequests
       .sort((left, right) => new Date(right.created_at || 0) - new Date(left.created_at || 0))
@@ -574,7 +637,6 @@ export default class extends Controller {
   _retryMessage(nextRetryAt, attemptsCount, maxAttempts) {
     const attemptLabel = this._attemptLabel(attemptsCount, maxAttempts)
     const countdown = this._secondsUntil(nextRetryAt)
-
     if (countdown == null) return attemptLabel || "Nova tentativa agendada"
     if (attemptLabel) return `${attemptLabel} • nova tentativa em ${countdown}s`
     return `Nova tentativa em ${countdown}s`
@@ -582,31 +644,165 @@ export default class extends Controller {
 
   _pollDelayMs(data) {
     if (data.status !== "retrying") return 1000
-
     const seconds = this._secondsUntil(data.next_retry_at)
     if (seconds == null) return 1500
-
     return Math.min(Math.max(seconds * 1000, 1000), 10000)
   }
 
   _secondsUntil(isoTimestamp) {
     if (!isoTimestamp) return null
-
     const target = new Date(isoTimestamp).getTime()
     if (Number.isNaN(target)) return null
-
     return Math.max(0, Math.ceil((target - Date.now()) / 1000))
   }
 
-  _renderDiff(diff, column) {
-    return diff.map((item) => {
-      const escaped = this._escapeHtml(item.value)
+  _renderProposal() {
+    const currentText = this.correctedTextTarget.value
+    const selection = this._captureProposalSelection()
+    const aiAnnotated = this._annotateAiSuggestion(this.pendingOriginalText, this.aiSuggestedText)
+    const currentAnnotated = this._annotateCurrentSuggestion(aiAnnotated, this.aiSuggestedText, currentText)
 
-      if (item.type === "equal") return `<span class="ai-diff-equal">${escaped}</span>`
-      if (item.type === "delete" && column === "original") return `<span class="ai-diff-del">${escaped}</span>`
-      if (item.type === "insert" && column === "corrected") return `<span class="ai-diff-add">${escaped}</span>`
-      return ""
+    this.proposalDiffTarget.innerHTML = currentAnnotated.map((item) => {
+      const escaped = this._escapeHtml(item.value)
+      if (item.kind === "ai") return `<span class="rounded bg-emerald-400/15 px-0.5 text-emerald-200">${escaped}</span>`
+      if (item.kind === "manual") return `<span class="rounded bg-amber-300/25 px-0.5 text-amber-200">${escaped}</span>`
+      return `<span>${escaped}</span>`
     }).join("")
+    this._restoreProposalSelection(selection)
+  }
+
+  _proposalEditorText() {
+    return this.proposalDiffTarget.innerText.replace(/\u00a0/g, " ")
+  }
+
+  _annotateAiSuggestion(originalText, aiSuggestedText) {
+    return computeWordDiff(originalText, aiSuggestedText).flatMap((item) => {
+      if (item.type === "delete") return []
+      if (item.type === "insert") return [{ value: item.value, kind: "ai" }]
+      return [{ value: item.value, kind: "plain" }]
+    })
+  }
+
+  _annotateCurrentSuggestion(aiAnnotated, aiSuggestedText, currentText) {
+    const result = []
+    const aiCursor = { index: 0, offset: 0 }
+
+    computeWordDiff(aiSuggestedText, currentText).forEach((item) => {
+      if (item.type === "delete") {
+        this._consumeAnnotated(aiAnnotated, aiCursor, item.value.length)
+        return
+      }
+
+      if (item.type === "insert") {
+        result.push({ value: item.value, kind: "manual" })
+        return
+      }
+
+      result.push(...this._consumeAnnotated(aiAnnotated, aiCursor, item.value.length))
+    })
+
+    return this._mergeAnnotated(result)
+  }
+
+  _consumeAnnotated(segments, cursor, length) {
+    let remaining = length
+    const consumed = []
+
+    while (remaining > 0 && cursor.index < segments.length) {
+      const segment = segments[cursor.index]
+      const available = segment.value.length - cursor.offset
+      const take = Math.min(remaining, available)
+      const value = segment.value.slice(cursor.offset, cursor.offset + take)
+
+      if (value) consumed.push({ value, kind: segment.kind })
+
+      cursor.offset += take
+      remaining -= take
+
+      if (cursor.offset >= segment.value.length) {
+        cursor.index += 1
+        cursor.offset = 0
+      }
+    }
+
+    return consumed
+  }
+
+  _mergeAnnotated(segments) {
+    return segments.reduce((merged, segment) => {
+      if (!segment.value) return merged
+      const previous = merged[merged.length - 1]
+      if (previous && previous.kind === segment.kind) previous.value += segment.value
+      else merged.push({ ...segment })
+      return merged
+    }, [])
+  }
+
+  _captureProposalSelection() {
+    if (!this.hasProposalDiffTarget) return null
+    const selection = window.getSelection()
+    if (!selection || selection.rangeCount === 0) return null
+    if (!this.proposalDiffTarget.contains(selection.anchorNode)) return null
+
+    return {
+      anchor: this._textOffsetForNode(selection.anchorNode, selection.anchorOffset),
+      focus: this._textOffsetForNode(selection.focusNode, selection.focusOffset)
+    }
+  }
+
+  _restoreProposalSelection(selectionState) {
+    if (!selectionState || !this.hasProposalDiffTarget) return
+    const selection = window.getSelection()
+    if (!selection) return
+
+    const range = document.createRange()
+    const anchor = this._nodeForTextOffset(selectionState.anchor)
+    const focus = this._nodeForTextOffset(selectionState.focus)
+    if (!anchor || !focus) return
+
+    range.setStart(anchor.node, anchor.offset)
+    range.collapse(true)
+    selection.removeAllRanges()
+    selection.addRange(range)
+    selection.extend(focus.node, focus.offset)
+  }
+
+  _textOffsetForNode(targetNode, targetOffset) {
+    let offset = 0
+    const walker = document.createTreeWalker(this.proposalDiffTarget, NodeFilter.SHOW_TEXT)
+    let node = walker.nextNode()
+
+    while (node) {
+      if (node === targetNode) return offset + Math.min(targetOffset, node.textContent.length)
+      offset += node.textContent.length
+      node = walker.nextNode()
+    }
+
+    return offset
+  }
+
+  _nodeForTextOffset(targetOffset) {
+    let offset = 0
+    const walker = document.createTreeWalker(this.proposalDiffTarget, NodeFilter.SHOW_TEXT)
+    let node = walker.nextNode()
+
+    while (node) {
+      const length = node.textContent.length
+      if (targetOffset <= offset + length) {
+        return { node, offset: Math.max(0, targetOffset - offset) }
+      }
+      offset += length
+      node = walker.nextNode()
+    }
+
+    if (this.proposalDiffTarget.lastChild?.nodeType === Node.TEXT_NODE) {
+      const node = this.proposalDiffTarget.lastChild
+      return { node, offset: node.textContent.length }
+    }
+
+    const fallback = document.createTextNode("")
+    this.proposalDiffTarget.appendChild(fallback)
+    return { node: fallback, offset: 0 }
   }
 
   _renderHistory() {
@@ -627,44 +823,35 @@ export default class extends Controller {
 
   _filteredHistoryRequests() {
     switch (this.historyFilter) {
-      case "active":
-        return this.historyRequests.filter((request) => ["queued", "running", "retrying"].includes(request.status))
-      case "failed":
-        return this.historyRequests.filter((request) => request.status === "failed")
-      case "succeeded":
-        return this.historyRequests.filter((request) => request.status === "succeeded")
-      default:
-        return this.historyRequests
+      case "active": return this.historyRequests.filter((request) => ["queued", "running", "retrying"].includes(request.status))
+      case "failed": return this.historyRequests.filter((request) => request.status === "failed")
+      case "succeeded": return this.historyRequests.filter((request) => request.status === "succeeded")
+      default: return this.historyRequests
     }
   }
 
   _syncHistoryFilters() {
     this.historyFilterTargets.forEach((button) => {
-      const selected = button.dataset.filterValue === this.historyFilter
-      button.classList.toggle("is-active", selected)
+      button.classList.toggle("is-active", button.dataset.filterValue === this.historyFilter)
     })
   }
 
   _historySummaryLabel(count) {
-    const labels = {
+    return {
       all: `${count} execucoes recentes`,
       active: `${count} execucoes ativas`,
       failed: `${count} falhas recentes`,
       succeeded: `${count} execucoes concluidas`
-    }
-
-    return labels[this.historyFilter] || labels.all
+    }[this.historyFilter] || `${count} execucoes recentes`
   }
 
   _emptyHistoryLabel() {
-    const labels = {
+    return {
       all: "Nenhuma execução recente.",
       active: "Nenhuma execução ativa.",
       failed: "Nenhuma falha recente.",
       succeeded: "Nenhuma execução concluída."
-    }
-
-    return labels[this.historyFilter] || labels.all
+    }[this.historyFilter] || "Nenhuma execução recente."
   }
 
   _historyCard(request) {
@@ -672,12 +859,7 @@ export default class extends Controller {
     const statusClass = this._statusClass(request.status)
     const duration = this._durationLabel(request)
     const error = request.error ? `<p class="mt-2 text-xs text-amber-300">${this._escapeHtml(request.error)}</p>` : ""
-    const remoteHint = request.remote_hint
-      ? `<p class="mt-2 text-xs ${request.remote_long_job ? "text-amber-300" : "text-[var(--theme-text-secondary)]"}">${this._escapeHtml(request.remote_hint)}</p>`
-      : ""
-    const preview = request.corrected
-      ? `<p class="mt-2 text-xs text-[var(--theme-text-secondary)]">${this._escapeHtml(this._truncate(request.corrected, 120))}</p>`
-      : ""
+    const remoteHint = request.remote_hint ? `<p class="mt-2 text-xs ${request.remote_long_job ? "text-amber-300" : "text-[var(--theme-text-secondary)]"}">${this._escapeHtml(request.remote_hint)}</p>` : ""
 
     return `
       <article class="rounded-lg border border-[var(--theme-border)] bg-[var(--theme-bg-secondary)] p-4">
@@ -697,7 +879,6 @@ export default class extends Controller {
           <p>Concluído: ${this._escapeHtml(this._formatTimestamp(request.completed_at))}</p>
         </div>
         ${remoteHint}
-        ${preview}
         ${error}
       </article>
     `
@@ -736,7 +917,6 @@ export default class extends Controller {
 
   _formatTimestamp(value) {
     if (!value) return "—"
-
     const date = new Date(value)
     if (Number.isNaN(date.getTime())) return value
 
@@ -748,48 +928,7 @@ export default class extends Controller {
     })
   }
 
-  _renderSelectors() {
-    if (!this.hasSelectorShellTarget) return
-
-    this.selectorShellTarget.classList.toggle("hidden", !this.providerOptions.length)
-    if (!this.hasProviderSelectTarget || !this.hasModelSelectTarget) return
-
-    const currentProvider = this.selectedProvider() || this.aiProvider
-
-    this.providerSelectTarget.innerHTML = this.providerOptions.map((option) => {
-      const selected = option.name === currentProvider ? " selected" : ""
-      return `<option value="${this._escapeHtml(option.name)}"${selected}>${this._escapeHtml(option.label || option.name)}</option>`
-    }).join("")
-
-    if (!this.providerSelectTarget.value && this.providerOptions[0]) {
-      const fallback = this.providerOptions.find((option) => option.selected)?.name || this.providerOptions[0].name
-      this.providerSelectTarget.value = fallback
-    }
-
-    this.providerSelectTarget.disabled = !this.aiEnabled
-    this._renderModelOptions(this.providerSelectTarget.value)
-  }
-
-  _renderModelOptions(providerName) {
-    const option = this.providerOptions.find((item) => item.name === providerName) || this.providerOptions[0]
-    const models = option?.models || []
-    const preferredModel = this.selectedModel() || option?.selected_model || option?.default_model || models[0] || ""
-
-    this.modelSelectTarget.innerHTML = models.map((model) => {
-      const selected = model === preferredModel ? " selected" : ""
-      return `<option value="${this._escapeHtml(model)}"${selected}>${this._escapeHtml(model)}</option>`
-    }).join("")
-
-    if (!this.modelSelectTarget.value && preferredModel) {
-      this.modelSelectTarget.value = preferredModel
-    }
-
-    this.modelSelectTarget.disabled = !this.aiEnabled || models.length <= 1
-  }
-
   _syncTranslationMeta(correctedText) {
-    if (!this.hasTranslationMetaTarget || !this.hasTranslationSummaryTarget || !this.hasTranslationTitleTarget) return
-
     const active = this.pendingApplyMode === "translation_note"
     this.translationMetaTarget.classList.toggle("hidden", !active)
     if (!active) return
@@ -809,12 +948,6 @@ export default class extends Controller {
 
   _languageLabel(languageCode) {
     if (!languageCode) return "Idioma"
-
-    if (this.hasTargetLanguageSelectTarget) {
-      const match = Array.from(this.targetLanguageSelectTarget.options).find((option) => option.value === languageCode)
-      if (match) return match.textContent.trim()
-    }
-
     const labels = {
       "pt-BR": "Portugues",
       "en-US": "English",
@@ -827,13 +960,7 @@ export default class extends Controller {
       "ja-JP": "Japanese",
       "ko-KR": "Korean"
     }
-
-    return labels[languageCode] || languageCode
-  }
-
-  _truncate(text, limit) {
-    if (!text || text.length <= limit) return text
-    return `${text.slice(0, limit - 1)}…`
+    return this.languageLabelsValue?.[languageCode] || labels[languageCode] || languageCode
   }
 
   _durationLabel(request) {
@@ -859,24 +986,23 @@ export default class extends Controller {
     const editorPane = this.element.querySelector('[data-controller~="codemirror"]')
     const controller = editorPane && this.application.getControllerForElementAndIdentifier(editorPane, "codemirror")
     if (!controller) throw new Error("Editor indisponivel.")
-
     return controller
+  }
+
+  _editorController() {
+    return this.application.getControllerForElementAndIdentifier(this.element, "editor")
+  }
+
+  _ensurePreviewVisible() {
+    this._editorController()?.showPreview?.()
   }
 
   _csrfToken() {
     return document.querySelector('meta[name="csrf-token"]')?.content || ""
   }
 
-  selectedProvider() {
-    return this.hasProviderSelectTarget ? this.providerSelectTarget.value : this.aiProvider
-  }
-
-  selectedModel() {
-    return this.hasModelSelectTarget ? this.modelSelectTarget.value : this.aiModel
-  }
-
   selectedTargetLanguage() {
-    return this.hasTargetLanguageSelectTarget ? this.targetLanguageSelectTarget.value : "en-US"
+    return this.preferredTargetLanguage || this.languageOptionsValue?.[0] || "en-US"
   }
 
   async _createTranslatedNote(content) {
@@ -899,12 +1025,179 @@ export default class extends Controller {
     })
     const data = await response.json()
     if (!response.ok || data.error) throw new Error(data.error || "Falha ao criar nota traduzida.")
-
-    this.dialogTarget.close()
     window.location.assign(data.note_url)
   }
 
   _createTranslatedNoteUrl(requestId) {
     return this.createTranslatedNoteUrlTemplateValue.replace("__REQUEST_ID__", requestId)
+  }
+
+  _showRequestMenu(trigger, capability, suggestions) {
+    if (!trigger || !this.hasRequestMenuTarget) return
+
+    const rect = trigger.getBoundingClientRect()
+    this.requestMenuTarget.style.top = `${rect.bottom + window.scrollY + 8}px`
+    this.requestMenuTarget.style.left = `${Math.max(12, rect.left + window.scrollX - 12)}px`
+    this.requestMenuTitleTarget.textContent = capability === "translate" ? "Escolha idioma e modelo" : "Escolha como processar"
+    this.requestMenuListTarget.innerHTML = suggestions.map((option) => {
+      const description = option.description ? `<p class="mt-0.5 text-xs text-[var(--theme-text-muted)]">${this._escapeHtml(option.description)}</p>` : ""
+      return `
+        <button type="button"
+                class="block w-full rounded-lg px-3 py-2 text-left hover:bg-[var(--theme-bg-tertiary)]"
+                data-action="click->ai-review#runSelectedOption"
+                data-provider="${this._escapeHtml(option.provider || "")}"
+                data-model="${this._escapeHtml(option.model || "")}"
+                data-strategy="${this._escapeHtml(option.strategy)}"
+                data-target-language="${this._escapeHtml(option.targetLanguage || "")}">
+          <span class="block text-sm text-[var(--theme-text-primary)]">${this._escapeHtml(option.label)}</span>
+          ${description}
+        </button>
+      `
+    }).join("")
+    this.requestMenuTarget.classList.remove("hidden")
+  }
+
+  _hideRequestMenu() {
+    if (!this.hasRequestMenuTarget) return
+    this.requestMenuTarget.classList.add("hidden")
+  }
+
+  _buildExecutionOptions({ capability, text, targetLanguage }) {
+    const providers = this.providerOptions.length ? this.providerOptions : [{
+      name: this.aiProvider,
+      label: this.aiProvider || "IA",
+      default_model: this.aiModel,
+      models: this.aiModel ? [this.aiModel] : []
+    }]
+
+    if (capability === "translate") {
+      const languages = this.languageOptionsValue?.length ? this.languageOptionsValue : [targetLanguage || this.selectedTargetLanguage()]
+      return languages.flatMap((languageCode) => {
+        return providers.flatMap((option) => this._providerExecutionOptions({
+          capability,
+          provider: option,
+          text,
+          targetLanguage: languageCode,
+          labelPrefix: this._languageLabel(languageCode)
+        }))
+      })
+    }
+
+    return providers.flatMap((option) => this._providerExecutionOptions({
+      capability,
+      provider: option,
+      text,
+      targetLanguage
+    }))
+  }
+
+  _providerExecutionOptions({ capability, provider, text, targetLanguage, labelPrefix = null }) {
+    const models = provider?.models?.length ? provider.models : [provider?.default_model].filter(Boolean)
+    const autoModel = this._autoModelFor(capability, text, targetLanguage, models, provider?.default_model)
+    const optionPrefix = labelPrefix ? `${labelPrefix} · ` : ""
+    const providerLabel = provider?.label || provider?.name || "IA"
+    const options = [{
+      label: `${optionPrefix}Automatico · ${providerLabel}`,
+      provider: provider?.name || this.aiProvider,
+      model: "",
+      strategy: "automatic",
+      targetLanguage,
+      description: this._autoDescription(capability, autoModel || provider?.default_model, text, providerLabel, targetLanguage)
+    }]
+
+    models.forEach((model) => {
+      options.push({
+        label: `${optionPrefix}${providerLabel} · ${model}`,
+        provider: provider?.name || this.aiProvider,
+        model,
+        strategy: "manual_override",
+        targetLanguage,
+        description: this._modelHint(model, capability, targetLanguage)
+      })
+    })
+
+    return options
+  }
+
+  _providerModels(providerName) {
+    const provider = this.providerOptions.find((item) => item.name === providerName)
+    return provider?.models?.length ? provider.models : [provider?.default_model].filter(Boolean)
+  }
+
+  _providerDefaultModel(providerName) {
+    return this.providerOptions.find((item) => item.name === providerName)?.default_model || this.aiModel
+  }
+
+  _autoModelFor(capability, text, targetLanguage, availableModels = [], fallbackModel = null) {
+    const length = text.toString().length
+    const preferred = (() => {
+      switch (capability) {
+        case "grammar_review": return length <= 800 ? "qwen2.5:0.5b" : "qwen2.5:1.5b"
+        case "suggest": return length <= 900 ? "qwen2:1.5b" : "qwen2.5:3b"
+        case "rewrite": return length <= 900 ? "qwen2.5:1.5b" : "llama3.2:3b"
+        case "translate": return targetLanguage === "en-US" ? (length <= 1200 ? "qwen2:1.5b" : "qwen2.5:3b") : "qwen2.5:3b"
+        default: return fallbackModel || this.aiModel
+      }
+    })()
+
+    if (availableModels.includes(preferred)) return preferred
+    if (fallbackModel && availableModels.includes(fallbackModel)) return fallbackModel
+    return availableModels[0] || fallbackModel || this.aiModel
+  }
+
+  _autoDescription(capability, model, text, providerLabel, targetLanguage) {
+    const size = text.length <= 900 ? "trecho curto" : "texto maior"
+    const translationHint = capability === "translate" ? ` para ${this._languageLabel(targetLanguage)}` : ""
+    return `${this._capabilityLabel(capability)}${translationHint} via ${providerLabel}, com roteamento por ${size} e sugestao ${model || "padrao"}.`
+  }
+
+  _modelHint(model, capability, targetLanguage) {
+    const hints = {
+      "qwen2.5:0.5b": "Mais leve e rapido para revisoes curtas.",
+      "qwen2.5:1.5b": "Equilibrio geral para revisao e reescrita.",
+      "qwen2.5:3b": "Mais qualidade para textos maiores.",
+      "qwen2:1.5b": capability === "translate" ? "Bom custo/qualidade para traducao pt-en." : "Resposta rapida com boa qualidade geral.",
+      "llama3.2:1b": "Alternativa leve para respostas curtas.",
+      "llama3.2:3b": "Melhor fluidez, com mais latencia."
+    }
+    const suffix = capability === "translate" && targetLanguage ? ` Idioma alvo: ${this._languageLabel(targetLanguage)}.` : ""
+    return `${hints[model] || "Execucao manual neste modelo."}${suffix}`
+  }
+
+  _syncPreferredTargetLanguage() {
+    const languages = this.languageOptionsValue || []
+    if (languages.includes(this.preferredTargetLanguage)) return
+    this.preferredTargetLanguage = languages.includes("en-US") ? "en-US" : (languages[0] || "en-US")
+  }
+
+  _handleDocumentClick(event) {
+    if (!this.hasRequestMenuTarget || this.requestMenuTarget.classList.contains("hidden")) return
+    if (this.requestMenuTarget.contains(event.target)) return
+    if (event.target.closest("[data-action*='ai-review#open']")) return
+    this._hideRequestMenu()
+  }
+
+  _setActiveTrigger(button) {
+    if (!button) return
+    this._clearActiveTrigger()
+    this.activeTriggerButton = button
+    this.activeTriggerHtml = button.innerHTML
+    button.disabled = true
+    button.classList.add("toolbar-btn--active")
+    button.innerHTML = `
+      <svg class="w-4 h-4 animate-spin" viewBox="0 0 24 24" fill="none">
+        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="3"></circle>
+        <path class="opacity-90" fill="currentColor" d="M12 2a10 10 0 0 1 10 10h-3a7 7 0 0 0-7-7z"></path>
+      </svg>
+    `
+  }
+
+  _clearActiveTrigger() {
+    if (!this.activeTriggerButton) return
+    this.activeTriggerButton.disabled = false
+    this.activeTriggerButton.classList.remove("toolbar-btn--active")
+    this.activeTriggerButton.innerHTML = this.activeTriggerHtml
+    this.activeTriggerButton = null
+    this.activeTriggerHtml = null
   }
 }

@@ -1425,6 +1425,27 @@
   #codemirror-host .cm-selectionBackground {
     background: var(--theme-selection) !important;
   }
+  #codemirror-host .cm-ai-diff-suggested {
+    background: color-mix(in srgb, #10b981 18%, transparent);
+    color: #bbf7d0;
+    border-radius: 2px;
+    padding: 0 2px;
+  }
+  #codemirror-host .cm-ai-diff-manual {
+    background: color-mix(in srgb, #facc15 24%, transparent);
+    color: #fde68a;
+    border-radius: 2px;
+    padding: 0 2px;
+  }
+  #codemirror-host .cm-ai-diff-deleted {
+    background: color-mix(in srgb, #ef4444 20%, transparent);
+    color: #fca5a5;
+    border-radius: 2px;
+    padding: 0 2px;
+    margin-right: 2px;
+    text-decoration: line-through;
+    text-decoration-thickness: 1px;
+  }
 
   /* ── Typewriter mode: keep cursor vertically centered ── */
   #codemirror-host.typewriter-mode .cm-scroller {

@@ -23,6 +23,7 @@ export default class extends Controller {
     this._pendingContent   = null
     this._saving = false
     this._pendingAiAcceptance = null
+    this._aiStageActive = false
     this._localSnapshot = this._loadLocalEntry()
     this._ignoreInitialServerEcho = false
 
@@ -30,10 +31,12 @@ export default class extends Controller {
     this._onBeforeUnload  = this._handleBeforeUnload.bind(this)
     this._onEditorReady   = this._handleEditorReady.bind(this)
     this._onAiAccepted    = this._handleAiAccepted.bind(this)
+    this._onAiStageChange = this._handleAiStageChange.bind(this)
 
     this.element.addEventListener("codemirror:change", this._onEditorChange)
     this.element.addEventListener("codemirror:ready", this._onEditorReady)
     this.element.addEventListener("ai-review:accepted", this._onAiAccepted)
+    this.element.addEventListener("ai-review:stagechange", this._onAiStageChange)
     window.addEventListener("beforeunload", this._onBeforeUnload)
   }
 
@@ -43,11 +46,16 @@ export default class extends Controller {
     this.element.removeEventListener("codemirror:change", this._onEditorChange)
     this.element.removeEventListener("codemirror:ready", this._onEditorReady)
     this.element.removeEventListener("ai-review:accepted", this._onAiAccepted)
+    this.element.removeEventListener("ai-review:stagechange", this._onAiStageChange)
     window.removeEventListener("beforeunload", this._onBeforeUnload)
   }
 
   // Called by the Save button
   async saveCheckpoint() {
+    if (this._aiStageActive) {
+      window.alert("Aplique ou descarte a sugestao da IA antes de salvar.")
+      return
+    }
     const content = this._currentContent()
     if (!content) return
     await this._postSave(this.checkpointUrlValue, content, "checkpoint")
@@ -56,6 +64,7 @@ export default class extends Controller {
 
   // Called before navigating away — saves pending content as draft immediately.
   async saveDraftNow({ force = true } = {}) {
+    if (this._aiStageActive) return
     const content = this._currentContent()
     if (!content) return
     clearTimeout(this._draftTimer)
@@ -65,6 +74,7 @@ export default class extends Controller {
   // ── Private ─────────────────────────────────────────────
 
   _handleEditorChange(event) {
+    if (this._aiStageActive) return
     const content = event.detail.value
 
     if (this._ignoreInitialServerEcho && content === this._lastDraftContent) {
@@ -120,6 +130,15 @@ export default class extends Controller {
       provider: event.detail?.provider || null,
       model: event.detail?.model || null
     }
+  }
+
+  _handleAiStageChange(event) {
+    this._aiStageActive = !!event.detail?.active
+    if (!this._aiStageActive) return
+
+    clearTimeout(this._localTimer)
+    clearTimeout(this._draftTimer)
+    this._setStatus("aguardando IA")
   }
 
   _saveLocal(content) {

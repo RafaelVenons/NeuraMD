@@ -10,6 +10,7 @@ import { markdown, markdownLanguage } from "@codemirror/lang-markdown"
 import { languages } from "@codemirror/language-data"
 import { searchKeymap } from "@codemirror/search"
 import { oneDark } from "@codemirror/theme-one-dark"
+import { aiDiffExtension, clearAiDiffEffect, setAiDiffEffect } from "editor/ai_diff_extension"
 import { wikilinkBrokenExtension } from "editor/wikilink_broken_extension"
 
 export default class extends Controller {
@@ -18,6 +19,7 @@ export default class extends Controller {
 
   connect() {
     this._themeCompartment = new Compartment()
+    this._aiDiffCompartment = new Compartment()
     this._lineNumbersCompartment = new Compartment()
     this._readOnlyCompartment = new Compartment()
     this._suppressChangeDispatch = false
@@ -55,6 +57,7 @@ export default class extends Controller {
         scrollPastEnd(),
         this._lineNumbersCompartment.of(lineNumbers()),
         this._themeCompartment.of(oneDark),
+        this._aiDiffCompartment.of(aiDiffExtension()),
         this._readOnlyCompartment.of(EditorState.readOnly.of(false)),
         keymap.of([
           ...defaultKeymap,
@@ -115,6 +118,12 @@ export default class extends Controller {
     return this._view.state.doc.sliceString(from, to)
   }
 
+  getSelectionRange() {
+    if (!this._view) return { from: 0, to: 0 }
+    const { from, to } = this._view.state.selection.main
+    return { from, to }
+  }
+
   replaceSelection(text) {
     if (!this._view) return
     this._view.dispatch(this._view.state.replaceSelection(text))
@@ -123,6 +132,28 @@ export default class extends Controller {
 
   focus() {
     this._view?.focus()
+  }
+
+  notifyChange() {
+    this._dispatchChange()
+  }
+
+  showAiDiff({ originalText = "", aiSuggestedText = "" } = {}) {
+    if (!this._view) return
+    this._view.dispatch({
+      effects: setAiDiffEffect({
+        originalText,
+        currentText: this.getValue(),
+        aiSuggestedText
+      })
+    })
+  }
+
+  clearAiDiff() {
+    if (!this._view) return
+    this._view.dispatch({
+      effects: clearAiDiffEffect()
+    })
   }
 
   getScrollRatio() {

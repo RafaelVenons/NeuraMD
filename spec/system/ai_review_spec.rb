@@ -99,14 +99,59 @@ RSpec.describe "AI review", type: :system do
     end
   end
 
+  def expect_ai_workspace(text:, wait: 5)
+    expect(page).to have_css("[data-ai-review-target='workspace']:not(.hidden)", wait:)
+    if page.has_css?("[data-ai-review-target='proposalDiff']", visible: :visible, wait:)
+      visible_text = find("[data-ai-review-target='proposalDiff']", visible: :visible, wait:).text.gsub(/\n+/, "\n")
+      expected_text = text.gsub(/\n+/, "\n")
+      expect(visible_text).to include(expected_text)
+    elsif page.has_css?("textarea[data-ai-review-target='correctedText']", visible: :visible, wait:)
+      expect(find("textarea[data-ai-review-target='correctedText']", visible: :visible, wait:).value).to include(text)
+    else
+      expect(page).to have_css("[data-ai-review-target='workspace']:not(.hidden)", text:, wait:)
+    end
+  end
+
+  def replace_editor_text(text)
+    page.execute_script(<<~JS, text)
+      (() => {
+        const host = document.querySelector("[data-controller~='codemirror']")
+        const controller = window.Stimulus.controllers.find((item) => item.element === host && item.identifier === "codemirror")
+        const view = controller.view
+        view.dispatch({
+          changes: { from: 0, to: view.state.doc.length, insert: arguments[0] }
+        })
+        view.focus()
+      })()
+    JS
+  end
+
+  def replace_ai_suggested_text(text)
+    page.execute_script(<<~JS, text)
+      (() => {
+        const element = document.querySelector("[data-ai-review-target='proposalDiff']")
+        element.innerText = arguments[0]
+        element.dispatchEvent(new Event("input", { bubbles: true }))
+      })()
+    JS
+  end
+
+  def choose_ai_option(button_title, option_text = /Automatico/)
+    find("button[title='#{button_title}']").click
+    expect(page).to have_css("[data-ai-review-target='requestMenu']:not(.hidden)", wait: 5)
+    within("[data-ai-review-target='requestMenu']") do
+      find("button", text: option_text, match: :first).click
+    end
+  end
+
   it "processes the entire document when there is no selection" do
     expect(page).to have_text(/TEMPO REAL|FALLBACK POLLING/i, wait: 5)
 
-    find("button[title='Revisar gramática com IA']").click
+    choose_ai_option("Revisar gramática com IA")
 
-    expect(page).to have_css("dialog[open]", text: "Revisão com IA", wait: 5)
-    expect(page).to have_text("Texto corrigido pela IA.")
-    expect(page).to have_text("Documento inteiro")
+    expect_ai_workspace(text: "Texto corrigido pela IA.")
+    expect(page).to have_css(".cm-ai-diff-deleted", minimum: 1, wait: 5)
+    expect(editor_text).to eq("Trecho com erro.\n\nParagrafo final intacto.")
 
     click_button "Aplicar"
 
@@ -133,11 +178,11 @@ RSpec.describe "AI review", type: :system do
     editor.click
     select_editor_text("Trecho com erro.")
 
-    find("button[title='Revisar gramática com IA']").click
+    choose_ai_option("Revisar gramática com IA")
 
-    expect(page).to have_css("dialog[open]", text: "Revisão com IA", wait: 5)
-    expect(page).to have_text("Trecho selecionado")
-    expect(page).to have_text("Trecho corrigido.")
+    expect_ai_workspace(text: "Trecho corrigido.\n\nParagrafo final intacto.")
+    expect(page).to have_css(".cm-ai-diff-deleted", minimum: 1, wait: 5)
+    expect(editor_text).to eq("Trecho com erro.\n\nParagrafo final intacto.")
 
     click_button "Aplicar"
 
@@ -191,19 +236,17 @@ RSpec.describe "AI review", type: :system do
     )
 
     visit note_path(note.slug)
+    choose_ai_option("Revisar gramática com IA", /Anthropic.*claude-3-7-sonnet-latest/)
 
-    select "Anthropic", from: "ai-provider-select"
-    select "claude-3-7-sonnet-latest", from: "ai-model-select"
-    find("button[title='Revisar gramática com IA']").click
-
-    expect(page).to have_css("dialog[open]", text: "Revisão com IA", wait: 5)
-    expect(page).to have_text("anthropic: claude-3-7-sonnet-latest")
+    expect_ai_workspace(text: "Texto corrigido pela IA.")
+    expect(page).to have_css(".cm-ai-diff-deleted", minimum: 1, wait: 5)
+    expect(page).to have_no_text("openai: gpt-4o-mini")
   end
 
   it "marks the next checkpoint as AI-generated after the user applies the suggestion" do
-    find("button[title='Revisar gramática com IA']").click
+    choose_ai_option("Revisar gramática com IA")
 
-    expect(page).to have_css("dialog[open]", text: "Revisão com IA", wait: 5)
+    expect_ai_workspace(text: "Texto corrigido pela IA.")
     click_button "Aplicar"
     find("button[title='Salvar versão (checkpoint)']").click
 
@@ -228,7 +271,7 @@ RSpec.describe "AI review", type: :system do
 
     allow(Ai::ReviewService).to receive(:enqueue).and_return(running_request)
 
-    find("button[title='Revisar gramática com IA']").click
+    choose_ai_option("Revisar gramática com IA")
 
     expect(page).to have_text("Job remoto longo no AIrch. Pode fechar e voltar depois.", wait: 5)
     expect(page).to have_text("qwen2:1.5b")
@@ -279,10 +322,9 @@ RSpec.describe "AI review", type: :system do
       author: user
     ).and_return(translated_note)
 
-    find("button[title='Traduzir com IA']").click
+    choose_ai_option("Traduzir com IA", /English.*Automatico.*Ollama/)
 
-    expect(page).to have_css("dialog[open]", text: "Revisão com IA", wait: 5)
-    expect(page).to have_text("Traducao Portugues -> English")
+    expect_ai_workspace(text: "Clinical Summary")
     expect(page).to have_field("Titulo da nova nota", with: "Clinical Summary")
     fill_in "Titulo da nova nota", with: "Clinical Summary (Polished)"
     click_button "Criar nota traduzida"
@@ -296,7 +338,7 @@ RSpec.describe "AI review", type: :system do
 
     find("button[title='Reescrever com IA']").click
 
-    expect(page).to have_css("dialog[open]", text: "IA não configurada", wait: 5)
+    expect_ai_workspace(text: "IA não configurada")
   end
 
   it "shows retry feedback while the request is waiting for the next attempt" do
@@ -333,15 +375,16 @@ RSpec.describe "AI review", type: :system do
       request
     end
 
-    find("button[title='Revisar gramática com IA']").click
+    choose_ai_option("Revisar gramática com IA")
 
     expect(page).to have_text("Tentando novamente", wait: 5)
     expect(page).to have_text("Tentativa 1 de 3", wait: 5)
     expect(page).to have_text("openai indisponivel", wait: 5)
-    expect(page).to have_css("dialog[open]", text: "Texto corrigido pela IA.", wait: 5)
+    expect_ai_workspace(text: "Texto corrigido pela IA.", wait: 8)
+    expect(page).to have_css(".cm-ai-diff-deleted", minimum: 1, wait: 8)
   end
 
-  it "cancels the in-flight request from the processing overlay" do
+  it "cancels the in-flight request from the inline processing panel" do
     request = nil
 
     allow(Ai::ReviewService).to receive(:enqueue) do |note:, note_revision:, capability:, text:, language:, **|
@@ -363,13 +406,22 @@ RSpec.describe "AI review", type: :system do
       )
     end
 
-    find("button[title='Revisar gramática com IA']").click
+    choose_ai_option("Revisar gramática com IA")
 
     expect(page).to have_text("Tentando novamente", wait: 5)
     click_button "Cancelar"
 
     expect(page).to have_no_text("Tentando novamente", wait: 5)
     expect(request.reload.status).to eq("canceled")
+  end
+
+  it "shows manual edits highlighted in yellow after editing the proposal" do
+    choose_ai_option("Reescrever com IA")
+
+    expect_ai_workspace(text: "Texto corrigido pela IA.")
+    replace_ai_suggested_text("Texto corrigido manualmente pela IA.")
+
+    expect(page).to have_css("[data-ai-review-target='proposalDiff']", text: "manualmente", wait: 5)
   end
 
   it "shows recent AI executions in the history dialog" do
@@ -410,10 +462,10 @@ RSpec.describe "AI review", type: :system do
 
     click_button "Falhas"
     expect(page).to have_text("Falha remota", wait: 5)
-    expect(page).to have_no_text("Texto corrigido.", wait: 5)
+    expect(page).to have_no_text("Revisao gramatical", wait: 5)
 
     click_button "Concluídas"
-    expect(page).to have_text("Texto corrigido.", wait: 5)
+    expect(page).to have_text("Revisao gramatical", wait: 5)
     expect(page).to have_no_text("Falha remota", wait: 5)
   end
 end
