@@ -1,10 +1,10 @@
 module Ai
   class OpenaiCompatibleProvider < BaseProvider
-    def review(capability:, text:, language:)
+    def review(capability:, text:, language:, target_language: nil)
       payload = post_json(
         endpoint_url,
         headers: request_headers,
-        body: request_body(capability:, text:, language:)
+        body: request_body(capability:, text:, language:, target_language:)
       )
 
       message = payload.dig("choices", 0, "message", "content")
@@ -39,10 +39,10 @@ module Ai
       end
     end
 
-    def request_body(capability:, text:, language:)
+    def request_body(capability:, text:, language:, target_language:)
       body = {
         messages: [
-          { role: "system", content: PromptBuilder.system_prompt(capability:, language:) },
+          { role: "system", content: PromptBuilder.system_prompt(capability:, language:, target_language:) },
           { role: "user", content: text }
         ],
         temperature: 0.2

@@ -60,6 +60,14 @@ RSpec.describe "AI", type: :request do
     let(:provider) { instance_double(Ai::OpenaiCompatibleProvider, name: "openai", model: "gpt-4o-mini") }
 
     it "enqueues grammar review and persists the queued request" do
+      allow(Ai::ProviderRegistry).to receive(:resolve_selection).and_return(
+        {
+          name: "openai",
+          model: "gpt-4o-mini",
+          selection_strategy: "configured_default",
+          selection_reason: "provider_non_ollama"
+        }
+      )
       allow(Ai::ProviderRegistry).to receive(:build).and_return(provider)
 
       expect {
@@ -92,6 +100,7 @@ RSpec.describe "AI", type: :request do
         capability: "grammar_review",
         text: "Texto com erro.",
         language: note.detected_language,
+        target_language: nil,
         provider_name: "openai",
         model_name: "gpt-4.1-mini",
         requested_by: user
@@ -104,6 +113,33 @@ RSpec.describe "AI", type: :request do
           model: "gpt-4.1-mini",
           text: "Texto com erro.",
           document_markdown: document_markdown
+        }.to_json,
+        headers: headers
+
+      expect(response).to have_http_status(:accepted)
+    end
+
+    it "passes the target language for translation requests" do
+      expect(Ai::ReviewService).to receive(:enqueue).with(
+        note: note,
+        note_revision: note.head_revision,
+        capability: "translate",
+        text: note.head_revision.content_markdown,
+        language: note.detected_language,
+        target_language: "en-US",
+        provider_name: "ollama",
+        model_name: "qwen2:1.5b",
+        requested_by: user
+      ).and_return(create(:ai_request, note_revision: note.head_revision, capability: "translate", provider: "ollama", requested_provider: "ollama", model: "qwen2:1.5b"))
+
+      post ai_review_note_path(note.slug),
+        params: {
+          capability: "translate",
+          provider: "ollama",
+          model: "qwen2:1.5b",
+          target_language: "en-US",
+          text: note.head_revision.content_markdown,
+          document_markdown: note.head_revision.content_markdown
         }.to_json,
         headers: headers
 
@@ -192,6 +228,44 @@ RSpec.describe "AI", type: :request do
       expect(request_record.reload.status).to eq("canceled")
       expect(request_record.next_retry_at).to be_nil
       expect(request_record.completed_at).to be_present
+    end
+  end
+
+  describe "POST /notes/:slug/ai_requests/:request_id/create_translated_note" do
+    it "creates a translated sibling note from a completed translate request" do
+      request_record = create(
+        :ai_request,
+        note_revision: note.head_revision,
+        capability: "translate",
+        status: "succeeded",
+        provider: "ollama",
+        requested_provider: "ollama",
+        model: "qwen2:1.5b",
+        metadata: {"language" => "pt-BR", "target_language" => "en-US"}
+      )
+      translated_note = create(:note, :with_head_revision, detected_language: "en-US")
+
+      expect(Notes::TranslationNoteService).to receive(:call).with(
+        source_note: note,
+        ai_request: request_record,
+        content: "# Clinical Summary\n\nTranslated body.",
+        target_language: "en-US",
+        title: "",
+        author: user
+      ).and_return(translated_note)
+
+      post ai_request_translated_note_note_path(note.slug, request_record.id),
+        params: {
+          content: "# Clinical Summary\n\nTranslated body.",
+          target_language: "en-US"
+        },
+        as: :json
+
+      expect(response).to have_http_status(:created)
+      expect(response.parsed_body).to include(
+        "note_id" => translated_note.id,
+        "note_slug" => translated_note.slug
+      )
     end
   end
 end

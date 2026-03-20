@@ -17,17 +17,30 @@ module Ai
         Do not explain your changes.
         Return only the revised text.
       PROMPT
-      "rewrite" => <<~PROMPT
+      "rewrite" => <<~PROMPT,
         You are a rewriting assistant.
         Rewrite the text to be clearer and more polished while preserving intent and Markdown formatting.
         Do not add explanations.
         Return only the rewritten text.
       PROMPT
+      "translate" => <<~PROMPT
+        You are a translation assistant.
+        Translate the text accurately while preserving meaning, structure, formatting, and Markdown.
+        Do not explain your choices.
+        Return only the translated text.
+      PROMPT
     }.freeze
 
-    def self.system_prompt(capability:, language: nil)
+    def self.system_prompt(capability:, language: nil, target_language: nil)
       prompt = PROMPTS.fetch(capability.to_s) do
         raise InvalidCapabilityError, "Capability de IA invalida."
+      end
+
+      if capability.to_s == "translate"
+        details = []
+        details << "Source language: #{language}." if language.present?
+        details << "Target language: #{target_language}." if target_language.present?
+        return [prompt, details.join("\n")].reject(&:blank?).join("\n\n")
       end
 
       return prompt if language.blank?

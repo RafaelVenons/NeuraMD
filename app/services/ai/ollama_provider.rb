@@ -1,6 +1,6 @@
 module Ai
   class OllamaProvider < BaseProvider
-    def review(capability:, text:, language:)
+    def review(capability:, text:, language:, target_language: nil)
       payload = post_json(
         "#{base_url}/api/chat",
         headers: {},
@@ -8,7 +8,7 @@ module Ai
           model: model,
           stream: false,
           messages: [
-            { role: "system", content: PromptBuilder.system_prompt(capability:, language:) },
+            { role: "system", content: PromptBuilder.system_prompt(capability:, language:, target_language:) },
             { role: "user", content: text }
           ],
           options: { temperature: 0.2 }

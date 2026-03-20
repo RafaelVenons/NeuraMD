@@ -141,5 +141,40 @@ RSpec.describe "AI providers" do
 
       expect(provider.send(:provider_read_timeout)).to eq(7200)
     end
+
+    it "builds translate prompts with the target language" do
+      provider = described_class.new(
+        name: "ollama",
+        model: "qwen2:1.5b",
+        base_url: "http://AIrch:11434",
+        api_key: nil
+      )
+
+      expect(provider).to receive(:post_json).with(
+        "http://AIrch:11434/api/chat",
+        headers: {},
+        body: hash_including(
+          messages: [
+            hash_including(role: "system", content: include("Target language: en-US.")),
+            {role: "user", content: "Texto original."}
+          ]
+        )
+      ).and_return(
+        {
+          "message" => {"content" => "Translated text."},
+          "prompt_eval_count" => 12,
+          "eval_count" => 8
+        }
+      )
+
+      result = provider.review(
+        capability: "translate",
+        text: "Texto original.",
+        language: "pt-BR",
+        target_language: "en-US"
+      )
+
+      expect(result.content).to eq("Translated text.")
+    end
   end
 end

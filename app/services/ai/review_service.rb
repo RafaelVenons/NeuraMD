@@ -4,7 +4,7 @@ require_relative "provider_registry"
 
 module Ai
   class ReviewService
-    CAPABILITIES = %w[suggest rewrite grammar_review].freeze
+    CAPABILITIES = %w[suggest rewrite grammar_review translate].freeze
     MAX_ATTEMPTS = 3
 
     class << self
@@ -76,7 +76,8 @@ module Ai
         result = provider.review(
           capability: request.capability,
           text: request.input_text,
-          language: request.metadata["language"]
+          language: request.metadata["language"],
+          target_language: request.metadata["target_language"]
         )
 
         request.update!(

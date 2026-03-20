@@ -1,5 +1,5 @@
 class AiRequest < ApplicationRecord
-  CAPABILITIES = %w[suggest rewrite grammar_review tts].freeze
+  CAPABILITIES = %w[suggest rewrite grammar_review translate tts].freeze
   STATUSES = %w[queued running retrying succeeded failed canceled].freeze
   ERROR_KINDS = %w[transient permanent validation].freeze
 
@@ -125,6 +125,8 @@ class AiRequest < ApplicationRecord
       provider: provider,
       model: model,
       capability: capability,
+      source_language: metadata["language"],
+      target_language: metadata["target_language"],
       attempts_count: attempts_count,
       max_attempts: max_attempts,
       next_retry_at: next_retry_at&.iso8601,

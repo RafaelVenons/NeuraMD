@@ -235,6 +235,34 @@ RSpec.describe "AI review", type: :system do
     expect(page).to have_text(/2min/, wait: 5)
   end
 
+  it "creates a translated sibling note when accepting a translation result" do
+    translated_request = create(
+      :ai_request,
+      note_revision: note.head_revision,
+      capability: "translate",
+      provider: "ollama",
+      requested_provider: "ollama",
+      model: "qwen2:1.5b",
+      status: "succeeded",
+      input_text: note.head_revision.content_markdown,
+      output_text: "# Clinical Summary\n\nTranslated content.",
+      metadata: {"language" => "pt-BR", "target_language" => "en-US"},
+      completed_at: Time.current
+    )
+    translated_note = create(:note, :with_head_revision, title: "Clinical Summary", detected_language: "en-US")
+
+    allow(Ai::ReviewService).to receive(:enqueue).and_return(translated_request)
+    allow(Notes::TranslationNoteService).to receive(:call).and_return(translated_note)
+
+    find("button[title='Traduzir com IA']").click
+
+    expect(page).to have_css("dialog[open]", text: "Revisão com IA", wait: 5)
+    expect(page).to have_text("Tradução pt-BR -> en-US")
+    click_button "Criar nota traduzida"
+
+    expect(page).to have_current_path(note_path(translated_note.slug), wait: 5)
+  end
+
   it "shows the fallback when AI is not configured" do
     ENV["AI_ENABLED"] = "false"
     visit note_path(note.slug)

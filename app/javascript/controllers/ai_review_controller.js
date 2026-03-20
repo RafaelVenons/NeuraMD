@@ -12,11 +12,13 @@ export default class extends Controller {
     "historyEmpty",
     "historyStatus",
     "modelSelect",
+    "targetLanguageSelect",
     "originalText",
     "correctedText",
     "correctedDiff",
     "providerBadge",
     "editToggle",
+    "acceptButton",
     "processingOverlay",
     "processingState",
     "processingProvider",
@@ -34,7 +36,10 @@ export default class extends Controller {
     reviewUrl: String,
     historyUrl: String,
     requestUrlTemplate: String,
-    cancelUrlTemplate: String
+    cancelUrlTemplate: String,
+    createTranslatedNoteUrlTemplate: String,
+    noteTitle: String,
+    noteLanguage: String
   }
 
   connect() {
@@ -76,6 +81,10 @@ export default class extends Controller {
     this.open("rewrite")
   }
 
+  openTranslate() {
+    this.open("translate")
+  }
+
   async open(capability) {
     await this._cancelCurrentRequest()
     await this.checkAvailability()
@@ -86,19 +95,23 @@ export default class extends Controller {
     }
 
     const editor = this._editor()
-    const selection = editor.getSelection()
     const documentMarkdown = editor.getValue()
-    const text = selection || documentMarkdown
+    const selection = editor.getSelection()
+    const targetLanguage = capability === "translate" ? this.selectedTargetLanguage() : null
+    const text = capability === "translate" ? documentMarkdown : (selection || documentMarkdown)
 
     if (!text.trim()) {
       window.alert("Nenhum texto para processar.")
       return
     }
 
-    this.pendingApplyMode = selection ? "selection" : "document"
+    this.pendingApplyMode = capability === "translate" ? "translation_note" : (selection ? "selection" : "document")
     this.pendingOriginalText = text
     this.lastCompletedRequest = null
-    this.scopeLabelTarget.textContent = selection ? "Trecho selecionado" : "Documento inteiro"
+    this.scopeLabelTarget.textContent =
+      capability === "translate"
+        ? `Tradução ${this.noteLanguageValue || "origem"} -> ${targetLanguage || "destino"}`
+        : (selection ? "Trecho selecionado" : "Documento inteiro")
 
     this._showProcessing()
 
@@ -115,6 +128,7 @@ export default class extends Controller {
           capability,
           provider: this.selectedProvider(),
           model: this.selectedModel(),
+          target_language: targetLanguage,
           text,
           document_markdown: documentMarkdown
         })
@@ -179,9 +193,18 @@ export default class extends Controller {
     this._renderHistory()
   }
 
-  accept() {
+  async accept() {
     const editor = this._editor()
     const correctedText = this.correctedTextTarget.value
+
+    if (this.pendingApplyMode === "translation_note") {
+      try {
+        await this._createTranslatedNote(correctedText)
+      } catch (error) {
+        window.alert(error.message || "Falha ao criar nota traduzida.")
+      }
+      return
+    }
 
     if (this.pendingApplyMode === "selection") {
       editor.replaceSelection(correctedText)
@@ -270,6 +293,9 @@ export default class extends Controller {
       this.providerBadgeTarget.classList.add("hidden")
     }
 
+    this.acceptButtonTarget.textContent =
+      this.pendingApplyMode === "translation_note" ? "Criar nota traduzida" : "Aplicar"
+
     this.dialogTarget.showModal()
   }
 
@@ -323,7 +349,8 @@ export default class extends Controller {
           id: data.id || requestId,
           capability: data.capability,
           provider: data.provider,
-          model: data.model
+          model: data.model,
+          targetLanguage: data.target_language || this.selectedTargetLanguage()
         }
         this._hideProcessing()
         this._showDiff(this.pendingOriginalText, data.corrected, data.provider, data.model)
@@ -469,7 +496,8 @@ export default class extends Controller {
         id: request.id,
         capability: request.capability,
         provider: request.provider,
-        model: request.model
+        model: request.model,
+        targetLanguage: request.target_language || this.selectedTargetLanguage()
       }
       this._hideProcessing()
       this._showDiff(this.pendingOriginalText, request.corrected, request.provider, request.model)
@@ -679,7 +707,8 @@ export default class extends Controller {
     return {
       grammar_review: "Revisao gramatical",
       suggest: "Sugestao",
-      rewrite: "Reescrita"
+      rewrite: "Reescrita",
+      translate: "Traducao"
     }[capability] || capability
   }
 
@@ -789,5 +818,37 @@ export default class extends Controller {
 
   selectedModel() {
     return this.hasModelSelectTarget ? this.modelSelectTarget.value : this.aiModel
+  }
+
+  selectedTargetLanguage() {
+    return this.hasTargetLanguageSelectTarget ? this.targetLanguageSelectTarget.value : "en-US"
+  }
+
+  async _createTranslatedNote(content) {
+    const requestId = this.lastCompletedRequest?.id
+    if (!requestId) throw new Error("Request de tradução indisponível.")
+
+    const response = await fetch(this._createTranslatedNoteUrl(requestId), {
+      method: "POST",
+      credentials: "same-origin",
+      headers: {
+        "Content-Type": "application/json",
+        "Accept": "application/json",
+        "X-CSRF-Token": this._csrfToken()
+      },
+      body: JSON.stringify({
+        content,
+        target_language: this.lastCompletedRequest?.targetLanguage || this.selectedTargetLanguage()
+      })
+    })
+    const data = await response.json()
+    if (!response.ok || data.error) throw new Error(data.error || "Falha ao criar nota traduzida.")
+
+    this.dialogTarget.close()
+    window.location.assign(data.note_url)
+  }
+
+  _createTranslatedNoteUrl(requestId) {
+    return this.createTranslatedNoteUrlTemplateValue.replace("__REQUEST_ID__", requestId)
   }
 }

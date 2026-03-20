@@ -1,6 +1,6 @@
 module Ai
   class AnthropicProvider < BaseProvider
-    def review(capability:, text:, language:)
+    def review(capability:, text:, language:, target_language: nil)
       payload = post_json(
         "#{base_url}/messages",
         headers: {
@@ -10,7 +10,7 @@ module Ai
         body: {
           model: model,
           max_tokens: 4096,
-          system: PromptBuilder.system_prompt(capability:, language:),
+          system: PromptBuilder.system_prompt(capability:, language:, target_language:),
           messages: [{ role: "user", content: text }]
         }
       )

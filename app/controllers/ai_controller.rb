@@ -1,6 +1,6 @@
 class AiController < ApplicationController
   before_action :set_note
-  before_action :set_request, only: [:show, :destroy]
+  before_action :set_request, only: [:show, :destroy, :create_translated_note]
 
   def status
     authorize @note, :show?
@@ -42,6 +42,7 @@ class AiController < ApplicationController
       capability: params[:capability],
       text: text,
       language: @note.detected_language,
+      target_language: params[:target_language],
       provider_name: params[:provider],
       model_name: params[:model],
       requested_by: current_user
@@ -64,6 +65,28 @@ class AiController < ApplicationController
       id: request.id,
       status: request.status
     }
+  end
+
+  def create_translated_note
+    authorize @note, :update?
+    authorize Note.new, :create?
+
+    translated_note = Notes::TranslationNoteService.call(
+      source_note: @note,
+      ai_request: @request,
+      content: params[:content].to_s,
+      target_language: params[:target_language].to_s,
+      title: params[:title].to_s,
+      author: current_user
+    )
+
+    render json: {
+      note_id: translated_note.id,
+      note_slug: translated_note.slug,
+      note_url: note_path(translated_note.slug)
+    }, status: :created
+  rescue Ai::Error, ArgumentError => e
+    render json: { error: e.message }, status: :unprocessable_entity
   end
 
   private

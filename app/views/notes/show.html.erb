@@ -19,6 +19,9 @@
      data-ai-review-history-url-value="<%= ai_requests_note_path(@note.slug) %>"
      data-ai-review-request-url-template-value="<%= ai_request_note_path(@note.slug, "__REQUEST_ID__") %>"
      data-ai-review-cancel-url-template-value="<%= ai_request_note_path(@note.slug, "__REQUEST_ID__") %>"
+     data-ai-review-create-translated-note-url-template-value="<%= ai_request_translated_note_note_path(@note.slug, "__REQUEST_ID__") %>"
+     data-ai-review-note-title-value="<%= @note.title %>"
+     data-ai-review-note-language-value="<%= @note.detected_language %>"
      data-autosave-draft-url-value="<%= draft_note_path(@note.slug) %>"
      data-autosave-checkpoint-url-value="<%= checkpoint_note_path(@note.slug) %>"
      data-autosave-local-key-value="note-draft-<%= @note.id %>"
@@ -143,6 +146,17 @@
       </svg>
     </button>
 
+    <button title="Traduzir com IA"
+            class="toolbar-btn"
+            data-action="click->ai-review#openTranslate">
+      <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M5 8h14"/>
+        <path d="M9 5v3c0 4-2 7-5 9"/>
+        <path d="M15 11l4 8"/>
+        <path d="M13 19l4-8 4 8"/>
+      </svg>
+    </button>
+
     <button title="Histórico de IA"
             class="toolbar-btn"
             data-action="click->ai-review#openHistory">
@@ -168,6 +182,15 @@
               class="max-w-36 bg-transparent text-xs text-[var(--theme-text-secondary)] outline-none"
               data-ai-review-target="modelSelect">
         <option value="">Modelo</option>
+      </select>
+      <span class="text-[10px] text-[var(--theme-text-faint)]">/</span>
+      <label class="sr-only" for="ai-target-language-select">Idioma alvo da tradução</label>
+      <select id="ai-target-language-select"
+              class="max-w-28 bg-transparent text-xs text-[var(--theme-text-secondary)] outline-none"
+              data-ai-review-target="targetLanguageSelect">
+        <% Note::SUPPORTED_LANGUAGES.reject { |lang| lang == @note.detected_language }.each do |language| %>
+          <option value="<%= language %>" <%= "selected" if language == "en-US" %>><%= language %></option>
+        <% end %>
       </select>
     </div>
 
@@ -605,7 +628,7 @@ AI_ENABLED_PROVIDERS=openai,anthropic,ollama</pre>
           <button type="button" data-action="click->ai-review#close" class="px-4 py-2 rounded-md border border-[var(--theme-border)] hover:bg-[var(--theme-bg-secondary)] text-[var(--theme-text-secondary)]">
             Cancelar
           </button>
-          <button type="button" data-action="click->ai-review#accept" class="px-4 py-2 rounded-md bg-[var(--theme-accent)] text-[var(--theme-accent-text)] hover:bg-[var(--theme-accent-hover)]">
+          <button type="button" data-ai-review-target="acceptButton" data-action="click->ai-review#accept" class="px-4 py-2 rounded-md bg-[var(--theme-accent)] text-[var(--theme-accent-text)] hover:bg-[var(--theme-accent-hover)]">
             Aplicar
           </button>
         </div>

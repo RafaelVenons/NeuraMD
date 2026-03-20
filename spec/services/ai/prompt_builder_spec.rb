@@ -16,6 +16,18 @@ RSpec.describe Ai::PromptBuilder do
       expect(prompt).to include("Improve clarity, flow, and readability")
     end
 
+    it "builds the translate prompt with source and target languages" do
+      prompt = described_class.system_prompt(
+        capability: "translate",
+        language: "pt-BR",
+        target_language: "en-US"
+      )
+
+      expect(prompt).to include("translation assistant")
+      expect(prompt).to include("Source language: pt-BR.")
+      expect(prompt).to include("Target language: en-US.")
+    end
+
     it "rejects unsupported capabilities" do
       expect {
         described_class.system_prompt(capability: "unknown", language: nil)
