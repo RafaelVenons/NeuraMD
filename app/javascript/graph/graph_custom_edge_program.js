@@ -297,9 +297,9 @@ function roleMarkerPadding(hierRole, edgeSize, extremity) {
 }
 
 function markerThicknessForRole(hierRole, fallbackThickness) {
-  if (hierRole === "target_is_parent") return 3.2
-  if (hierRole === "target_is_child") return 3.2
-  if (hierRole === "same_level") return 3.2
+  if (hierRole === "target_is_parent") return 2.4
+  if (hierRole === "target_is_child") return 2.4
+  if (hierRole === "same_level") return 2.4
   return fallbackThickness
 }
 

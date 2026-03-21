@@ -147,9 +147,9 @@ export function computeDisplayState(state) {
 
 function resolveEdgeDisplaySize(hierRole, incidentToFocus, withinFocus, sourceDepth, targetDepth, hasFocus, ghostedByTagFilter = false) {
   const baseSize =
-    hierRole === "target_is_parent" ? 4.4 :
-      hierRole === "target_is_child" ? 2.8 :
-        hierRole === "same_level" ? 3.2 :
+    hierRole === "target_is_parent" ? 3.4 :
+      hierRole === "target_is_child" ? 2.2 :
+        hierRole === "same_level" ? 2.5 :
           1.7
 
   if (ghostedByTagFilter) return Math.max(0.95, baseSize - 0.9)
