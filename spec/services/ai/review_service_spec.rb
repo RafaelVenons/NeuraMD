@@ -37,6 +37,7 @@ RSpec.describe Ai::ReviewService do
       expect(request.attempts_count).to eq(0)
       expect(request.max_attempts).to eq(3)
       expect(request.input_text).to eq("Texto com erro.")
+      expect(request.queue_position).to be > 0
     end
 
     it "persists the explicit provider/model requested by the UI" do
@@ -132,6 +133,39 @@ RSpec.describe Ai::ReviewService do
       expect(request.completed_at).to be_present
     end
 
+    it "defers execution when a higher-priority queued request exists" do
+      prioritized = create(:ai_request, note_revision: note_revision, status: "queued", queue_position: 1)
+      request = create(:ai_request, note_revision: note_revision, provider: "openai", input_text: "Texto com erro.", queue_position: 2)
+
+      provider = instance_double(Ai::OpenaiCompatibleProvider)
+      allow(provider).to receive(:review)
+      allow(Ai::ProviderRegistry).to receive(:build).and_return(provider)
+
+      outcome = described_class.process_request!(request)
+
+      expect(outcome).to include(status: :deferred)
+      expect(request.reload.status).to eq("queued")
+      expect(prioritized.reload.status).to eq("queued")
+      expect(provider).not_to have_received(:review)
+    end
+
+    it "applies side effects for fulfilled promise seed requests" do
+      request = create(:ai_request, note_revision: note_revision, capability: "seed_note", provider: "ollama", input_text: "Texto", metadata: {"language" => "pt-BR", "promise_note_id" => create(:note, title: "Nova nota").id})
+      provider = instance_double(
+        Ai::OllamaProvider,
+        review: Ai::Result.new(
+          content: "# Nova nota\n\nCorpo inicial.",
+          provider: "ollama",
+          model: "qwen2.5:1.5b"
+        )
+      )
+
+      expect(Notes::PromiseFulfillmentService).to receive(:call).with(ai_request: kind_of(AiRequest))
+      allow(Ai::ProviderRegistry).to receive(:build).and_return(provider)
+
+      described_class.process_request!(request)
+    end
+
     it "schedules retry for transient failures" do
       request = create(:ai_request, note_revision: note_revision, provider: "openai", input_text: "Texto com erro.")
 
@@ -206,6 +240,18 @@ RSpec.describe Ai::ReviewService do
 
       described_class.cancel_request!(request)
       expect(request.reload.status).to eq("succeeded")
+    end
+  end
+
+  describe ".retry_request!" do
+    it "moves a retried request to the back of the queue" do
+      create(:ai_request, note_revision: note_revision, status: "queued", queue_position: 1)
+      request = create(:ai_request, note_revision: note_revision, status: "failed", queue_position: 2)
+
+      described_class.retry_request!(request)
+
+      expect(request.reload.status).to eq("queued")
+      expect(request.queue_position).to eq(3)
     end
   end
 end

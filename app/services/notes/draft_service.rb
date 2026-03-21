@@ -20,7 +20,7 @@ module Notes
 
     def call
       ActiveRecord::Base.transaction do
-        @note.note_revisions.where(revision_kind: :draft).destroy_all
+        previous_draft_ids = @note.note_revisions.where(revision_kind: :draft).pluck(:id)
         draft = @note.note_revisions.create!(
           content_markdown: @content,
           revision_kind: :draft,
@@ -28,6 +28,11 @@ module Notes
         )
 
         sync_result = Links::SyncService.call(src_note: @note, revision: draft, content: @content)
+
+        if previous_draft_ids.any?
+          @note.outgoing_links.where(created_in_revision_id: previous_draft_ids).update_all(created_in_revision_id: draft.id)
+          @note.note_revisions.where(id: previous_draft_ids).destroy_all
+        end
 
         Result.new(revision: draft, graph_changed: sync_result.graph_changed)
       end

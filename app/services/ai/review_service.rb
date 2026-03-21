@@ -4,7 +4,7 @@ require_relative "provider_registry"
 
 module Ai
   class ReviewService
-    CAPABILITIES = %w[suggest rewrite grammar_review translate].freeze
+    CAPABILITIES = %w[suggest rewrite grammar_review translate seed_note].freeze
     MAX_ATTEMPTS = 3
 
     class << self
@@ -57,6 +57,10 @@ module Ai
       def process_request!(request)
         run_started_at = Time.current
 
+        next_ready = AiRequest.next_ready_request(now: run_started_at)
+        return {status: :deferred, wait: 1.second} if next_ready.present? && next_ready.id != request.id
+        return {status: :deferred, wait: 1.second} if AiRequest.where(status: "running").where.not(id: request.id).exists?
+
         request.with_lock do
           return request if request.succeeded?
           return request if request.failed? || request.canceled?
@@ -65,6 +69,7 @@ module Ai
             status: "running",
             started_at: request.started_at || run_started_at,
             attempts_count: request.attempts_count + 1,
+            queue_position: request.queue_position,
             error_message: nil,
             last_error_at: nil,
             last_error_kind: nil,
@@ -94,6 +99,7 @@ module Ai
           next_retry_at: nil,
           completed_at: Time.current
         )
+        apply_request_side_effect!(request)
         :succeeded
       rescue Ai::Error => e
         handle_failure!(request, e)
@@ -123,6 +129,7 @@ module Ai
           request.update!(
             status: "queued",
             attempts_count: 0,
+            queue_position: AiRequest.next_queue_position,
             next_retry_at: nil,
             started_at: nil,
             completed_at: nil,
@@ -195,6 +202,12 @@ module Ai
 
       def retry_delay(attempts_count)
         [2**attempts_count, 30].min.seconds
+      end
+
+      def apply_request_side_effect!(request)
+        return unless request.capability == "seed_note"
+
+        Notes::PromiseFulfillmentService.call(ai_request: request)
       end
     end
   end

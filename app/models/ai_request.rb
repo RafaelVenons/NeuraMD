@@ -1,15 +1,18 @@
 class AiRequest < ApplicationRecord
-  CAPABILITIES = %w[suggest rewrite grammar_review translate tts].freeze
+  CAPABILITIES = %w[suggest rewrite grammar_review translate tts seed_note].freeze
   STATUSES = %w[queued running retrying succeeded failed canceled].freeze
   ERROR_KINDS = %w[transient permanent validation].freeze
 
   belongs_to :note_revision
+
+  before_validation :assign_queue_position, on: :create
 
   after_commit :broadcast_dashboard_refresh_later
   after_commit :broadcast_note_update_later
 
   validates :attempts_count, numericality: {greater_than_or_equal_to: 0}
   validates :max_attempts, numericality: {greater_than: 0}
+  validates :queue_position, numericality: {greater_than: 0}
   validates :last_error_kind, inclusion: {in: ERROR_KINDS}, allow_nil: true
   validates :status, presence: true, inclusion: {in: STATUSES}
   validates :provider, presence: true
@@ -17,6 +20,8 @@ class AiRequest < ApplicationRecord
 
   scope :recent_first, -> { order(created_at: :desc) }
   scope :active, -> { where(status: %w[queued running retrying]) }
+  scope :reorderable, -> { where(status: %w[queued running retrying]) }
+  scope :queue_order, -> { order(:queue_position, :created_at, :id) }
 
   def queued?
     status == "queued"
@@ -47,6 +52,10 @@ class AiRequest < ApplicationRecord
   end
 
   def active?
+    queued? || running? || retrying?
+  end
+
+  def reorderable?
     queued? || running? || retrying?
   end
 
@@ -125,6 +134,8 @@ class AiRequest < ApplicationRecord
       provider: provider,
       model: model,
       capability: capability,
+      note_title: note_revision&.note&.title,
+      queue_position: queue_position,
       source_language: metadata["language"],
       target_language: metadata["target_language"],
       attempts_count: attempts_count,
@@ -139,11 +150,56 @@ class AiRequest < ApplicationRecord
       duration_ms: duration_ms,
       duration_human: duration_human,
       remote_long_job: remote_long_job?,
-      remote_hint: remote_status_hint
+      remote_hint: remote_status_hint,
+      promise_note_id: metadata["promise_note_id"],
+      promise_note_title: metadata["promise_note_title"]
     }
   end
 
   private
+
+  def assign_queue_position
+    self.queue_position ||= self.class.next_queue_position
+  end
+
+  class << self
+    def next_queue_position
+      maximum(:queue_position).to_i + 1
+    end
+
+    def reorder_for_note!(note:, ordered_request_ids:)
+      request_ids = Array(ordered_request_ids).map(&:to_s)
+
+      transaction do
+        scoped = joins(:note_revision)
+          .where(note_revisions: {note_id: note.id})
+          .reorderable
+          .queue_order
+          .to_a
+
+        by_id = scoped.index_by { |request| request.id.to_s }
+        ordered = request_ids.filter_map { |id| by_id[id] }
+        remaining = scoped.reject { |request| request_ids.include?(request.id.to_s) }
+        final = ordered + remaining
+
+        final.each_with_index do |request, index|
+          next_position = index + 1
+          next if request.queue_position == next_position
+
+          request.update!(queue_position: next_position)
+        end
+
+        final
+      end
+    end
+
+    def next_ready_request(now: Time.current)
+      where(status: "queued")
+        .or(where(status: "retrying").where("next_retry_at IS NULL OR next_retry_at <= ?", now))
+        .queue_order
+        .first
+    end
+  end
 
   def remote_long_job_after
     timeout_window_for("LONG_JOB_AFTER", default: 45.seconds, ollama_default: 45.seconds)

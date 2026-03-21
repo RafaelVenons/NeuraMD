@@ -201,22 +201,28 @@ RSpec.describe "Wiki-link editor", type: :system do
       expect(page).to have_current_path(note_path(created.slug), wait: 5)
     end
 
-    it "shows alerts before and after AI promise creation" do
-      provider = instance_double(Ai::OllamaProvider, review: Ai::Result.new(content: "# Nota IA\n\nCorpo inicial.", provider: "ollama", model: "qwen2.5:1.5b"))
+    it "enqueues AI promise creation without navigation" do
+      provider = instance_double(Ai::OllamaProvider, name: "ollama", model: "qwen2.5:1.5b")
       allow(Ai::ProviderRegistry).to receive(:enabled?).and_return(true)
+      allow(Ai::ProviderRegistry).to receive(:resolve_selection).and_return(
+        {
+          name: "ollama",
+          model: "qwen2.5:1.5b",
+          selection_strategy: "automatic",
+          selection_reason: "seed_note_short"
+        }
+      )
       allow(Ai::ProviderRegistry).to receive(:build).and_return(provider)
-
-      page.execute_script("window.__promiseAlerts = []; window.alert = (message) => window.__promiseAlerts.push(message)")
 
       type_in_editor("[[Nota IA]]")
       expect(page).to have_text("Gerar com IA", wait: 3)
       click_button "Gerar com IA"
       expect(page).to have_no_css(".wikilink-dropdown:not([hidden])", wait: 5)
       expect(page).to have_text(/\[\[Nota IA\|[0-9a-f-]{36}\]\]/, wait: 5)
-
-      alerts = page.evaluate_script("window.__promiseAlerts")
-      expect(alerts.first).to include('A IA vai criar a nota "Nota IA".')
-      expect(alerts.last).to include('A nota "Nota IA" foi criada.')
+      expect(page).to have_css("[data-ai-review-target='queueDock']:not(.hidden)", wait: 5)
+      expect(page).to have_text("Nota IA", wait: 5)
+      expect(page).to have_button("Cancelar", wait: 5)
+      expect(page).to have_current_path(%r{/notes/}, wait: 5)
     end
 
     it "ignores the creation menu when user presses space and continues typing" do

@@ -10,8 +10,12 @@ module Ai
 
       outcome = ReviewService.process_request!(request)
 
-      if outcome.is_a?(Hash) && outcome[:status] == :retrying && !request.reload.canceled?
-        self.class.set(wait: outcome[:wait]).perform_later(request.id)
+      if outcome.is_a?(Hash) && !request.reload.canceled?
+        if outcome[:status] == :retrying
+          self.class.set(wait: outcome[:wait]).perform_later(request.id)
+        elsif outcome[:status] == :deferred
+          self.class.set(wait: outcome[:wait]).perform_later(request.id)
+        end
       end
     rescue Ai::Error
       nil

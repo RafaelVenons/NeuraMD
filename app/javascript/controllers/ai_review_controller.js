@@ -15,6 +15,7 @@ export default class extends Controller {
     "processingHint",
     "processingMeta",
     "processingError",
+    "queueDock",
     "resultBox",
     "proposalDiff",
     "correctedText",
@@ -34,7 +35,9 @@ export default class extends Controller {
     statusUrl: String,
     reviewUrl: String,
     historyUrl: String,
+    reorderUrl: String,
     requestUrlTemplate: String,
+    retryUrlTemplate: String,
     cancelUrlTemplate: String,
     createTranslatedNoteUrlTemplate: String,
     noteTitle: String,
@@ -55,6 +58,10 @@ export default class extends Controller {
     this.pendingApplyMode = "document"
     this.pendingOriginalText = ""
     this.historyRequests = []
+    this.dismissedQueueRequestIds = new Set()
+    this.draggedQueueRequestId = null
+    this.draggedQueueElement = null
+    this.queuePlaceholder = null
     this.historyFilter = "all"
     this.realtimeConnected = false
     this.streamObserver = null
@@ -65,14 +72,18 @@ export default class extends Controller {
     this.preferredTargetLanguage = "en-US"
     this._boundDocumentClick = (event) => this._handleDocumentClick(event)
     this._handleRequestUpdate = (event) => this._handleStreamRequestUpdate(event)
+    this._handlePromiseAiEnqueued = (event) => this._handlePromiseAiEnqueuedEvent(event)
     this.element.addEventListener("ai-request:update", this._handleRequestUpdate)
+    this.element.addEventListener("promise:ai-enqueued", this._handlePromiseAiEnqueued)
     document.addEventListener("click", this._boundDocumentClick)
     this._observeStreamSource()
     this.checkAvailability()
+    this.refreshHistory()
   }
 
   disconnect() {
     this.element.removeEventListener("ai-request:update", this._handleRequestUpdate)
+    this.element.removeEventListener("promise:ai-enqueued", this._handlePromiseAiEnqueued)
     document.removeEventListener("click", this._boundDocumentClick)
     this.streamObserver?.disconnect()
     this._stopPolling()
@@ -209,8 +220,8 @@ export default class extends Controller {
     this.historyDialogTarget.close()
   }
 
-  cancelProcessing() {
-    this._cancelCurrentRequest({ keepWorkspace: true })
+  async cancelProcessing() {
+    await this._cancelCurrentRequest({ keepWorkspace: true })
     this._hideWorkspace()
   }
 
@@ -228,11 +239,13 @@ export default class extends Controller {
 
       this.historyRequests = data.requests || []
       this._renderHistory()
+      this._renderQueue()
     } catch (error) {
       this.historyRequests = []
       this.historyListTarget.innerHTML = ""
       this.historyEmptyTarget.classList.add("hidden")
       this.historyStatusTarget.textContent = error.message || "Falha ao carregar o histórico de IA."
+      this._renderQueue()
     }
   }
 
@@ -240,6 +253,80 @@ export default class extends Controller {
     this.historyFilter = event.currentTarget.dataset.filterValue || "all"
     this._syncHistoryFilters()
     this._renderHistory()
+  }
+
+  async queueAction(event) {
+    const requestId = event.currentTarget.dataset.requestId
+    const actionType = event.currentTarget.dataset.queueAction
+    if (!requestId || !actionType) return
+
+    if (actionType === "retry") {
+      await this._retryRequest(requestId)
+      return
+    }
+
+    if (actionType === "dismiss") {
+      this.dismissedQueueRequestIds.add(String(requestId))
+      this._renderQueue()
+      return
+    }
+
+    await this._destroyRequest(requestId)
+  }
+
+  handleQueueDragStart(event) {
+    const card = event.currentTarget
+    const requestId = card.dataset.requestId
+    if (!requestId || card.dataset.queueReorderable !== "true") {
+      event.preventDefault()
+      return
+    }
+
+    this.draggedQueueRequestId = requestId
+    this.draggedQueueElement = card
+    this.queuePlaceholder = this._buildQueuePlaceholder(card)
+
+    event.dataTransfer.effectAllowed = "move"
+    event.dataTransfer.setData("text/plain", requestId)
+    event.dataTransfer.setDragImage(this._transparentDragImage(), 0, 0)
+
+    card.after(this.queuePlaceholder)
+    requestAnimationFrame(() => card.classList.add("hidden"))
+  }
+
+  handleQueueDragOver(event) {
+    if (!this.draggedQueueElement || !this.queuePlaceholder) return
+
+    event.preventDefault()
+    const targetCard = event.target.closest("[data-request-id][data-queue-reorderable='true']")
+    if (!targetCard || targetCard === this.draggedQueueElement) return
+
+    const rect = targetCard.getBoundingClientRect()
+    const insertAfter = event.clientY > rect.top + (rect.height / 2)
+    if (insertAfter) targetCard.after(this.queuePlaceholder)
+    else targetCard.before(this.queuePlaceholder)
+  }
+
+  async handleQueueDrop(event) {
+    if (!this.draggedQueueElement || !this.queuePlaceholder) return
+
+    event.preventDefault()
+    this.queuePlaceholder.before(this.draggedQueueElement)
+    this.draggedQueueElement.classList.remove("hidden")
+    this.queuePlaceholder.remove()
+
+    const orderedRequestIds = Array.from(
+      this.queueDockTarget.querySelectorAll("[data-request-id][data-queue-reorderable='true']")
+    ).map((card) => card.dataset.requestId).reverse()
+
+    this._cleanupQueueDrag()
+    await this._persistQueueOrder(orderedRequestIds)
+  }
+
+  handleQueueDragEnd() {
+    if (this.draggedQueueElement) this.draggedQueueElement.classList.remove("hidden")
+    if (this.queuePlaceholder) this.queuePlaceholder.remove()
+    this._cleanupQueueDrag()
   }
 
   async accept() {
@@ -262,8 +349,8 @@ export default class extends Controller {
       return
     }
 
-    editor.setValue(correctedText)
     this._clearProposalStage()
+    editor.setValue(correctedText)
 
     this.dispatch("accepted", {
       detail: {
@@ -418,9 +505,10 @@ export default class extends Controller {
   }
 
   _clearProposalStage() {
-    const editorPane = this.element.querySelector('[data-controller~="codemirror"]')
-    const editor = editorPane && this.application.getControllerForElementAndIdentifier(editorPane, "codemirror")
-    editor?.clearAiDiff?.()
+    try {
+      this._editor().clearAiDiff()
+    } catch (_) {
+    }
     this.aiSuggestedText = ""
     this._setStageState(false)
   }
@@ -529,6 +617,10 @@ export default class extends Controller {
     return this.cancelUrlTemplateValue.replace("__REQUEST_ID__", requestId)
   }
 
+  _retryUrl(requestId) {
+    return this.retryUrlTemplateValue.replace("__REQUEST_ID__", requestId)
+  }
+
   _updateProcessingState(data) {
     const attemptsCount = Number(data.attempts_count || 0)
     const maxAttempts = Number(data.max_attempts || 0)
@@ -565,6 +657,7 @@ export default class extends Controller {
 
     this._upsertHistoryRequest(request)
     if (this.historyDialogTarget?.open) this._renderHistory()
+    this._renderQueue()
     if (String(request.id) !== String(this.currentRequestId)) return
 
     this._stopPolling()
@@ -598,6 +691,25 @@ export default class extends Controller {
     }
   }
 
+  async _handlePromiseAiEnqueuedEvent(event) {
+    const requestId = event.detail?.requestId
+    if (!requestId) return
+
+    try {
+      const response = await fetch(this._requestUrl(requestId), {
+        headers: { Accept: "application/json" },
+        credentials: "same-origin"
+      })
+      const request = await response.json()
+      if (!response.ok || !request?.id) return
+
+      this._upsertHistoryRequest(request)
+      if (this.historyDialogTarget?.open) this._renderHistory()
+      this._renderQueue()
+    } catch (_) {
+    }
+  }
+
   _observeStreamSource() {
     const source = document.querySelector("turbo-cable-stream-source")
     if (!source) {
@@ -627,6 +739,29 @@ export default class extends Controller {
     this.historyRequests = this.historyRequests
       .sort((left, right) => new Date(right.created_at || 0) - new Date(left.created_at || 0))
       .slice(0, 10)
+
+    this._renderQueue()
+  }
+
+  async _retryRequest(requestId) {
+    try {
+      const response = await fetch(this._retryUrl(requestId), {
+        method: "POST",
+        credentials: "same-origin",
+        headers: {
+          Accept: "application/json",
+          "X-CSRF-Token": this._csrfToken()
+        }
+      })
+      const data = await response.json()
+      if (!response.ok || data.error) throw new Error(data.error || "Falha ao reenfileirar request.")
+
+      this.dismissedQueueRequestIds.delete(String(requestId))
+      this._upsertHistoryRequest(data)
+      if (this.historyDialogTarget?.open) this._renderHistory()
+    } catch (error) {
+      window.alert(error.message || "Falha ao reenfileirar request.")
+    }
   }
 
   _attemptLabel(attemptsCount, maxAttempts) {
@@ -884,6 +1019,227 @@ export default class extends Controller {
     `
   }
 
+  _renderQueue() {
+    if (!this.hasQueueDockTarget) return
+
+    const requests = this._sortedQueueRequests()
+      .filter((request) => !this.dismissedQueueRequestIds.has(String(request.id)))
+      .slice(0, 6)
+
+    if (requests.length === 0) {
+      this.queueDockTarget.innerHTML = ""
+      this.queueDockTarget.classList.add("hidden")
+      return
+    }
+
+    this.queueDockTarget.classList.remove("hidden")
+    this.queueDockTarget.innerHTML = requests.map((request) => this._queueCard(request)).join("")
+  }
+
+  _queueEligible(request) {
+    if (["queued", "running", "retrying", "failed"].includes(request.status)) return true
+    return request.capability === "seed_note" && request.status === "succeeded"
+  }
+
+  _sortedQueueRequests() {
+    const supplemental = this.historyRequests
+      .filter((request) => this._queueEligible(request))
+      .filter((request) => !this._queueReorderable(request))
+      .sort((left, right) => new Date(right.created_at || 0) - new Date(left.created_at || 0))
+
+    const active = this.historyRequests
+      .filter((request) => this._queueEligible(request))
+      .filter((request) => this._queueReorderable(request))
+      .sort((left, right) => {
+        const leftPos = Number(left.queue_position || 0)
+        const rightPos = Number(right.queue_position || 0)
+        if (leftPos !== rightPos) return rightPos - leftPos
+        return new Date(right.created_at || 0) - new Date(left.created_at || 0)
+      })
+
+    return [...supplemental, ...active]
+  }
+
+  _queueCard(request) {
+    const noteTitle = request.promise_note_title || request.note_title || "Nota"
+    const serviceLabel = this._queueServiceLabel(request)
+    const modelLabel = request.model || request.provider || "IA"
+    const borderClass = this._queueBorderClass(request.status)
+    const reorderable = this._queueReorderable(request)
+    const cardAction = request.status === "failed" ? "retry" : ""
+    const cardActionAttr = cardAction ? `data-request-id="${this._escapeHtml(request.id)}" data-queue-action="${cardAction}" data-action="click->ai-review#queueAction"` : ""
+    const cardInteractiveClass = cardAction ? "cursor-pointer hover:bg-[var(--theme-bg-hover)]" : ""
+    const dragAttrs = reorderable
+      ? `draggable="true"
+         data-request-id="${this._escapeHtml(request.id)}"
+         data-queue-reorderable="true"
+         data-action="dragstart->ai-review#handleQueueDragStart dragend->ai-review#handleQueueDragEnd dragover->ai-review#handleQueueDragOver drop->ai-review#handleQueueDrop"`
+      : `data-request-id="${this._escapeHtml(request.id)}" data-queue-reorderable="false"`
+    const titleClass = request.status === "failed" ? "text-red-300" : "text-[var(--theme-text-primary)]"
+    const dragClass = reorderable ? "cursor-grab active:cursor-grabbing" : ""
+
+    return `
+      <article class="pointer-events-auto w-56 max-w-[calc(100vw-1.5rem)] rounded-xl border-2 ${borderClass} bg-[var(--theme-bg-secondary)] px-2.5 py-2 shadow-xl backdrop-blur transition ${cardInteractiveClass} ${dragClass}" ${dragAttrs} ${cardActionAttr}>
+        <div class="flex items-start gap-3">
+          <div class="min-w-0 flex-1">
+            <p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-[var(--theme-text-faint)]">${this._escapeHtml(serviceLabel)}</p>
+            <p class="mt-1 truncate text-sm font-semibold ${titleClass}">${this._escapeHtml(noteTitle)}</p>
+            <p class="mt-1 truncate text-[11px] text-[var(--theme-text-secondary)]">${this._escapeHtml(modelLabel)}</p>
+          </div>
+          <div class="flex flex-col items-end gap-2">
+            ${this._queueActionButton(request)}
+          </div>
+        </div>
+      </article>
+    `
+  }
+
+  _queueActionButton(request) {
+    if (["queued", "running", "retrying"].includes(request.status) || (request.capability === "seed_note" && request.status === "succeeded")) {
+      const label = request.capability === "seed_note" && request.status === "succeeded" ? "↺" : "X"
+      const action = request.capability === "seed_note" && request.status === "succeeded" ? "undo" : "cancel"
+      const title = request.capability === "seed_note" && request.status === "succeeded" ? "Desfazer" : "Cancelar"
+
+      return `
+        <button type="button"
+                title="${title}"
+                aria-label="${title}"
+                class="rounded-full border border-red-700 bg-red-900/40 px-2 py-0.5 text-[11px] font-semibold text-red-300 hover:text-red-400"
+                data-request-id="${this._escapeHtml(request.id)}"
+                data-queue-action="${action}"
+                data-action="click->ai-review#queueAction">
+          ${label}
+        </button>
+      `
+    }
+
+    if (request.status === "failed") {
+      return `
+        <span class="rounded-full border border-red-700 bg-red-900/40 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-red-300">
+          Retry
+        </span>
+      `
+    }
+
+    return `
+      <button type="button"
+              title="Fechar"
+              aria-label="Fechar"
+              class="rounded-full border border-[var(--theme-border)] px-2 py-0.5 text-[11px] text-[var(--theme-text-faint)] hover:bg-[var(--theme-bg-hover)]"
+              data-request-id="${this._escapeHtml(request.id)}"
+              data-queue-action="dismiss"
+              data-action="click->ai-review#queueAction">
+        ×
+      </button>
+    `
+  }
+
+  _queueReorderable(request) {
+    return ["queued", "running", "retrying"].includes(request.status)
+  }
+
+  _queueServiceLabel(request) {
+    const labels = {
+      grammar_review: {
+        queued: "Revisar",
+        running: "Revisando",
+        retrying: "Revisando",
+        succeeded: "Revisado",
+        failed: "Revisar"
+      },
+      rewrite: {
+        queued: "Markdown",
+        running: "Markdown...",
+        retrying: "Markdown...",
+        succeeded: "Markdown",
+        failed: "Markdown"
+      },
+      suggest: {
+        queued: "Sugestao",
+        running: "Sugerindo",
+        retrying: "Sugerindo",
+        succeeded: "Sugerido",
+        failed: "Sugestao"
+      },
+      translate: {
+        queued: "Traduzir",
+        running: "Traduzindo",
+        retrying: "Traduzindo",
+        succeeded: "Traduzido",
+        failed: "Traduzir"
+      },
+      seed_note: {
+        queued: "Criar",
+        running: "Criando",
+        retrying: "Criando",
+        succeeded: "Criado",
+        failed: "Criar"
+      }
+    }
+
+    return labels[request.capability]?.[request.status] || this._statusLabel(request.status)
+  }
+
+  _queueBorderClass(status) {
+    return {
+      queued: "border-gray-700",
+      running: "border-yellow-400",
+      retrying: "border-yellow-400",
+      succeeded: "border-green-400",
+      failed: "border-red-700",
+      canceled: "border-zinc-700"
+    }[status] || "border-[var(--theme-border)]"
+  }
+
+  _buildQueuePlaceholder(card) {
+    const placeholder = document.createElement("div")
+    placeholder.className = "pointer-events-none w-56 max-w-[calc(100vw-1.5rem)] rounded-xl border-2 border-dashed border-[var(--theme-border)] bg-transparent px-2.5 py-5 opacity-70"
+    placeholder.dataset.queuePlaceholder = "true"
+    return placeholder
+  }
+
+  _transparentDragImage() {
+    if (this._dragImage) return this._dragImage
+
+    const canvas = document.createElement("canvas")
+    canvas.width = 1
+    canvas.height = 1
+    this._dragImage = canvas
+    return canvas
+  }
+
+  _cleanupQueueDrag() {
+    this.draggedQueueRequestId = null
+    this.draggedQueueElement = null
+    this.queuePlaceholder = null
+  }
+
+  async _persistQueueOrder(orderedRequestIds) {
+    if (!orderedRequestIds.length) return
+
+    try {
+      const response = await fetch(this.reorderUrlValue, {
+        method: "PATCH",
+        credentials: "same-origin",
+        headers: {
+          "Content-Type": "application/json",
+          Accept: "application/json",
+          "X-CSRF-Token": this._csrfToken()
+        },
+        body: JSON.stringify({ ordered_request_ids: orderedRequestIds })
+      })
+      const data = await response.json()
+      if (!response.ok || data.error) throw new Error(data.error || "Falha ao reordenar fila.")
+
+      ;(data.requests || []).forEach((request) => this._upsertHistoryRequest(request))
+      if (this.historyDialogTarget?.open) this._renderHistory()
+      this._renderQueue()
+    } catch (error) {
+      window.alert(error.message || "Falha ao reordenar fila.")
+      this.refreshHistory()
+    }
+  }
+
   _statusLabel(status) {
     return {
       queued: "Na fila",
@@ -1030,6 +1386,56 @@ export default class extends Controller {
 
   _createTranslatedNoteUrl(requestId) {
     return this.createTranslatedNoteUrlTemplateValue.replace("__REQUEST_ID__", requestId)
+  }
+
+  async _destroyRequest(requestId) {
+    const response = await fetch(this._cancelUrl(requestId), {
+      method: "DELETE",
+      credentials: "same-origin",
+      headers: {
+        Accept: "application/json",
+        "X-CSRF-Token": this._csrfToken()
+      }
+    })
+    const data = await response.json()
+    if (!response.ok || data.error) throw new Error(data.error || "Falha ao cancelar request de IA.")
+
+    const request = this.historyRequests.find((item) => String(item.id) === String(requestId))
+    if (request) {
+      request.status = data.status
+      this._upsertHistoryRequest(request)
+    }
+
+    if (data.undone) {
+      this.dismissedQueueRequestIds.add(String(requestId))
+      this._restorePromiseLinkInEditor(data.promise_note_id, data.restored_content)
+    } else if (data.status === "canceled") {
+      this.dismissedQueueRequestIds.add(String(requestId))
+    }
+
+    if (data.graph_changed) {
+      document.dispatchEvent(new CustomEvent("autosave:saved", {
+        detail: { kind: "draft", graphChanged: true }
+      }))
+    }
+
+    if (this.historyDialogTarget?.open) this._renderHistory()
+    this._renderQueue()
+  }
+
+  _restorePromiseLinkInEditor(noteId, restoredContent) {
+    const editor = this._editor()
+    if (restoredContent) {
+      editor.setValue(restoredContent)
+      return
+    }
+
+    const current = editor.getValue()
+    const escapedNoteId = String(noteId || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
+    if (!escapedNoteId) return
+
+    const reverted = current.replace(new RegExp(`\\[\\[([^\\]|]+)\\|(?:[a-z]+:)?${escapedNoteId}\\]\\]`, "gi"), "[[$1]]")
+    if (reverted !== current) editor.setValue(reverted)
   }
 
   _showRequestMenu(trigger, capability, suggestions) {

@@ -30,6 +30,12 @@ RSpec.describe Links::ExtractService do
       expect(result).to eq([{dst_note_id: uuid, hier_role: "same_level"}])
     end
 
+    it "treats unknown roles as plain links while preserving the destination" do
+      uuid = SecureRandom.uuid
+      result = described_class.call("[[Sibling|x:#{uuid}]]")
+      expect(result).to eq([{dst_note_id: uuid, hier_role: nil}])
+    end
+
     it "deduplicates same UUID with same role" do
       uuid = SecureRandom.uuid
       content = "[[Note|#{uuid}]] and again [[Note|#{uuid}]]"
@@ -44,14 +50,23 @@ RSpec.describe Links::ExtractService do
       expect(result).to eq([{dst_note_id: uuid, hier_role: "same_level"}])
     end
 
+    it "prefers a meaningful semantic role over unknown roles for the same UUID" do
+      uuid = SecureRandom.uuid
+      content = "[[Note|x:#{uuid}]] and [[Parent|f:#{uuid}]]"
+      result = described_class.call(content)
+      expect(result).to eq([{dst_note_id: uuid, hier_role: "target_is_parent"}])
+    end
+
     it "extracts multiple different wiki-links" do
       uuid1 = SecureRandom.uuid
       uuid2 = SecureRandom.uuid
-      content = "[[Note A|#{uuid1}]] and [[Note B|c:#{uuid2}]]"
+      uuid3 = SecureRandom.uuid
+      content = "[[Note A|#{uuid1}]] and [[Note B|c:#{uuid2}]] and [[Note C|x:#{uuid3}]]"
       result = described_class.call(content)
       expect(result).to contain_exactly(
         {dst_note_id: uuid1, hier_role: nil},
-        {dst_note_id: uuid2, hier_role: "target_is_child"}
+        {dst_note_id: uuid2, hier_role: "target_is_child"},
+        {dst_note_id: uuid3, hier_role: nil}
       )
     end
 

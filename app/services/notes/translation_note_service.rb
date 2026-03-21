@@ -42,22 +42,8 @@ module Notes
 
         revision = Notes::CheckpointService.call(
           note: translated_note,
-          content: @content,
+          content: content_with_source_link,
           author: @author
-        )
-
-        NoteLink.find_or_create_by!(
-          src_note: @source_note,
-          dst_note: translated_note,
-          created_in_revision: @ai_request.note_revision,
-          hier_role: "same_level"
-        )
-
-        NoteLink.find_or_create_by!(
-          src_note: translated_note,
-          dst_note: @source_note,
-          created_in_revision: revision,
-          hier_role: "same_level"
         )
 
         metadata = @ai_request.metadata.merge(
@@ -85,6 +71,14 @@ module Notes
       return @title if @title.present?
 
       "#{@source_note.title} (#{language_label(@target_language)})"
+    end
+
+    def content_with_source_link
+      footer = "\n\nTraduzida de [[#{@source_note.title}|b:#{@source_note.id}]]"
+      body = @content.rstrip
+      return body if body.include?(footer.strip)
+
+      "#{body}#{footer}"
     end
 
     def language_label(language)

@@ -17,7 +17,9 @@
      data-ai-review-status-url-value="<%= ai_status_note_path(@note.slug) %>"
      data-ai-review-review-url-value="<%= ai_review_note_path(@note.slug) %>"
      data-ai-review-history-url-value="<%= ai_requests_note_path(@note.slug) %>"
+     data-ai-review-reorder-url-value="<%= reorder_ai_requests_note_path(@note.slug) %>"
      data-ai-review-request-url-template-value="<%= ai_request_note_path(@note.slug, "__REQUEST_ID__") %>"
+     data-ai-review-retry-url-template-value="<%= retry_ai_request_note_path(@note.slug, "__REQUEST_ID__") %>"
      data-ai-review-cancel-url-template-value="<%= ai_request_note_path(@note.slug, "__REQUEST_ID__") %>"
      data-ai-review-create-translated-note-url-template-value="<%= ai_request_translated_note_note_path(@note.slug, "__REQUEST_ID__") %>"
      data-ai-review-note-title-value="<%= @note.title %>"
@@ -233,6 +235,10 @@
       Salvar
     </button>
   </div>
+
+  <aside data-ai-review-target="queueDock"
+         class="pointer-events-none fixed bottom-4 right-4 z-40 hidden flex max-h-[70vh] flex-col items-end gap-2 overflow-y-auto pr-1">
+  </aside>
 
   <%# ── Main editor area ──────────────────────────────────── %>
   <div class="flex flex-1 min-h-0"

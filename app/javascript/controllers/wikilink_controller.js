@@ -6,7 +6,8 @@ import { Controller } from "@hotwired/stimulus"
 // applied on insertion. Enter/Tab confirms, Esc dismisses.
 //
 // After every cursor move, detects if the cursor sits inside a completed
-// [[Display|uuid]] or [[Display|role:uuid]] and dispatches wikilink:cursor so tag_sidebar_controller
+// [[Display|uuid]], [[Display|f:uuid]], [[Display|c:uuid]] or [[Display|b:uuid]]
+// and dispatches wikilink:cursor so tag_sidebar_controller
 // can react (link-focus mode vs global mode).
 export default class extends Controller {
   static values = { searchUrl: String, createPromiseUrl: String, currentNoteId: String }
@@ -291,10 +292,6 @@ export default class extends Controller {
     this._pendingPromiseCreations.add(promiseKey)
 
     try {
-      if (option.action === "ai") {
-        window.alert(`A IA vai criar a nota "${this._promiseTitle}".`)
-      }
-
       const response = await fetch(this.createPromiseUrlValue, {
         method: "POST",
         credentials: "same-origin",
@@ -320,8 +317,15 @@ export default class extends Controller {
       this._closeDropdown()
 
       if (option.action === "ai") {
-        const statusLabel = data.created ? "foi criada" : "ja existia"
-        window.alert(`A nota "${data.note_title}" ${statusLabel}.`)
+        this.element.dispatchEvent(new CustomEvent("promise:ai-enqueued", {
+          detail: {
+            requestId: data.request_id,
+            requestStatus: data.request_status,
+            noteId: data.note_id,
+            noteTitle: data.note_title
+          },
+          bubbles: true
+        }))
       }
 
       await this._autosaveController()?.saveDraftNow?.()

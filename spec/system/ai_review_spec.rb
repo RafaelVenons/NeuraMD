@@ -158,6 +158,19 @@ RSpec.describe "AI review", type: :system do
     expect(page).to have_css(".cm-content", text: "Texto corrigido pela IA.", wait: 5)
   end
 
+  it "clears the red deletion diff after applying and resuming normal editing" do
+    choose_ai_option("Revisar gramática com IA")
+
+    expect_ai_workspace(text: "Texto corrigido pela IA.")
+    expect(page).to have_css(".cm-ai-diff-deleted", minimum: 1, wait: 5)
+
+    click_button "Aplicar"
+    editor.click
+    editor.send_keys(" Ajuste manual")
+
+    expect(page).to have_no_css(".cm-ai-diff-deleted", wait: 5)
+  end
+
   it "processes only the selected text when the editor has a selection" do
     allow(Ai::ReviewService).to receive(:enqueue) do |note:, note_revision:, capability:, text:, language:, **|
       create(
@@ -254,6 +267,37 @@ RSpec.describe "AI review", type: :system do
 
     revision = wait_for_latest_checkpoint(note)
     expect(revision.ai_generated).to be(true)
+  end
+
+  it "renders queue cards with service, note title and model, and retries failed requests" do
+    failed_request = create(
+      :ai_request,
+      note_revision: note.head_revision,
+      capability: "grammar_review",
+      provider: "openai",
+      requested_provider: "openai",
+      model: "gpt-4o-mini",
+      status: "failed",
+      error_message: "Falha temporaria"
+    )
+
+    allow(Ai::ReviewService).to receive(:retry_request!).and_call_original
+
+    visit note_path(note.slug)
+
+    expect(page).to have_css("[data-ai-review-target='queueDock']:not(.hidden)", wait: 5)
+    within("[data-ai-review-target='queueDock']") do
+      expect(page).to have_text(/revisar/i)
+      expect(page).to have_text(note.title)
+      expect(page).to have_text("gpt-4o-mini")
+      find("article", text: note.title).click
+    end
+
+    expect(failed_request.reload.status).to eq("queued")
+    within("[data-ai-review-target='queueDock']") do
+      expect(page).to have_text(/revisar/i)
+      expect(page).to have_button("Cancelar")
+    end
   end
 
   it "shows an explicit remote long-job hint while an ollama request is still running" do
@@ -409,7 +453,9 @@ RSpec.describe "AI review", type: :system do
     choose_ai_option("Revisar gramática com IA")
 
     expect(page).to have_text("Tentando novamente", wait: 5)
-    click_button "Cancelar"
+    within("[data-ai-review-target='processingBox']") do
+      click_button "Cancelar"
+    end
 
     expect(page).to have_no_text("Tentando novamente", wait: 5)
     expect(request.reload.status).to eq("canceled")

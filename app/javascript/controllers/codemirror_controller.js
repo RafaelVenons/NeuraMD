@@ -24,9 +24,14 @@ export default class extends Controller {
     this._readOnlyCompartment = new Compartment()
     this._suppressChangeDispatch = false
     this._isComposing = false
+    this._aiStageActive = false
+    this._aiDiffVisible = false
 
     const updateListener = EditorView.updateListener.of((update) => {
       if (update.docChanged && !this._suppressChangeDispatch) {
+        if (!this._aiStageActive && this._aiDiffVisible) {
+          this.clearAiDiff()
+        }
         this._dispatchChange()
       }
       this._suppressChangeDispatch = false
@@ -82,6 +87,11 @@ export default class extends Controller {
     this.element.addEventListener("wikilink:insert", (e) => {
       this._insertWikilink(e.detail.markup, e.detail.insertStart)
     })
+    this._onAiStageChange = (event) => {
+      this._aiStageActive = !!event.detail?.active
+      if (!this._aiStageActive && this._aiDiffVisible) this.clearAiDiff()
+    }
+    this.element.addEventListener("ai-review:stagechange", this._onAiStageChange)
 
     // Notify other controllers editor is ready (bubbles to editor_controller)
     this.dispatch("ready", { detail: { editor: this } })
@@ -95,6 +105,7 @@ export default class extends Controller {
   }
 
   disconnect() {
+    this.element.removeEventListener("ai-review:stagechange", this._onAiStageChange)
     this._view?.destroy()
     this._view = null
   }
@@ -140,6 +151,7 @@ export default class extends Controller {
 
   showAiDiff({ originalText = "", aiSuggestedText = "" } = {}) {
     if (!this._view) return
+    this._aiDiffVisible = true
     this._view.dispatch({
       effects: setAiDiffEffect({
         originalText,
@@ -151,6 +163,7 @@ export default class extends Controller {
 
   clearAiDiff() {
     if (!this._view) return
+    this._aiDiffVisible = false
     this._view.dispatch({
       effects: clearAiDiffEffect()
     })

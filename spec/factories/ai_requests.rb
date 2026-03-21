@@ -5,6 +5,7 @@ FactoryBot.define do
     requested_provider { nil }
     capability { "grammar_review" }
     status { "queued" }
+    sequence(:queue_position) { |n| n }
     attempts_count { 0 }
     max_attempts { 3 }
     next_retry_at { nil }

@@ -41,8 +41,9 @@ const aiDiffState = StateField.define({
     }
 
     return {
-      ...value,
-      decorations: buildDecorations(transaction.state.doc.toString(), value.aiSuggestedText)
+      decorations: Decoration.none,
+      originalText: "",
+      aiSuggestedText: ""
     }
   },
   provide: (field) => EditorView.decorations.from(field, (value) => value.decorations)

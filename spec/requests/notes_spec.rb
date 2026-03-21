@@ -67,14 +67,24 @@ RSpec.describe "Notes", type: :request do
       expect(response.parsed_body).to include(
         "note_id" => created.id,
         "note_slug" => created.slug,
-        "note_title" => "Nova promessa"
+        "note_title" => "Nova promessa",
+        "created" => true,
+        "seeded" => false
       )
     end
 
     it "creates an AI-seeded note from a promise title" do
       note
-      provider = instance_double(Ai::OllamaProvider, review: Ai::Result.new(content: "# Nova promessa\n\nCorpo inicial.", provider: "ollama", model: "qwen2.5:1.5b"))
+      provider = instance_double(Ai::OllamaProvider, name: "ollama", model: "qwen2.5:1.5b")
       allow(Ai::ProviderRegistry).to receive(:enabled?).and_return(true)
+      allow(Ai::ProviderRegistry).to receive(:resolve_selection).and_return(
+        {
+          name: "ollama",
+          model: "qwen2.5:1.5b",
+          selection_strategy: "automatic",
+          selection_reason: "seed_note_short"
+        }
+      )
       allow(Ai::ProviderRegistry).to receive(:build).and_return(provider)
 
       expect {
@@ -82,12 +92,43 @@ RSpec.describe "Notes", type: :request do
           params: { title: "Nova promessa", mode: "ai" },
           as: :json
       }.to change(Note, :count).by(1)
-        .and change(NoteRevision, :count).by(1)
+        .and change(AiRequest, :count).by(1)
 
       expect(response).to have_http_status(:created)
       created = Note.order(created_at: :desc).first
-      expect(created.head_revision).to be_present
-      expect(created.head_revision.content_markdown).to eq("# Nova promessa\n\nCorpo inicial.")
+      expect(created.head_revision).to be_nil
+      request_record = AiRequest.recent_first.first
+      expect(request_record.capability).to eq("seed_note")
+      expect(request_record.metadata).to include(
+        "promise_note_id" => created.id,
+        "promise_note_title" => "Nova promessa",
+        "promise_source_note_id" => note.id
+      )
+      expect(response.parsed_body).to include(
+        "note_id" => created.id,
+        "request_id" => request_record.id,
+        "request_status" => "queued",
+        "created" => true,
+        "seeded" => false
+      )
+    end
+
+    it "reuses an existing active note with the same title instead of creating a duplicate" do
+      existing = create(:note, :with_head_revision, title: "Nova promessa")
+      note
+
+      expect {
+        post create_from_promise_note_path(note.slug),
+          params: { title: "Nova promessa", mode: "ai" },
+          as: :json
+      }.not_to change(Note, :count)
+
+      expect(response).to have_http_status(:created)
+      expect(response.parsed_body).to include(
+        "note_id" => existing.id,
+        "created" => false,
+        "seeded" => true
+      )
     end
   end
 

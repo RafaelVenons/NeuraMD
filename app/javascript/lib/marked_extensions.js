@@ -65,7 +65,8 @@ export const highlightExtension = {
 }
 
 // Client-side wiki-link extension for the live preview.
-// Converts resolved [[Display Text|uuid]] and [[Display Text|f/c/b:uuid]] to
+// Converts resolved [[Display Text|uuid]], [[Display Text|f:uuid]],
+// [[Display Text|c:uuid]] and [[Display Text|b:uuid]] to
 // anchors, and unresolved [[Future Note]] references to promise spans.
 // Invalid targets are rendered as broken-link spans so raw [[...]] markup never
 // leaks into the preview.
@@ -77,7 +78,7 @@ export const wikilinkExtension = {
   level: "inline",
   start(src) { return src.indexOf("[[") },
   tokenizer(src) {
-    const match = /^\[\[([^\]|]+)\|([fcb]:)?([^\]]+)\]\]/i.exec(src)
+    const match = /^\[\[([^\]|]+)\|(?:([a-z]+):)?([^\]]+)\]\]/i.exec(src)
     if (match) {
       const target = match[3].trim()
       return {

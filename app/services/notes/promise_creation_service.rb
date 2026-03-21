@@ -1,6 +1,7 @@
 module Notes
   class PromiseCreationService
     AI_CAPABILITY = "seed_note".freeze
+    Result = Struct.new(:note, :created, :seeded, :request, keyword_init: true)
 
     def self.call(source_note:, title:, author:, mode:)
       new(source_note:, title:, author:, mode:).call
@@ -17,25 +18,53 @@ module Notes
       raise ArgumentError, "Titulo da nota obrigatorio." if @title.blank?
       raise ArgumentError, "Modo invalido." unless %w[blank ai].include?(@mode)
 
+      existing_note = find_existing_note
+      return Result.new(note: existing_note, created: false, seeded: existing_note.head_revision.present?, request: nil) if existing_note.present?
+
       note = Note.create!(
         title: @title,
         note_kind: "markdown",
         detected_language: @source_note.detected_language
       )
 
-      return note if @mode == "blank"
+      return Result.new(note:, created: true, seeded: false, request: nil) if @mode == "blank"
 
-      content = generate_seed_content
-      Notes::CheckpointService.call(note:, content:, author: @author)
-      note.reload
+      request = enqueue_seed_request(note)
+      Result.new(note: note.reload, created: true, seeded: false, request:)
     end
 
     private
 
-    def generate_seed_content
+    def find_existing_note
+      Note.active.find_by("LOWER(title) = ?", @title.downcase)
+    end
+
+    def enqueue_seed_request(note)
       raise Ai::ProviderUnavailableError, "IA nao configurada." unless Ai::ProviderRegistry.enabled?
 
-      prompt_input = [
+      request = Ai::ReviewService.enqueue(
+        note: @source_note,
+        note_revision: source_revision_for_request,
+        capability: AI_CAPABILITY,
+        text: prompt_input,
+        language: @source_note.detected_language,
+        requested_by: @author
+      )
+
+      request.update!(
+        metadata: request.metadata.merge(
+          "promise_note_id" => note.id,
+          "promise_note_title" => note.title,
+          "promise_source_note_id" => @source_note.id,
+          "promise_source_note_slug" => @source_note.slug
+        )
+      )
+
+      request
+    end
+
+    def prompt_input
+      [
         "Create an initial markdown note for the title below.",
         "Use the source note as contextual grounding when helpful.",
         "Return only the markdown body.",
@@ -47,19 +76,16 @@ module Notes
         "Source note content:",
         source_content.presence || "(empty)"
       ].join("\n")
+    end
 
-      provider = Ai::ProviderRegistry.build(
-        nil,
-        capability: AI_CAPABILITY,
-        text: prompt_input,
-        language: @source_note.detected_language
-      )
-
-      provider.review(
-        capability: AI_CAPABILITY,
-        text: prompt_input,
-        language: @source_note.detected_language
-      ).content
+    def source_revision_for_request
+      @source_note.note_revisions.find_by(revision_kind: :draft) ||
+        @source_note.head_revision ||
+        @source_note.note_revisions.create!(
+          content_markdown: @source_note.title,
+          revision_kind: :draft,
+          author: @author
+        )
     end
 
     def source_content

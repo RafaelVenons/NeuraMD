@@ -1,6 +1,6 @@
 class AiController < ApplicationController
   before_action :set_note
-  before_action :set_request, only: [:show, :destroy, :create_translated_note]
+  before_action :set_request, only: [:show, :retry, :destroy, :create_translated_note]
 
   def status
     authorize @note, :show?
@@ -24,6 +24,29 @@ class AiController < ApplicationController
     authorize @note, :show?
 
     render json: serialize_request(@request)
+  end
+
+  def reorder
+    authorize @note, :update?
+
+    requests = AiRequest.reorder_for_note!(
+      note: @note,
+      ordered_request_ids: params[:ordered_request_ids]
+    )
+
+    render json: {
+      requests: requests.map { |request| serialize_request(request.reload) }
+    }
+  end
+
+  def retry
+    authorize @note, :update?
+
+    Ai::ReviewService.retry_request!(@request)
+
+    render json: serialize_request(@request.reload)
+  rescue Ai::Error => e
+    render json: {error: e.message}, status: :unprocessable_entity
   end
 
   def review
@@ -59,11 +82,23 @@ class AiController < ApplicationController
   def destroy
     authorize @note, :update?
 
-    request = Ai::ReviewService.cancel_request!(@request)
+    cleanup_result = nil
+    request =
+      if @request.capability == "seed_note"
+        cleanup_result = Notes::PromiseCleanupService.call(ai_request: @request)
+        @request.reload
+      else
+        Ai::ReviewService.cancel_request!(@request)
+      end
 
     render json: {
       id: request.id,
-      status: request.status
+      status: request.status,
+      undone: cleanup_result.present?,
+      promise_note_id: request.metadata["promise_note_id"],
+      promise_note_deleted: cleanup_result&.note_deleted || false,
+      restored_content: cleanup_result&.source_content,
+      graph_changed: cleanup_result&.graph_changed || false
     }
   end
 

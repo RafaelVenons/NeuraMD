@@ -24,6 +24,19 @@ Aplicação self-hosted de notas com:
 
 ---
 
+## 1.1 Prioridades Atuais
+
+As prioridades correntes do produto, acima de polimento e expansões laterais, são:
+
+1. **Link ativo de grafo:** um link só entra no grafo e só pesa como critério importante de pesquisa quando estiver presente no corpo atual da nota src, no formato `[[Nome|uuid]]`, `[[Nome|f:uuid]]`, `[[Nome|c:uuid]]` ou `[[Nome|b:uuid]]`. Revisões antigas não contam; a referência operacional é sempre o conteúdo mais recente da nota src (`head_revision`/latest). Só `f:`, `b:` e `c:` têm semântica real de hierarquia; não inventar `h:` como role persistido.
+2. **IA sem sequestrar o preview durante o processamento:** requests de IA devem viver como jobs assíncronos, com fila visível em balões flutuantes; o preview só pode ser ocupado quando existir resposta com conteúdo relevante para mostrar.
+3. **Preservação estrutural de wikilinks pela IA:** a IA pode reescrever o texto visível do link, mas não pode remover nem corromper a estrutura `[[Titulo|uuid]]`, `[[Titulo|f:uuid]]`, `[[Titulo|c:uuid]]` ou `[[Titulo|b:uuid]]` existente.
+4. **Toolbar mínima de IA:** a toolbar deve expor apenas três ações de IA: melhoria de marcação Markdown, revisão gramatical e tradução.
+5. **Tradução com idioma e modelo independentes:** a ação de tradução deve permitir escolher separadamente língua alvo e modelo; deve criar/manter associação com a nota original, atualizar o título da nota traduzida e preservar/atualizar links relevantes.
+6. **Promessa com geração por IA ao fechar `]]`:** ao concluir uma promessa e escolher gerar por IA, o backend já cria a nota vazia/preparada para receber o conteúdo, o editor insere o UUID correto no link, a requisição de IA segue de forma assíncrona e o usuário permanece na nota atual. Se reprovar a resposta, deve existir opção de desfazer, removendo a nota criada no banco e o link correspondente.
+
+---
+
 ## 2. Stack
 
 ### Backend
@@ -204,7 +217,7 @@ note_revisions
 Links semânticos são escritos diretamente no texto da nota como wiki-links de duplo colchete:
 
 ```
-[[Display Text|uuid]]          → referência simples (hier_role = NULL)
+[[Display Text|uuid]]          → referência simples/legada
 [[Display Text|f:uuid]]        → Father  — dst está ACIMA na hierarquia (target_is_parent)
 [[Display Text|c:uuid]]        → Child   — dst está ABAIXO na hierarquia (target_is_child)
 [[Display Text|b:uuid]]        → Brother — dst está no mesmo nível     (same_level)
@@ -213,15 +226,23 @@ Links semânticos são escritos diretamente no texto da nota como wiki-links de 
 **Separação de responsabilidades:**
 - **Display Text** (antes do `|`) — texto livre escolhido pelo autor; pode ser alterado a qualquer momento sem quebrar o link; não precisa ser o título da nota destino
 - **UUID** (depois do `|`) — referência imutável à nota destino; nunca muda mesmo se a nota for renomeada
-- **Prefixo de role** (`f:`, `c:`, `b:`) — embutido antes do UUID; ausência = referência simples
+- **Prefixo de role** (`f:`, `c:`, `b:`) — embutido antes do UUID; ausência = referência simples/legada
+
+**Definição operacional de link ativo:**
+- só é considerado **ativo** se estiver presente no conteúdo atual da nota src
+- a fonte de verdade é a revisão mais recente da nota src (`head_revision`/latest), nunca revisões históricas
+- links só contam como ativos se estiverem presentes no latest da nota src e apontarem para uma nota dst existente
+- `f:`, `b:` e `c:` têm significado semântico no grafo
+- outros prefixos não fazem parte do contrato operacional atual
+- links legados ou históricos podem continuar renderizando, mas não devem pesar como aresta ativa do grafo fora das regras acima
 
 **Fluxo de inserção:**
 1. Usuário digita `[[`
 2. Dropdown abre com sugestões filtradas pelo título da nota (busca em tempo real)
 3. Usuário navega com `↓`/`↑`, seleciona com `Enter` ou `Tab`
-4. Editor insere `[[Título da Nota|uuid]]` — o Display Text inicial é o título atual da nota
+4. Editor insere `[[Título da Nota|uuid]]` ou o formato com role explícito escolhido pelo fluxo, sem inventar `h:`
 5. Após inserção, o usuário pode editar o Display Text livremente (o UUID permanece intacto)
-6. Para definir `hier_role`, o usuário edita manualmente o prefixo: `|uuid` → `|f:uuid`
+6. Para definir hierarquia real, o usuário edita manualmente o prefixo para `|f:uuid`, `|c:uuid` ou `|b:uuid`
 
 **Comportamento no editor (Stimulus + CodeMirror):**
 
@@ -236,7 +257,8 @@ Links semânticos são escritos diretamente no texto da nota como wiki-links de 
 | Mesmo UUID repetido no texto | Aceito; `note_links` deduplicado por `(src_note_id, dst_note_id, hier_role)` |
 
 **Preview:**
-- `[[Display Text|uuid]]` → `<a href="/notes/slug" title="Título atual da nota">Display Text</a>`
+- `[[Display Text|f:uuid]]`, `[[Display Text|c:uuid]]`, `[[Display Text|b:uuid]]` → `<a href="/notes/slug" title="Título atual da nota">Display Text</a>` quando `dst` existir
+- `[[Display Text|uuid]]` → renderiza por compatibilidade
 - O `title` do `<a>` é buscado do DB pelo UUID — exibe o título real da nota em tooltip
 - UUID inexistente → `<span class="wikilink-broken" title="Nota não encontrada">Display Text</span>`
 - `TitleSyncService` **não é necessário** — Display Text é livre; sem propagação automática
@@ -565,6 +587,62 @@ ai_requests (auditoria)
 | Azure OpenAI | Inicial | via compatibilidade OpenAI com `base_url` específico |
 | Local OpenAI-compatible | Inicial | ex: LM Studio / vLLM / outros gateways |
 
+### 4.6.1 Fila Visual de Requests Assíncronas
+
+Toda request de IA relevante para o editor deve aparecer em uma fila visual flutuante, separando claramente:
+
+- estado lógico da execução
+- estado visual derivado para apresentação
+- workspace de resposta útil no preview
+
+**Modelo mínimo por item da fila:**
+
+```ts
+interface QueueItem {
+  id: string;
+  serviceType: "review" | "markdown" | "translation" | "creation";
+  noteTitle: string;
+  modelName: string | null;
+  status: "queued" | "processing" | "success" | "error" | "cancelled";
+  queuePosition: number;
+  canCancel: boolean;
+  canRetry: boolean;
+}
+```
+
+**Regras de apresentação:**
+
+- cada balão mostra exatamente três linhas: serviço, título da nota e modelo usado
+- o balão deve ser compacto, flutuante e sem largura fixa rígida
+- o título da nota não quebra linha; se necessário usa ellipsis
+- o botão vermelho de cancelar fica no canto superior direito quando aplicável
+- o rótulo curto do serviço deve ser derivado de `serviceType + status` por função centralizada
+
+**Mapa visual por estado:**
+
+- `queued`: borda cinza, pode arrastar, pode cancelar
+- `processing`: borda amarela, pode cancelar, sem takeover do preview
+- `success`: borda verde, sem cancelar, fora da priorização da fila ativa
+- `error`: borda vermelha, clique no balão dispara retry consistente
+- `cancelled`: sai da fila ativa sem reaparecer por atualização tardia
+
+**Mecânica da fila:**
+
+- a fila é vertical
+- a frente da fila fica embaixo; itens menos prioritários ficam acima
+- o container da fila tem scroll vertical próprio ao exceder a altura disponível
+- deve existir reordenação manual por drag and drop para itens ainda ativos na fila
+- durante o drag, o item original não pode continuar visível na posição antiga; usar placeholder real, não duplicata
+- mudanças de estado não podem causar flicker, recriação agressiva do card ou reflow brusco
+
+**Regras operacionais:**
+
+- cancelar item `queued` remove da fila imediatamente
+- cancelar item `processing` deve solicitar abort e blindar a UI contra resposta tardia
+- retry de item `error` reenfileira como `queued` em posição coerente entre itens ainda ativos
+- identidade visual e lógica devem usar `id` estável, nunca índice do array
+- o preview só pode trocar para modo de revisão quando houver resposta útil; enquanto isso, só a fila visual representa progresso
+
 ---
 
 ## 5. Busca
@@ -580,20 +658,126 @@ ai_requests (auditoria)
 
 ## 6. Grafo Web (Fase 4)
 
-- A especificação detalhada do grafo vive em `GRAFO.md` e deve ser tratada como fonte de verdade
-- O estado atual de `/graph` e `/api/graph` deve ser considerado descartável se divergir de `GRAFO.md`
-- Backend do grafo em Rails; frontend do grafo em JavaScript no browser integrado à página Rails
-- Endpoint de dados do grafo deve retornar dataset normalizado (`notes`, `links`, `tags`, `noteTags`, `linkTags`)
-- Visualização com Sigma.js + Graphology
-- Filtros: `hier_role`, tag, profundidade máxima, foco por nó, modos de destaque por tags
-- Tooltip HTML persistente no clique e transitório no hover
-- Navegação por clique para abrir a nota
-- Arestas com semântica visual por `hier_role`
-- Insights futuros via CTE:
-  - Notas mais referenciadas
-  - Clusters de temas
-  - Notas órfãs
-  - Caminho mais curto entre duas notas
+- O estado atual de `/graph` e `/api/graph` é descartável se divergir deste plano
+- Backend do grafo em Rails; frontend em JavaScript no browser integrado à página Rails, sem SPA paralela
+- Stack da feature: Sigma.js, Graphology, `graphology-layout`, `graphology-layout-forceatlas2`, `graphology-layout-noverlap`, `graphology-traversal`
+
+### 6.1 Estrutura e contrato
+
+- `GET /graph` renderiza a página HTML do grafo
+- `GET /api/graph` existe apenas como endpoint de dados do novo grafo
+- o endpoint deve retornar dataset normalizado, nunca SVG pronto nem payload moldado pela UI antiga
+
+```json
+{
+  "notes": [],
+  "links": [],
+  "tags": [],
+  "noteTags": [],
+  "linkTags": [],
+  "meta": {
+    "generated_at": "2026-03-15T12:00:00Z",
+    "note_count": 0,
+    "link_count": 0,
+    "tag_count": 0
+  }
+}
+```
+
+**Regras do payload:**
+
+- `notes` carregam `id`, `slug`, `title`, `excerpt`, datas básicas
+- `links` carregam `id`, `src_note_id`, `dst_note_id`, `hier_role`, `context`
+- `tags`, `noteTags` e `linkTags` bastam para o cliente montar índices auxiliares
+- não enviar `content_markdown` completo no bootstrap do grafo
+- `excerpt` deve ser curto e derivado de conteúdo indexável
+- inconsistências podem ser omitidas do payload, mas devem ser logadas no backend
+
+### 6.2 Construção do cliente do grafo
+
+- cada `NoteDTO` vira um nó
+- cada `NoteLinkDTO` vira uma aresta dirigida `src_note_id -> dst_note_id`
+- a key da aresta é o próprio `note_link.id`
+- arestas com `source` ou `target` inexistente devem ser ignoradas e logadas
+- o cliente deve impedir duplicação estrutural de arestas ao montar o grafo
+
+**Índices auxiliares obrigatórios:**
+
+- `tagsByNoteId`
+- `tagsByLinkId`
+- `tagMetaById`
+- `outEdgesByNodeId`
+- `inEdgesByNodeId`
+- `neighborDepth1Cache`
+- `neighborDepth2Cache`
+
+Esses índices só devem ser recalculados quando entrar dataset novo ou houver mutação estrutural real, nunca em hover.
+
+### 6.3 Semântica visual
+
+**Links:**
+
+- `target_is_parent`: seta do lado do `target`
+- `target_is_child`: seta do lado do `source`
+- `same_level`: linha sem seta
+- `null`: linha sem seta
+- manter gap assimétrico entre extremidades para reforçar `src` e `dst`
+- considerar como parâmetros iniciais: `srcPadding = 4`, `dstPadding = 10`
+- como Sigma padrão não cobre bem seta seletiva e gap assimétrico, prever renderer customizado desde o início
+
+**Nós:**
+
+- `normal`: visível com cor plena
+- `ghost`: contexto residual dessaturado, sem destaque de label por padrão
+- `hidden`: sai da renderização
+
+### 6.4 Filtros, foco e navegação
+
+- filtros por `hier_role`, tags, profundidade e modo visual `all` vs `focused-tags`
+- a cor efetiva de nó/aresta deve vir da primeira tag relevante dentro de `activeTagsOrdered.slice(0, topN)`
+- clique em nó define `focusedNodeId`
+- hover abre tooltip transitório
+- clique fixa tooltip persistente; clicar em outro nó transfere o foco
+- clique fora limpa foco e tooltip persistente
+- tooltip deve ser HTML overlay, nunca desenhado dentro do canvas WebGL
+- tooltip usa `title`, `excerpt` e CTA de navegação para a nota
+
+**Organização local ao focar um nó:**
+
+- `father` tende para cima
+- `brother` tende para o meio
+- `child` tende para baixo
+- `src` tende para a esquerda e `dst` para a direita
+- profundidade 2 preserva essa leitura com distância um pouco maior do foco
+
+### 6.5 Sidebar, performance e aceite
+
+**Sidebar mínima:**
+
+- ordem manual de tags
+- corte `Top-N`
+- modo `all` vs `focused-tags`
+- filtros por `hier_role`
+- seleção de profundidade
+- reset de foco
+
+**Performance:**
+
+- dataset com eager loading e serialização previsível
+- nenhum N+1 no bootstrap
+- payload inicial leve o suficiente para uso interativo
+- layout e índices recalculados apenas quando necessário
+- crescimento futuro aceitável via subgrafo, carregamento incremental ou cache serializado, sem quebrar o contrato
+
+**Critérios de aceite:**
+
+- `/graph` não depende da implementação anterior
+- `/api/graph` segue o contrato normalizado acima
+- foco por nó, profundidade e filtros por tags funcionam juntos
+- semântica visual de `hier_role` é respeitada
+- tooltip é HTML, persistente no clique e transitório no hover
+- navegação para a nota funciona a partir do nó e do tooltip
+- a UI continua integrada ao Rails
 
 ---
 
@@ -622,13 +806,15 @@ ai_requests (auditoria)
   - Draft no servidor (debounce ~60s) — `POST /notes/:slug/draft`, cria `note_revision` com `kind: draft`; deleta o draft anterior da mesma nota; não aparece no histórico
   - Checkpoint manual (botão "Salvar" no canto superior direito) — `POST /notes/:slug/checkpoint`, cria `note_revision` com `kind: checkpoint`; permanente; aparece no histórico
 - **Histórico de versões:** timeline de checkpoints com diff visual; botão "Restaurar" cria novo checkpoint com conteúdo histórico
-- **Wiki-links `[[Título|uuid]]`** — autocomplete ao digitar `[[`, navegação com setas, inserção com Enter/Tab, link quebrado = fundo vermelho
-- **Sincronização de links em checkpoints** — `Links::SyncService` extrai wiki-links do markdown e atualiza `note_links` (create/delete, sem duplicatas por `(src, dst)`)
+- **Wiki-links `[[Título|uuid]]`, `[[Título|f:uuid]]`, `[[Título|c:uuid]]`, `[[Título|b:uuid]]`** — autocomplete ao digitar `[[`, navegação com setas, inserção com Enter/Tab, link quebrado = fundo vermelho
+- **Sincronização de links em checkpoints** — `Links::SyncService` extrai wiki-links do markdown atual e atualiza `note_links` (create/delete, sem duplicatas por `(src, dst, hier_role)`), considerando como ativos apenas os links presentes no latest
 - **Backlinks no preview** — rodapé com lista de notas que linkam para esta nota
 - Preview HTML via marked.js client-side (instantâneo, sem request)
 - Botão "Gerar Áudio" → abre dialog TTS com idioma/provider/voz
 - Player de áudio embutido quando `note_tts_asset` existe
 - Suporte IME para input CJK (Mandarim/Japonês/Coreano)
+- **Toolbar de IA mínima** — apenas: melhorar Markdown, revisão gramatical e tradução
+- **Fila visual de IA** — jobs em processamento aparecem como balões flutuantes; preview só troca para workspace de resposta quando houver conteúdo relevante
 
 ---
 
@@ -664,6 +850,11 @@ ai_requests (auditoria)
 app/
   models/
   services/
+    graph/
+      dataset_builder.rb
+      note_serializer.rb
+      link_serializer.rb
+      tag_serializer.rb
     notes/
     links/
       path_finder.rb
@@ -676,6 +867,25 @@ app/
   javascript/
     controllers/   (Stimulus)
     editor/        (CodeMirror 6)
+    graph/
+      app_state.js
+      graph_builder.js
+      graph_indexes.js
+      graph_filters.js
+      graph_focus.js
+      graph_layout.js
+      graph_style.js
+      graph_tags.js
+      graph_tooltip.js
+      graph_sidebar.js
+      graph_custom_edge_program.js
+  controllers/
+    graphs_controller.rb
+    api/
+      graphs_controller.rb
+  views/
+    graphs/
+      show.html.erb
 config/
   storage.yml      (backends de armazenamento)
 docs/
@@ -692,6 +902,66 @@ spec/
 ---
 
 ## 11. Plano Incremental de Execução
+
+### 11.1 Ordem de Implementação Técnica das Prioridades Atuais
+
+Executar nesta ordem, porque cada etapa reduz ambiguidade da próxima e evita retrabalho entre editor, backend e UX de IA:
+
+#### Etapa A — Normalizar o contrato de links ativos
+- [ ] Definir o contrato de links ativos usando apenas `|uuid`, `|f:uuid`, `|c:uuid` e `|b:uuid`, sem introduzir `h:` como role persistido
+- [ ] Ajustar parser/extractor para reconhecer apenas `f:`, `c:`, `b:` além de `|uuid`
+- [ ] Ajustar `Links::SyncService` para considerar apenas o conteúdo latest da nota src como fonte de verdade
+- [ ] Ajustar busca/grafo para dar peso apenas a links ativos no latest, com semântica real apenas para `f:`, `b:` e `c:`
+- [ ] Cobrir com specs de service/request para active links, links legados e remoção ao sair do latest
+
+#### Etapa B — Fechar o fluxo de promessa com IA no backend
+- [ ] Ao escolher "gerar com IA", criar imediatamente a nota destino no backend, ainda vazia ou em estado preparado para hidratação assíncrona
+- [ ] Inserir no editor atual o wiki-link já resolvido com UUID real
+- [ ] Não navegar para a nota criada; a criação é backend-only nesse momento
+- [ ] Criar `ai_request` associado à nota recém-criada e colocá-lo na fila visual
+- [ ] Expor ação de desfazer/rejeitar que remove a nota criada no banco quando a resposta da IA não for aprovada
+- [ ] Cobrir com specs de request/system para criação sem navegação, enqueue assíncrono, undo e limpeza de banco
+
+#### Etapa C — Reestruturar a UX operacional da IA
+- [ ] Separar estado de processamento do estado de resposta útil
+- [ ] Durante processamento, mostrar apenas balões flutuantes/queue cards, sem ocupar o preview
+- [ ] Permitir múltiplas requests simultâneas e cancelamento individual
+- [ ] Estruturar cada card da fila com três linhas: serviço, título da nota e modelo
+- [ ] Garantir fila vertical com frente da fila embaixo e scroll próprio no container
+- [ ] Implementar drag and drop com placeholder verdadeiro, sem duplicação visual do item arrastado
+- [ ] Mapear cor de borda por estado (`queued`, `processing`, `success`, `error`) e centralizar label curto por `serviceType + status`
+- [ ] Implementar retry de erro por clique no balão e blindagem contra respostas tardias após cancelamento
+- [ ] Só abrir workspace de resposta quando existir conteúdo relevante para revisão/aplicação
+- [ ] Cobrir com specs de system para fila, cancelamento, polling e ausência de takeover do preview
+
+#### Etapa D — Endurecer preservação estrutural de wikilinks
+- [ ] Incluir nos prompts instruções explícitas para preservar a estrutura `[[texto|uuid]]`, `[[texto|f:uuid]]`, `[[texto|c:uuid]]` e `[[texto|b:uuid]]`
+- [ ] Implementar validação/pós-processamento para rejeitar ou corrigir respostas que corrompam wikilinks
+- [ ] Garantir que a IA possa alterar texto visível, mas nunca destruir o UUID nem os prefixos `f:`, `c:` e `b:` quando existirem
+- [ ] Cobrir com specs de service e system para revisão, melhoria de Markdown e tradução
+
+#### Etapa E — Reduzir e estabilizar a toolbar de IA
+- [ ] Limitar a toolbar a três ações: melhorar Markdown, revisão gramatical e tradução
+- [ ] Remover ou esconder entradas redundantes de sugestão/rewrite fora desse recorte
+- [ ] Garantir que cada ação abra o fluxo correto sem conflitar com a fila de jobs
+- [ ] Cobrir com system specs da toolbar mínima
+
+#### Etapa F — Concluir tradução assistida com nota associada
+- [ ] Implementar UI com escolha independente de língua alvo e modelo
+- [ ] Criar/atualizar nota traduzida associada à original
+- [ ] Atualizar título da nota traduzida conforme a língua alvo
+- [ ] Inserir no conteúdo traduzido a associação `Traduzida de [[Titulo original|b:uuid]]`
+- [ ] Ajustar links relevantes da nota traduzida preservando UUIDs e sem quebrar a relação com a original
+- [ ] Não criar backlink sintético na nota original nem `brother` recíproco sem que o link exista no corpo latest da nota dst
+- [ ] Cobrir com specs de request/service/system para criação, associação e preservação estrutural
+
+#### Etapa G — Reconciliar grafo, busca e operações de descarte
+- [ ] Garantir que notas criadas por promessa com IA só entrem no grafo conforme seu latest válido
+- [ ] Garantir que o desfazer da promessa com IA remova nota, link e requests associados de forma consistente
+- [ ] Revisar impactos em pesquisa, backlinks e filtros do grafo
+- [ ] Rodar suíte de regressão focada em links, IA e tradução
+
+**Critério de sequência:** não avançar para a etapa seguinte sem ter teste reproduzindo o comportamento e sem validar que a etapa anterior não reabriu regressão em links, preview ou fila de IA.
 
 ### Fase 0 — Fundação *(define o esqueleto)*
 - [x] Rails 8 + PostgreSQL + Docker
@@ -727,15 +997,18 @@ spec/
 
 #### 2b — Wiki-Links semânticos com autocomplete
 - [x] `GET /notes/search?q=:query` — endpoint JSON `{id, title, slug}` para autocomplete
-- [x] `Links::ExtractService` — extrai `[[Título|uuid]]` do markdown, retorna array de UUIDs
-- [x] `Links::SyncService` — diff entre links extraídos e `note_links` existentes; cria/deleta; sem duplicatas por `(src_note_id, dst_note_id)`; só roda em checkpoints
+- [ ] Ajustar o contrato prioritário de link ativo para `[[Título|uuid]]`, `[[Título|f:uuid]]`, `[[Título|c:uuid]]` e `[[Título|b:uuid]]`, sem introduzir `h:`
+- [ ] `Links::ExtractService` — extrair `f:`, `c:` e `b:` preservando semântica e compatibilidade com `|uuid`
+- [ ] `Links::SyncService` — considerar apenas links presentes no latest da nota src como ativos no grafo; revisões antigas não contam
 - [ ] ~~`Links::TitleSyncService`~~ — não necessário; Display Text é livre e não rastreia o título da nota
 - [x] CodeMirror extension: detecta `[[`, abre dropdown Stimulus com sugestões via fetch, navega com `↑`/`↓`, insere com `Enter`/`Tab`, fecha com `Esc`
 - [x] Decoração de link quebrado: UUID não encontrado no DB → classe CSS `wikilink-broken` (fundo vermelho) no editor via CodeMirror ViewPlugin
 - [x] Preview: render `[[Título|uuid]]` como `<a href="/notes/slug">Título</a>` (client-side no preview controller)
 - [x] Preview: se UUID inexistente, render como `<span class="wikilink-broken">Título</span>`
 - [x] Backlinks no preview: seção no rodapé com notas src linkando para a nota atual
-- [x] Specs: ExtractService, SyncService, TitleSyncService, endpoint search, render com links
+- [ ] Fluxo de promessa: ao fechar `]]` e escolher IA, criar a nota no backend, inserir UUID correto no link atual, enfileirar job visual e permanecer na nota atual
+- [ ] Desfazer promessa com IA rejeitada: apagar a nota criada no banco e remover o link quando o usuário descartar a resposta
+- [ ] Specs: ExtractService, SyncService, endpoint search, render com links ativos/legados e promessa com IA
 
 #### 2c — Tags
 - [x] API Tags: `GET/POST/DELETE /tags` — JSON, Pundit auth
@@ -759,7 +1032,7 @@ spec/
 - **Entrega:** produtividade real
 
 ### Fase 4 — Grafo Web
-- [x] Revisar a feature do grafo partindo de `GRAFO.md`, sem reaproveitar por inércia a implementação atual
+- [x] Revisar a feature do grafo partindo do contrato consolidado neste `PLAN.md`, sem reaproveitar por inércia a implementação atual
 - [x] Novo `GET /api/graph` com dataset normalizado (`notes`, `links`, `tags`, `noteTags`, `linkTags`)
 - [x] Nova página `GET /graph` integrada ao Rails e desacoplada da UI atual
 - [x] Visualização JS com Sigma.js + Graphology
@@ -784,6 +1057,23 @@ spec/
 - [x] Marcar revisões aceitas via IA com metadado mais explícito no fluxo de checkpoint
 - [x] Roteamento automático de modelo para Ollama com override manual na UI
 - **Entrega:** IA controlável e segura
+
+#### Fase 5 — Prioridades de UX e preservação estrutural
+
+- [ ] Remover overlay/modal bloqueante durante processamento; usar apenas balões flutuantes e fila de jobs enquanto não houver resposta útil
+- [ ] Permitir múltiplas requisições enfileiradas e cancelamento individual
+- [ ] Cada item da fila deve ser um balão compacto com serviço, título da nota e modelo usado
+- [ ] A fila deve ser vertical, com frente embaixo, scroll próprio e reordenação por drag and drop
+- [ ] Durante drag, usar placeholder e impedir duplicata visível do mesmo item
+- [ ] Borda por estado: cinza (`queued`), amarela (`processing`), verde (`success`), vermelha (`error`)
+- [ ] Retry por clique em item com erro; cancelamento imediato para itens ainda ativos
+- [ ] Separar claramente estado lógico (`queued/running/succeeded/failed/cancelled`) do estado visual derivado
+- [ ] O preview só pode ser substituído quando existir resposta com conteúdo relevante
+- [ ] Reduzir toolbar de IA para exatamente três ações: melhorar Markdown, revisão gramatical e tradução
+- [ ] Endurecer prompts e pós-processamento para preservar wikilinks existentes (`[[Titulo|uuid]]`, `[[Titulo|f:uuid]]`, `[[Titulo|c:uuid]]`, `[[Titulo|b:uuid]]`)
+- [ ] Validar resposta de IA antes de aplicar: nunca quebrar/remover a parte estrutural `[[...|uuid]]` e seus prefixos hierárquicos válidos
+- [ ] Para promessa com IA, manter criação backend-only até aprovação; se houver descarte, remover a nota criada
+- [ ] Specs de system/request para fila visual, cancelamento e preservação estrutural de wikilinks
 
 #### Fase 5 — O que portar do FrankMD e o que não portar
 
@@ -848,9 +1138,14 @@ Essas decisões devem permanecer em ENV e em service de roteamento, nunca hardco
 
 ### Fase 5.5 — Tradução Assistida com Nota Irmã
 - [ ] Nova capability `translate`
+- [ ] UI de tradução com duas escolhas independentes: língua alvo e modelo
 - [ ] Criar nota irmã (`brother`) a partir de uma nota existente para armazenar a tradução
 - [ ] Vincular idioma de origem/destino na nota e na request
-- [ ] UI para escolher idioma alvo e confirmar criação da nota irmã
+- [ ] Atualizar o título da nota traduzida para refletir a língua alvo
+- [ ] Inserir no corpo traduzido a associação explícita com a nota original: `Traduzida de [[Titulo original|b:uuid]]`
+- [ ] Atualizar links necessários da nota traduzida para manter associação com a nota original sem quebrar UUIDs
+- [ ] Não criar dois links `brother` sintéticos; só pode existir link persistido quando a nota src realmente tiver o markup correspondente no corpo latest
+- [ ] Corrigir o bug atual em que a tradução cria link recíproco para uma nota dst que não contém o link em seu próprio corpo
 - [ ] Fluxo inicial priorizando `pt-BR -> en`
 - [ ] Benchmarks adicionais com textos maiores e Markdown real
 - **Entrega:** tradução controlada, auditável e sem misturar idiomas na mesma nota
@@ -938,7 +1233,7 @@ Essas escolhas devem ser revisitadas quando houver benchmark real de CPU/GPU, th
 | `f:/c:/b:` prefixos de hier_role no UUID | Sem sintaxe extra no Display Text; role embutida no campo de referência |
 | Tooltip no preview = título real da nota | Display Text pode divergir do título; tooltip sempre mostra o título atual do DB |
 | Sem TitleSyncService | Display Text é livre — não há título para propagar; simplifica drasticamente |
-| Grafo especificado em `GRAFO.md` | Evitar drift entre visão de produto e implementação da feature |
+| Grafo consolidado neste `PLAN.md` | Evitar drift entre visão de produto e implementação da feature |
 
 ---
 
@@ -1209,5 +1504,5 @@ Antes de considerar uma funcionalidade completa, deve haver:
 
 ---
 
-*Última atualização: 2026-03-06 (Política de testes adicionada)*
+*Última atualização: 2026-03-21 (plano consolidado; grafo e queue absorvidos)*
 *NeuraMD — Stack: Rails 8 · PostgreSQL 16 · Hotwire · CodeMirror 6 · Docker*

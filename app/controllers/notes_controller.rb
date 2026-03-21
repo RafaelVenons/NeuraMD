@@ -174,7 +174,9 @@ class NotesController < ApplicationController
       note_title: promise_note.title,
       note_url: note_path(promise_note.slug),
       created: promise_result.created,
-      seeded: promise_result.seeded
+      seeded: promise_result.seeded,
+      request_id: promise_result.request&.id,
+      request_status: promise_result.request&.status
     }, status: :created
   rescue Ai::Error, ArgumentError => e
     render json: {error: e.message}, status: :unprocessable_entity

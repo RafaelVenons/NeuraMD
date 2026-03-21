@@ -19,7 +19,7 @@ module Links
     }.freeze
 
     UUID_RE = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i
-    WIKILINK_RE = /\[\[(?:[^\]|]+)\|(?<role>[fcb]:)?(?<uuid>#{UUID_RE})\]\]/i
+    WIKILINK_RE = /\[\[(?:[^\]|]+)\|(?:(?<role>[a-z]+):)?(?<uuid>#{UUID_RE})\]\]/i
 
     def self.call(content)
       new(content).call
@@ -32,14 +32,35 @@ module Links
     def call
       @content
         .scan(WIKILINK_RE)
-        .map { |role_prefix, uuid| {dst_note_id: uuid.downcase, hier_role: ROLE_MAP[role_prefix&.chomp(":")]} }
+        .map { |role_prefix, uuid| build_link(role_prefix, uuid) }
         .each_with_object({}) do |link, by_destination|
           current = by_destination[link[:dst_note_id]]
-          if current.nil? || link[:hier_role].present? || current[:hier_role].nil?
+          if replace_link?(current, link)
             by_destination[link[:dst_note_id]] = link
           end
         end
         .values
+    end
+
+    private
+
+    def build_link(role_prefix, uuid)
+      role_key = role_prefix.to_s.downcase
+
+      {
+        dst_note_id: uuid.downcase,
+        hier_role: ROLE_MAP[role_key]
+      }
+    end
+
+    def replace_link?(current, candidate)
+      return true if current.nil?
+
+      candidate_score(candidate) >= candidate_score(current)
+    end
+
+    def candidate_score(link)
+      link[:hier_role].present? ? 1 : 0
     end
   end
 end

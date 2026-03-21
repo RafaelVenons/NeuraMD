@@ -35,7 +35,9 @@ Rails.application.routes.draw do
       get  :ai_status, to: "ai#status"
       post :ai_review, to: "ai#review"
       get  :ai_requests, to: "ai#index"
+      patch "ai_requests/reorder", to: "ai#reorder", as: :reorder_ai_requests
       get  "ai_requests/:request_id", to: "ai#show", as: :ai_request
+      post "ai_requests/:request_id/retry", to: "ai#retry", as: :retry_ai_request
       delete "ai_requests/:request_id", to: "ai#destroy"
       post "ai_requests/:request_id/create_translated_note", to: "ai#create_translated_note", as: :ai_request_translated_note
       post :autosave    # legacy — kept for compatibility during transition

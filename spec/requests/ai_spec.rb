@@ -189,6 +189,50 @@ RSpec.describe "AI", type: :request do
       expect(response.parsed_body["duration_ms"]).to be >= 1000
       expect(response.parsed_body["duration_human"]).to be_present
       expect(response.parsed_body["created_at"]).to be_present
+      expect(response.parsed_body["note_title"]).to eq(note.title)
+    end
+  end
+
+  describe "POST /notes/:slug/ai_requests/:request_id/retry" do
+    it "requeues a failed request for the current note" do
+      request_record = create(
+        :ai_request,
+        note_revision: note.head_revision,
+        status: "failed",
+        provider: "openai",
+        requested_provider: "openai",
+        model: "gpt-4o-mini",
+        error_message: "Falha temporaria"
+      )
+
+      post retry_ai_request_note_path(note.slug, request_record.id), as: :json
+
+      expect(response).to have_http_status(:ok)
+      expect(response.parsed_body).to include(
+        "id" => request_record.id,
+        "status" => "queued",
+        "note_title" => note.title,
+        "queue_position" => request_record.reload.queue_position
+      )
+      expect(request_record.reload.status).to eq("queued")
+    end
+  end
+
+  describe "PATCH /notes/:slug/ai_requests/reorder" do
+    it "persists queue priority for active requests of the note" do
+      first = create(:ai_request, note_revision: note.head_revision, status: "queued", queue_position: 1)
+      second = create(:ai_request, note_revision: note.head_revision, status: "running", queue_position: 2)
+      third = create(:ai_request, note_revision: note.head_revision, status: "retrying", queue_position: 3)
+
+      patch reorder_ai_requests_note_path(note.slug),
+        params: { ordered_request_ids: [third.id, first.id, second.id] },
+        as: :json
+
+      expect(response).to have_http_status(:ok)
+      expect(first.reload.queue_position).to eq(2)
+      expect(second.reload.queue_position).to eq(3)
+      expect(third.reload.queue_position).to eq(1)
+      expect(response.parsed_body["requests"].map { |item| item["id"] }).to eq([third.id, first.id, second.id])
     end
   end
 
@@ -228,6 +272,37 @@ RSpec.describe "AI", type: :request do
       expect(request_record.reload.status).to eq("canceled")
       expect(request_record.next_retry_at).to be_nil
       expect(request_record.completed_at).to be_present
+    end
+
+    it "undoes a seed_note promise by deleting the created note" do
+      promise_note = create(:note, title: "Promessa IA")
+      Notes::DraftService.call(note: note, content: "Abrir [[Promessa IA|#{promise_note.id}]]", author: user)
+      request_record = create(
+        :ai_request,
+        note_revision: note.head_revision,
+        capability: "seed_note",
+        status: "succeeded",
+        metadata: {
+          "language" => note.detected_language,
+          "promise_source_note_id" => note.id,
+          "promise_note_id" => promise_note.id,
+          "promise_note_title" => promise_note.title
+        }
+      )
+
+      delete ai_request_note_path(note.slug, request_record.id), as: :json
+
+      expect(response).to have_http_status(:ok)
+      expect(response.parsed_body).to include(
+        "id" => request_record.id,
+        "status" => "succeeded",
+        "undone" => true,
+        "promise_note_id" => promise_note.id,
+        "promise_note_deleted" => true,
+        "restored_content" => "Abrir [[Promessa IA]]",
+        "graph_changed" => true
+      )
+      expect(promise_note.reload).to be_deleted
     end
   end
 

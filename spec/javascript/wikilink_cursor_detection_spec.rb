@@ -3,7 +3,7 @@ require "rails_helper"
 # Validates the JS wikilink_controller._detectCursorInLink logic in Ruby.
 #
 # The JS pattern:
-#   FULL_RE = /\[\[([^\]|]+)\|([fcb]:)?([uuid])\]\]/gi
+#   FULL_RE = /\[\[([^\]|]+)\|([a-z]+:)?([uuid])\]\]/gi
 #
 # Boundary condition (fixed): cursorPos >= from && cursorPos <= to
 #   — previously strict (> and <), which missed position 0 and end-of-text.
@@ -14,7 +14,7 @@ require "rails_helper"
 RSpec.describe "JS wikilink cursor detection (boundary logic mirror)" do
   # Ruby mirror of the JS FULL_RE pattern
   UUID_RE = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i
-  FULL_RE = /\[\[([^\]|]+)\|([fcb]:)?(#{UUID_RE})\]\]/i
+  FULL_RE = /\[\[([^\]|]+)\|([a-z]+:)?(#{UUID_RE})\]\]/i
 
   # Returns the wiki-link that the cursor at `cursor_pos` is inside, or nil.
   def detect_link(content, cursor_pos)
@@ -111,6 +111,12 @@ RSpec.describe "JS wikilink cursor detection (boundary logic mirror)" do
       text = "[[Plain|#{uuid}]]"
       result = detect_link_multi(text, 5)
       expect(result[:role]).to be_nil
+    end
+
+    it "detects arbitrary role prefixes without treating them as broken syntax" do
+      text = "[[Custom|x:#{uuid}]]"
+      result = detect_link_multi(text, 5)
+      expect(result[:role]).to eq("x")
     end
   end
 end
