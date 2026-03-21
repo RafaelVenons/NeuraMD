@@ -70,7 +70,8 @@ module Ai
               capability: capability,
               text: text,
               language: language,
-              target_language: target_language
+              target_language: target_language,
+              available_models: available_models_for(resolved_name)
             )
           end
 

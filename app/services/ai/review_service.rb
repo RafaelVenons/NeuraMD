@@ -1,4 +1,6 @@
 require "digest"
+require "uri"
+require "zlib"
 require_relative "error"
 require_relative "provider_registry"
 
@@ -45,6 +47,7 @@ module Ai
             "note_id" => note.id,
             "requested_by_id" => requested_by&.id,
             "requested_model" => provider.model,
+            "provider_base_url" => provider.base_url,
             "model_selection_strategy" => selection[:selection_strategy],
             "model_selection_reason" => selection[:selection_reason]
           }
@@ -57,24 +60,51 @@ module Ai
       def process_request!(request)
         run_started_at = Time.current
 
-        next_ready = AiRequest.next_ready_request(now: run_started_at)
-        return {status: :deferred, wait: 1.second} if next_ready.present? && next_ready.id != request.id
-        return {status: :deferred, wait: 1.second} if AiRequest.where(status: "running").where.not(id: request.id).exists?
+        if serialized_host_request?(request)
+          blocking_outcome = nil
 
-        request.with_lock do
-          return request if request.succeeded?
-          return request if request.failed? || request.canceled?
+          with_execution_slot_lock(request) do
+            request.reload
+            if request.succeeded? || request.failed? || request.canceled?
+              blocking_outcome = request
+              next
+            end
 
-          request.update!(
-            status: "running",
-            started_at: request.started_at || run_started_at,
-            attempts_count: request.attempts_count + 1,
-            queue_position: request.queue_position,
-            error_message: nil,
-            last_error_at: nil,
-            last_error_kind: nil,
-            next_retry_at: nil
-          )
+            blocking_request = blocking_request_for(request, now: run_started_at)
+            if blocking_request.present?
+              blocking_outcome = {status: :deferred, wait: 1.second}
+              next
+            end
+
+            request.update!(
+              status: "running",
+              started_at: request.started_at || run_started_at,
+              attempts_count: request.attempts_count + 1,
+              queue_position: request.queue_position,
+              error_message: nil,
+              last_error_at: nil,
+              last_error_kind: nil,
+              next_retry_at: nil
+            )
+          end
+
+          return blocking_outcome if blocking_outcome.present?
+        else
+          request.with_lock do
+            return request if request.succeeded?
+            return request if request.failed? || request.canceled?
+
+            request.update!(
+              status: "running",
+              started_at: request.started_at || run_started_at,
+              attempts_count: request.attempts_count + 1,
+              queue_position: request.queue_position,
+              error_message: nil,
+              last_error_at: nil,
+              last_error_kind: nil,
+              next_retry_at: nil
+            )
+          end
         end
 
         provider = ProviderRegistry.build(request.requested_provider, model_name: request.metadata["requested_model"])
@@ -100,6 +130,7 @@ module Ai
           completed_at: Time.current
         )
         apply_request_side_effect!(request)
+        enqueue_next_request_after!(request)
         :succeeded
       rescue Ai::Error => e
         handle_failure!(request, e)
@@ -117,6 +148,7 @@ module Ai
           )
         end
 
+        enqueue_next_request_after!(request)
         request
       end
 
@@ -151,6 +183,20 @@ module Ai
 
       private
 
+      def with_execution_slot_lock(request)
+        ApplicationRecord.transaction(requires_new: true) do
+          advisory_key = advisory_lock_key_for(request)
+          ApplicationRecord.connection.select_value("SELECT pg_advisory_xact_lock(#{advisory_key})")
+          yield
+        end
+      end
+
+      def blocking_request_for(request, now:)
+        return nil unless serialized_host_request?(request)
+
+        running_request_for_host(request) || higher_priority_request_for_host(request, now:)
+      end
+
       def handle_failure!(request, error)
         error_kind = classify_error(error)
         attrs = {
@@ -178,8 +224,63 @@ module Ai
               completed_at: Time.current
             )
           )
+          enqueue_next_request_after!(request)
           {status: :failed, error: error}
         end
+      end
+
+      def enqueue_next_request_after!(request)
+        next_request =
+          if serialized_host_request?(request)
+            next_request_for_host(request)
+          else
+            AiRequest.next_ready_request
+          end
+
+        return if next_request.blank? || next_request.id == request.id
+
+        Ai::ReviewJob.perform_later(next_request.id)
+      end
+
+      def running_request_for_host(request)
+        host_scope_for(request)
+          .where(status: "running")
+          .where.not(id: request.id)
+          .first
+      end
+
+      def higher_priority_request_for_host(request, now:)
+        host_ready_scope_for(request, now:)
+          .where.not(id: request.id)
+          .queue_order
+          .first
+          &.then { |candidate| candidate.queue_position < request.queue_position ? candidate : nil }
+      end
+
+      def next_request_for_host(request, now: Time.current)
+        host_ready_scope_for(request, now:)
+          .queue_order
+          .first
+      end
+
+      def host_scope_for(request)
+        AiRequest.where(provider: request.provider)
+          .where("metadata ->> 'provider_base_url' = ?", request.metadata["provider_base_url"].to_s)
+      end
+
+      def host_ready_scope_for(request, now:)
+        host_scope_for(request)
+          .where(status: "queued")
+          .or(host_scope_for(request).where(status: "retrying").where("next_retry_at IS NULL OR next_retry_at <= ?", now))
+      end
+
+      def serialized_host_request?(request)
+        %w[ollama local].include?(request.provider)
+      end
+
+      def advisory_lock_key_for(request)
+        lock_name = "ai-review-slot:#{request.provider}:#{request.metadata["provider_base_url"]}"
+        Zlib.crc32(lock_name)
       end
 
       def request_hash(result:, request:)

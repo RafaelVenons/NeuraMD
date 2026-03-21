@@ -86,7 +86,7 @@ services:
     environment:
       SHARED_AI_ROOT: ${SHARED_AI_ROOT:-/mnt/neuramd-share}
       OLLAMA_API_BASE: ${OLLAMA_API_BASE:-http://127.0.0.1:11434}
-      OLLAMA_MODEL: ${OLLAMA_MODEL:-qwen3.5:4b}
+      OLLAMA_MODEL: ${OLLAMA_MODEL:-qwen2.5:1.5b}
       AI_WATCHER_POLL_INTERVAL: ${AI_WATCHER_POLL_INTERVAL:-2}
       AI_WATCHER_REQUEST_TIMEOUT: ${AI_WATCHER_REQUEST_TIMEOUT:-180}
     volumes:

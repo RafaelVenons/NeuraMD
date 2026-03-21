@@ -98,7 +98,7 @@ RSpec.describe "AI providers" do
     it "builds the prompt payload and parses chat responses" do
       provider = described_class.new(
         name: "ollama",
-        model: "qwen3.5:4b",
+        model: "qwen2.5:1.5b",
         base_url: "http://AIrch:11434",
         api_key: nil
       )
@@ -107,7 +107,7 @@ RSpec.describe "AI providers" do
         "http://AIrch:11434/api/chat",
         headers: {},
         body: hash_including(
-          model: "qwen3.5:4b",
+          model: "qwen2.5:1.5b",
           stream: false,
           messages: [
             hash_including(role: "system", content: include("Preferred language of the output: pt-BR.")),
@@ -126,7 +126,7 @@ RSpec.describe "AI providers" do
 
       expect(result.content).to eq("Texto corrigido.")
       expect(result.provider).to eq("ollama")
-      expect(result.model).to eq("qwen3.5:4b")
+      expect(result.model).to eq("qwen2.5:1.5b")
       expect(result.tokens_in).to eq(21)
       expect(result.tokens_out).to eq(14)
     end
@@ -134,7 +134,7 @@ RSpec.describe "AI providers" do
     it "uses a long default read timeout for ollama providers" do
       provider = described_class.new(
         name: "ollama",
-        model: "qwen3.5:4b",
+        model: "qwen2.5:1.5b",
         base_url: "http://AIrch:11434",
         api_key: nil
       )

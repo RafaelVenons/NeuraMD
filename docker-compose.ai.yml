@@ -48,7 +48,7 @@ services:
       AI_PROVIDER: ${AI_PROVIDER:-ollama}
       AI_ENABLED_PROVIDERS: ${AI_ENABLED_PROVIDERS:-ollama}
       OLLAMA_API_BASE: ${OLLAMA_API_BASE:-http://AIrch:11434}
-      OLLAMA_MODEL: ${OLLAMA_MODEL:-qwen3.5:4b}
+      OLLAMA_MODEL: ${OLLAMA_MODEL:-qwen2.5:1.5b}
     volumes:
       - ${SHARED_AI_ROOT:-/mnt/neuramd-share}:/mnt/neuramd-share
 

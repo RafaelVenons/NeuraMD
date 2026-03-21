@@ -973,7 +973,7 @@ RSpec.describe "AI review", type: :system do
       capability: "seed_note",
       provider: "ollama",
       requested_provider: "ollama",
-      model: "qwen3.5:4b",
+      model: "qwen2.5:1.5b",
       status: "succeeded",
       completed_at: Time.current,
       output_text: "# Historico Promessa\n\nConteudo criado.",
@@ -1002,7 +1002,7 @@ RSpec.describe "AI review", type: :system do
       capability: "seed_note",
       provider: "ollama",
       requested_provider: "ollama",
-      model: "qwen3.5:4b",
+      model: "qwen2.5:1.5b",
       status: "queued",
       metadata: {
         "language" => note.detected_language,

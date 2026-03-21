@@ -91,6 +91,8 @@ RSpec.describe Ai::ProviderRegistry do
     end
 
     it "automatically selects an ollama model based on capability and text length" do
+      allow(Ai::OllamaProvider).to receive(:available_models).and_return(["qwen2.5:0.5b", "qwen2.5:1.5b"])
+
       selection = described_class.resolve_selection(
         "ollama",
         capability: "grammar_review",
@@ -101,6 +103,20 @@ RSpec.describe Ai::ProviderRegistry do
       expect(selection[:model]).to eq("qwen2.5:0.5b")
       expect(selection[:selection_strategy]).to eq("automatic")
       expect(selection[:selection_reason]).to eq("grammar_short")
+    end
+
+    it "falls back to another available ollama model when the preferred one is absent" do
+      allow(Ai::OllamaProvider).to receive(:available_models).and_return(["qwen2.5:1.5b", "llama3.2:1b"])
+
+      selection = described_class.resolve_selection(
+        "ollama",
+        capability: "rewrite",
+        text: "a" * 2_000,
+        language: "pt-BR"
+      )
+
+      expect(selection[:model]).to eq("qwen2.5:1.5b")
+      expect(selection[:selection_reason]).to eq("rewrite_long")
     end
 
     it "keeps the manual override when a model is explicitly chosen" do

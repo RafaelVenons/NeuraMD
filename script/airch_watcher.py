@@ -126,7 +126,7 @@ class AirchWatcher:
         self.request_timeout = env_int("AI_WATCHER_REQUEST_TIMEOUT", 180)
         self.tooltip_job_limit = env_int("AI_WATCHER_TOOLTIP_JOBS", 5)
         self.base_url = os.getenv("OLLAMA_API_BASE", "http://127.0.0.1:11434").rstrip("/")
-        self.default_model = os.getenv("OLLAMA_MODEL", "qwen3.5:4b")
+        self.default_model = os.getenv("OLLAMA_MODEL", "qwen2.5:1.5b")
         self.hostname = socket.gethostname()
         self.state = WatcherState.from_path(self.state_file)
 

@@ -8,7 +8,8 @@ RSpec.describe Ai::ModelRouter do
         configured_model: "qwen2.5:1.5b",
         capability: "grammar_review",
         text: "Texto curto com erro.",
-        language: "pt-BR"
+        language: "pt-BR",
+        available_models: ["qwen2.5:0.5b", "qwen2.5:1.5b"]
       )
 
       expect(selection).to include(
@@ -24,7 +25,8 @@ RSpec.describe Ai::ModelRouter do
         configured_model: "qwen2.5:1.5b",
         capability: "rewrite",
         text: "a" * 2_000,
-        language: "pt-BR"
+        language: "pt-BR",
+        available_models: ["llama3.2:3b", "qwen2.5:3b"]
       )
 
       expect(selection).to include(
@@ -40,7 +42,8 @@ RSpec.describe Ai::ModelRouter do
         capability: "translate",
         text: "O paciente melhorou depois do ajuste da medicacao.",
         language: "pt-BR",
-        target_language: "en"
+        target_language: "en",
+        available_models: ["qwen2:1.5b", "qwen2.5:1.5b"]
       )
 
       expect(selection).to include(
@@ -55,7 +58,8 @@ RSpec.describe Ai::ModelRouter do
         configured_model: "qwen2.5:1.5b",
         capability: "seed_note",
         text: "a" * 2_200,
-        language: "pt-BR"
+        language: "pt-BR",
+        available_models: ["qwen2.5:3b", "qwen2.5:1.5b"]
       )
 
       expect(selection).to include(
@@ -77,6 +81,22 @@ RSpec.describe Ai::ModelRouter do
         model: "gpt-4o-mini",
         selection_strategy: "configured_default",
         selection_reason: "provider_non_ollama"
+      )
+    end
+
+    it "falls back to another available ollama model when the preferred one is missing" do
+      selection = described_class.route(
+        provider_name: "ollama",
+        configured_model: "qwen2.5:1.5b",
+        capability: "rewrite",
+        text: "a" * 2_000,
+        language: "pt-BR",
+        available_models: ["qwen2.5:1.5b", "llama3.2:1b"]
+      )
+
+      expect(selection).to include(
+        model: "qwen2.5:1.5b",
+        selection_reason: "rewrite_long"
       )
     end
   end

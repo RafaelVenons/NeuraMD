@@ -6,7 +6,7 @@ RSpec.describe Ai::ReviewService do
 
   describe ".enqueue" do
     it "creates a queued ai_request and enqueues the job" do
-      provider = instance_double(Ai::OpenaiCompatibleProvider, name: "openai", model: "gpt-4o-mini")
+      provider = instance_double(Ai::OpenaiCompatibleProvider, name: "openai", model: "gpt-4o-mini", base_url: "https://api.openai.com/v1")
       allow(Ai::ProviderRegistry).to receive(:resolve_selection).and_return(
         {
           name: "openai",
@@ -38,10 +38,11 @@ RSpec.describe Ai::ReviewService do
       expect(request.max_attempts).to eq(3)
       expect(request.input_text).to eq("Texto com erro.")
       expect(request.queue_position).to be > 0
+      expect(request.metadata["provider_base_url"]).to be_present
     end
 
     it "persists the explicit provider/model requested by the UI" do
-      provider = instance_double(Ai::OpenaiCompatibleProvider, name: "openai", model: "gpt-4.1-mini")
+      provider = instance_double(Ai::OpenaiCompatibleProvider, name: "openai", model: "gpt-4.1-mini", base_url: "https://api.openai.com/v1")
       allow(Ai::ProviderRegistry).to receive(:build).with("openai", model_name: "gpt-4.1-mini").and_return(provider)
       allow(Ai::ProviderRegistry).to receive(:resolve_selection).with(
         "openai",
@@ -78,7 +79,7 @@ RSpec.describe Ai::ReviewService do
     end
 
     it "persists the automatic model selection metadata for ollama routing" do
-      provider = instance_double(Ai::OllamaProvider, name: "ollama", model: "qwen2.5:0.5b")
+      provider = instance_double(Ai::OllamaProvider, name: "ollama", model: "qwen2.5:0.5b", base_url: "http://AIrch:11434")
       allow(Ai::ProviderRegistry).to receive(:resolve_selection).and_return(
         {
           name: "ollama",
@@ -133,11 +134,29 @@ RSpec.describe Ai::ReviewService do
       expect(request.completed_at).to be_present
     end
 
-    it "defers execution when a higher-priority queued request exists" do
-      prioritized = create(:ai_request, note_revision: note_revision, status: "queued", queue_position: 1)
-      request = create(:ai_request, note_revision: note_revision, provider: "openai", input_text: "Texto com erro.", queue_position: 2)
+    it "defers serialized host execution when a higher-priority queued request exists" do
+      prioritized = create(
+        :ai_request,
+        note_revision: note_revision,
+        provider: "ollama",
+        requested_provider: "ollama",
+        model: "qwen2.5:1.5b",
+        status: "queued",
+        queue_position: 1,
+        metadata: {"language" => "pt-BR", "provider_base_url" => "http://AIrch:11434", "requested_model" => "qwen2.5:1.5b"}
+      )
+      request = create(
+        :ai_request,
+        note_revision: note_revision,
+        provider: "ollama",
+        requested_provider: "ollama",
+        model: "qwen2.5:1.5b",
+        input_text: "Texto com erro.",
+        queue_position: 2,
+        metadata: {"language" => "pt-BR", "provider_base_url" => "http://AIrch:11434", "requested_model" => "qwen2.5:1.5b"}
+      )
 
-      provider = instance_double(Ai::OpenaiCompatibleProvider)
+      provider = instance_double(Ai::OllamaProvider)
       allow(provider).to receive(:review)
       allow(Ai::ProviderRegistry).to receive(:build).and_return(provider)
 
@@ -147,6 +166,77 @@ RSpec.describe Ai::ReviewService do
       expect(request.reload.status).to eq("queued")
       expect(prioritized.reload.status).to eq("queued")
       expect(provider).not_to have_received(:review)
+    end
+
+    it "serializes ollama requests by host and enqueues the next request after success" do
+      first = create(
+        :ai_request,
+        note_revision: note_revision,
+        provider: "ollama",
+        requested_provider: "ollama",
+        model: "qwen2.5:1.5b",
+        input_text: "Primeira",
+        queue_position: 1,
+        metadata: {"language" => "pt-BR", "provider_base_url" => "http://AIrch:11434", "requested_model" => "qwen2.5:1.5b"}
+      )
+      second = create(
+        :ai_request,
+        note_revision: note_revision,
+        provider: "ollama",
+        requested_provider: "ollama",
+        model: "qwen2.5:1.5b",
+        input_text: "Segunda",
+        queue_position: 2,
+        metadata: {"language" => "pt-BR", "provider_base_url" => "http://AIrch:11434", "requested_model" => "qwen2.5:1.5b"}
+      )
+      provider = instance_double(
+        Ai::OllamaProvider,
+        review: Ai::Result.new(content: "Texto corrigido.", provider: "ollama", model: "qwen2.5:1.5b")
+      )
+
+      allow(Ai::ProviderRegistry).to receive(:build).and_return(provider)
+
+      expect {
+        described_class.process_request!(first)
+      }.to have_enqueued_job(Ai::ReviewJob).with(second.id)
+
+      expect(first.reload.status).to eq("succeeded")
+      expect(second.reload.status).to eq("queued")
+    end
+
+    it "allows external providers to run in parallel without host serialization" do
+      prioritized = create(
+        :ai_request,
+        note_revision: note_revision,
+        provider: "openai",
+        requested_provider: "openai",
+        model: "gpt-4o-mini",
+        input_text: "Primeira",
+        queue_position: 1,
+        metadata: {"language" => "pt-BR", "provider_base_url" => "https://api.openai.com/v1", "requested_model" => "gpt-4o-mini"}
+      )
+      request = create(
+        :ai_request,
+        note_revision: note_revision,
+        provider: "openai",
+        requested_provider: "openai",
+        model: "gpt-4o-mini",
+        input_text: "Segunda",
+        queue_position: 2,
+        metadata: {"language" => "pt-BR", "provider_base_url" => "https://api.openai.com/v1", "requested_model" => "gpt-4o-mini"}
+      )
+      prioritized.update!(status: "running", started_at: Time.current)
+      provider = instance_double(
+        Ai::OpenaiCompatibleProvider,
+        review: Ai::Result.new(content: "Texto corrigido.", provider: "openai", model: "gpt-4o-mini")
+      )
+
+      allow(Ai::ProviderRegistry).to receive(:build).and_return(provider)
+
+      outcome = described_class.process_request!(request)
+
+      expect(outcome).to eq(:succeeded)
+      expect(request.reload.status).to eq("succeeded")
     end
 
     it "applies side effects for fulfilled promise seed requests" do
@@ -225,9 +315,29 @@ RSpec.describe Ai::ReviewService do
 
   describe ".cancel_request!" do
     it "marks an active request as canceled" do
-      request = create(:ai_request, note_revision: note_revision, status: "retrying", next_retry_at: 5.seconds.from_now)
+      request = create(
+        :ai_request,
+        note_revision: note_revision,
+        provider: "ollama",
+        requested_provider: "ollama",
+        model: "qwen2.5:1.5b",
+        status: "retrying",
+        next_retry_at: 5.seconds.from_now,
+        metadata: {"language" => "pt-BR", "provider_base_url" => "http://AIrch:11434", "requested_model" => "qwen2.5:1.5b"}
+      )
+      queued = create(
+        :ai_request,
+        note_revision: note_revision,
+        provider: "ollama",
+        requested_provider: "ollama",
+        model: "qwen2.5:1.5b",
+        status: "queued",
+        metadata: {"language" => "pt-BR", "provider_base_url" => "http://AIrch:11434", "requested_model" => "qwen2.5:1.5b"}
+      )
 
-      described_class.cancel_request!(request)
+      expect {
+        described_class.cancel_request!(request)
+      }.to have_enqueued_job(Ai::ReviewJob).with(queued.id)
       request.reload
 
       expect(request.status).to eq("canceled")

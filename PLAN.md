@@ -182,14 +182,14 @@ Para a primeira rodada de testes da Fase 5, considerar o seguinte ambiente como 
 - servidor local de IA acessível pelo hostname `AIrch`
 - entrada já resolvida via `/etc/hosts`
 - serviço Ollama escutando em `AIrch:11434`
-- modelo inicial: `qwen3.5:4b`
+- modelo inicial: `qwen2.5:1.5b`
 
 **Convenção atual do projeto para testes locais de IA:**
 
 - `AI_PROVIDER=ollama`
 - `AI_ENABLED_PROVIDERS=ollama`
 - `OLLAMA_API_BASE=http://AIrch:11434`
-- `OLLAMA_MODEL=qwen3.5:4b`
+- `OLLAMA_MODEL=qwen2.5:1.5b`
 
 Isso deve ser tratado como o caminho padrão de validação inicial antes de habilitar providers externos.
 

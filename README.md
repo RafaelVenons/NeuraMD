@@ -22,7 +22,7 @@ O stack em [docker-compose.airch.yml](/home/venom/projects/NeuraMD/docker-compos
   "capability": "grammar_review",
   "text": "teh texto",
   "language": "pt-BR",
-  "model": "qwen3.5:4b",
+  "model": "qwen2.5:1.5b",
   "metadata": {
     "source": "manual-test"
   }
