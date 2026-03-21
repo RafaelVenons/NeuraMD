@@ -13,6 +13,12 @@ RSpec.describe Notes::DraftService do
       expect(note.note_revisions.last.revision_kind).to eq("draft")
     end
 
+    it "returns graph_changed false when the saved draft does not alter links" do
+      result = described_class.call(note: note, content: "# Draft content")
+      expect(result.graph_changed).to be(false)
+      expect(result.revision).to be_a(NoteRevision)
+    end
+
     it "replaces existing draft (upsert — one draft per note)" do
       described_class.call(note: note, content: "first draft")
 
@@ -40,10 +46,11 @@ RSpec.describe Notes::DraftService do
     end
 
     it "syncs note links against the latest draft content" do
-      described_class.call(note: note, content: "[[Destino|#{dst_note.id}]]")
+      result = described_class.call(note: note, content: "[[Destino|#{dst_note.id}]]")
 
       expect(note.outgoing_links.find_by(dst_note_id: dst_note.id)).to be_present
       expect(note.outgoing_links.last.created_in_revision.revision_kind).to eq("draft")
+      expect(result.graph_changed).to be(true)
     end
   end
 end

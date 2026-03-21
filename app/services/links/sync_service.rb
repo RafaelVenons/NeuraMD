@@ -6,6 +6,8 @@ module Links
   # - Skips self-links and links to non-existent notes (broken links are valid in content)
   # - Idempotent: safe to call multiple times with the same content
   class SyncService
+    Result = Struct.new(:graph_changed, keyword_init: true)
+
     def self.call(src_note:, revision:, content:)
       new(src_note:, revision:, content:).call
     end
@@ -19,8 +21,11 @@ module Links
     def call
       desired = extract_desired_links
 
-      upsert_links(desired)
-      delete_removed(desired)
+      changed = false
+      changed ||= upsert_links(desired)
+      changed ||= delete_removed(desired)
+
+      Result.new(graph_changed: changed)
     end
 
     private
@@ -32,19 +37,25 @@ module Links
     end
 
     def upsert_links(desired)
+      changed = false
+
       desired.each do |link|
         existing_link = NoteLink.find_by(src_note_id: @src_note.id, dst_note_id: link[:dst_note_id])
 
         if existing_link
-          next if existing_link.hier_role == link[:hier_role] &&
-            existing_link.created_in_revision_id == @revision.id &&
-            existing_link.active?
+          graph_changed = existing_link.hier_role != link[:hier_role] || !existing_link.active?
 
-          existing_link.update!(
-            hier_role: link[:hier_role],
-            created_in_revision: @revision,
-            active: true
-          )
+          if existing_link.created_in_revision_id != @revision.id ||
+              existing_link.hier_role != link[:hier_role] ||
+              !existing_link.active?
+            existing_link.update!(
+              hier_role: link[:hier_role],
+              created_in_revision: @revision,
+              active: true
+            )
+          end
+
+          changed ||= graph_changed
         else
           @src_note.outgoing_links.create!(
             dst_note_id: link[:dst_note_id],
@@ -52,16 +63,21 @@ module Links
             created_in_revision: @revision,
             active: true
           )
+          changed = true
         end
       end
+
+      changed
     end
 
     def delete_removed(desired)
       desired_ids = desired.map { |link| link[:dst_note_id] }.uniq
-      NoteLink
+      updated = NoteLink
         .where(src_note_id: @src_note.id, active: true)
         .where.not(dst_note_id: desired_ids)
         .update_all(active: false, updated_at: Time.current)
+
+      updated.positive?
     end
   end
 end

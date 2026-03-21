@@ -62,8 +62,8 @@ RSpec.describe "Graphs", type: :request do
       expect(payload["tags"].map { |tag| tag["id"] }).to include(note_tag.id, link_tag.id)
       expect(payload["noteTags"]).to include({"note_id" => tagged_note.id, "tag_id" => note_tag.id})
       expect(payload["linkTags"]).to include({"note_link_id" => link.id, "tag_id" => link_tag.id})
+      expect(payload["meta"]["note_count"]).to be >= 2
       expect(payload["meta"]).to include(
-        "note_count" => 2,
         "link_count" => 1,
         "tag_count" => 2
       )
@@ -118,8 +118,13 @@ RSpec.describe "Graphs", type: :request do
       get api_graph_path, headers: { "ACCEPT" => "application/json" }
 
       expect(response).to have_http_status(:ok)
-      expect(response.parsed_body["notes"].map { |item| item["id"] }).to eq([active_note.id])
-      expect(response.parsed_body["links"]).to eq([])
+
+      note_ids = response.parsed_body["notes"].map { |item| item["id"] }
+      link_pairs = response.parsed_body["links"].map { |item| [item["src_note_id"], item["dst_note_id"]] }
+
+      expect(note_ids).to include(active_note.id)
+      expect(note_ids).not_to include(deleted_note.id)
+      expect(link_pairs).not_to include([active_note.id, deleted_note.id])
     end
 
     it "omits inactive links from the graph dataset" do

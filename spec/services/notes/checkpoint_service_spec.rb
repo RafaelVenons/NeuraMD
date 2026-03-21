@@ -13,14 +13,14 @@ RSpec.describe Notes::CheckpointService do
     end
 
     it "returns the new NoteRevision" do
-      revision = call
+      revision = call.revision
       expect(revision).to be_a(NoteRevision)
       expect(revision.revision_kind).to eq("checkpoint")
     end
 
     it "updates note.head_revision_id" do
       old_head = note.head_revision_id
-      revision = call
+      revision = call.revision
       expect(note.reload.head_revision_id).to eq(revision.id)
       expect(note.head_revision_id).not_to eq(old_head)
     end
@@ -41,6 +41,14 @@ RSpec.describe Notes::CheckpointService do
       expect(note.outgoing_links.last.dst_note_id).to eq(dst.id)
     end
 
+    it "returns graph_changed true when checkpoint updates active links" do
+      dst = create(:note)
+      result = call("[[Target|#{dst.id}]]\n\n" + ("content. " * 10))
+
+      expect(result.graph_changed).to be(true)
+      expect(result.revision).to be_a(NoteRevision)
+    end
+
     it "removes wiki-links no longer in content" do
       dst = create(:note)
       # First checkpoint with link
@@ -49,19 +57,20 @@ RSpec.describe Notes::CheckpointService do
 
       # Second checkpoint without link
       call("No links.\n\n" + ("content. " * 10))
-      expect(note.reload.outgoing_links.count).to eq(0)
+      expect(note.reload.active_outgoing_links.count).to eq(0)
+      expect(note.outgoing_links.find_by(dst_note_id: dst.id)).not_to be_active
     end
 
     it "sets base_revision_id to the previous checkpoint" do
       old_head_id = note.head_revision_id
-      revision = call
+      revision = call.revision
       expect(revision.base_revision_id).to eq(old_head_id)
     end
 
     it "marks the checkpoint as AI-generated when linked to an accepted ai request" do
       request = create(:ai_request, note_revision: note.head_revision, status: "succeeded", metadata: {"language" => "pt-BR"})
 
-      revision = call("# Checkpoint com IA\n\n" + ("content. " * 10), accepted_ai_request: request)
+      revision = call("# Checkpoint com IA\n\n" + ("content. " * 10), accepted_ai_request: request).revision
 
       expect(revision.ai_generated).to be(true)
       expect(request.reload.metadata).to include(

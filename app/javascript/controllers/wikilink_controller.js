@@ -6,7 +6,7 @@ import { Controller } from "@hotwired/stimulus"
 // applied on insertion. Enter/Tab confirms, Esc dismisses.
 //
 // After every cursor move, detects if the cursor sits inside a completed
-// [[Display|uuid]] and dispatches wikilink:cursor so tag_sidebar_controller
+// [[Display|uuid]] or [[Display|role:uuid]] and dispatches wikilink:cursor so tag_sidebar_controller
 // can react (link-focus mode vs global mode).
 export default class extends Controller {
   static values = { searchUrl: String, createPromiseUrl: String, currentNoteId: String }
@@ -16,7 +16,7 @@ export default class extends Controller {
   static ROLES      = [null, "f", "c", "b"]
   static ROLE_LABEL = { f: "Father", c: "Child", b: "Brother", null: "Ref" }
   // Full wiki-link pattern (completed, not mid-typing)
-  static FULL_RE    = /\[\[([^\]|]+)\|([fcb]:)?([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\]\]/gi
+  static FULL_RE    = /\[\[([^\]|]+)\|([a-z]+:)?([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\]\]/gi
 
   connect() {
     this.element.dataset.wikilinkReady = "true"
@@ -30,6 +30,7 @@ export default class extends Controller {
     this._isComposing = false
     this._dropdownMode = "search"
     this._promiseTitle = null
+    this._pendingPromiseCreations = new Set()
 
     this._onEditorChange = this._handleEditorChange.bind(this)
     this.element.addEventListener("codemirror:change", this._onEditorChange)
@@ -281,7 +282,19 @@ export default class extends Controller {
       return
     }
 
+    const promiseKey = `${option.action}:${(this._promiseTitle || "").toLowerCase()}`
+    if (this._pendingPromiseCreations.has(promiseKey)) {
+      window.alert("Esta nota ja esta sendo criada.")
+      return
+    }
+
+    this._pendingPromiseCreations.add(promiseKey)
+
     try {
+      if (option.action === "ai") {
+        window.alert(`A IA vai criar a nota "${this._promiseTitle}".`)
+      }
+
       const response = await fetch(this.createPromiseUrlValue, {
         method: "POST",
         credentials: "same-origin",
@@ -305,8 +318,22 @@ export default class extends Controller {
         bubbles: true
       }))
       this._closeDropdown()
+
+      if (option.action === "ai") {
+        const statusLabel = data.created ? "foi criada" : "ja existia"
+        window.alert(`A nota "${data.note_title}" ${statusLabel}.`)
+      }
+
+      await this._autosaveController()?.saveDraftNow?.()
+
+      if (option.action === "blank") {
+        window.location.assign(data.note_url)
+        return
+      }
     } catch (error) {
       window.alert(error.message || "Falha ao criar nota.")
+    } finally {
+      this._pendingPromiseCreations.delete(promiseKey)
     }
   }
 
@@ -351,6 +378,7 @@ export default class extends Controller {
 
     this._positionDropdown()
     dropdown.hidden = false
+    this._scrollActiveSuggestionIntoView()
   }
 
   // ── Positioning ──────────────────────────────────────────
@@ -375,6 +403,14 @@ export default class extends Controller {
     const left    = coords.left - paneRect.left
     const maxLeft = paneRect.width - 240 - 8
     dropdown.style.left = `${Math.max(4, Math.min(left, maxLeft))}px`
+  }
+
+  _scrollActiveSuggestionIntoView() {
+    if (!this._isDropdownOpen()) return
+    const activeSuggestion = this.dropdownTarget.querySelector(".wikilink-suggestion.active")
+    if (!activeSuggestion) return
+
+    activeSuggestion.scrollIntoView({ block: "nearest" })
   }
 
   // ── State ────────────────────────────────────────────────
@@ -470,5 +506,10 @@ export default class extends Controller {
 
   _csrfToken() {
     return document.querySelector('meta[name="csrf-token"]')?.content || ""
+  }
+
+  _autosaveController() {
+    const root = this.element.closest('[data-controller~="autosave"]')
+    return root && this.application.getControllerForElementAndIdentifier(root, "autosave")
   }
 }

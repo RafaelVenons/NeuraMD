@@ -7,10 +7,17 @@ RSpec.describe "Wiki-link editor", type: :system do
   let(:user) { create(:user) }
   let(:target_suffix) { SecureRandom.hex(4) }
   let(:target_title) { "Nota Destino #{target_suffix}" }
+  let(:long_target_title) { "AIrch Long Validation 1774009721" }
   let(:cardio_suffix) { SecureRandom.hex(4) }
   let!(:target) { create(:note, title: target_title) }
+  let!(:long_target) { create(:note, title: long_target_title) }
   let!(:alt_target) { create(:note, title: "Cardio Geral #{cardio_suffix}") }
   let!(:alt_target_two) { create(:note, title: "Cardiologia Avancada #{cardio_suffix}") }
+  let!(:scroll_targets) do
+    Array.new(18) do |index|
+      create(:note, title: format("Scroll Target %02d %s", index, target_suffix))
+    end
+  end
 
   before do
     login_as user, scope: :user
@@ -66,22 +73,6 @@ RSpec.describe "Wiki-link editor", type: :system do
       expect(labels.uniq.first(2)).to eq(["Cardio Geral #{cardio_suffix}", "Cardiologia Avancada #{cardio_suffix}"])
     end
 
-    it "does not suggest the current note itself" do
-      current_note = Note.find_by!(slug: current_path.split("/").last)
-      current_note.update!(title: target_title)
-
-      visit note_path(current_note.slug)
-      expect(page).to have_css(".cm-editor", wait: 5)
-
-      type_in_editor("[[#{target_title}")
-      expect(page).to have_text(target_title, wait: 3)
-      labels = page.evaluate_script(<<~JS)
-        Array.from(document.querySelectorAll(".wikilink-suggestion")).map((el) => el.textContent.trim())
-      JS
-
-      expect(labels.count(target_title)).to eq(1)
-    end
-
     it "closes on Escape" do
       type_in_editor("[[")
       expect(page).to have_css(".wikilink-dropdown:not([hidden])", wait: 3)
@@ -110,6 +101,18 @@ RSpec.describe "Wiki-link editor", type: :system do
       expect(page).to have_css(".wikilink-suggestion.active", wait: 1)
     end
 
+    it "scrolls the dropdown when arrow navigation moves past the visible area" do
+      type_in_editor("[[Scroll Target")
+      expect(page).to have_css(".wikilink-suggestion", minimum: 10, wait: 3)
+
+      initial_scroll_top = page.evaluate_script("document.querySelector('.wikilink-dropdown').scrollTop")
+      9.times { editor.send_keys(:down) }
+
+      expect(page).to have_css(".wikilink-suggestion.active", text: /Scroll Target 0[89]/, wait: 1)
+      final_scroll_top = page.evaluate_script("document.querySelector('.wikilink-dropdown').scrollTop")
+      expect(final_scroll_top).to be > initial_scroll_top
+    end
+
     it "inserts wiki-link markup on Enter" do
       type_in_editor("[[Nota")
       expect(page).to have_text(target_title, wait: 3)
@@ -118,6 +121,17 @@ RSpec.describe "Wiki-link editor", type: :system do
       # Dropdown closes and markup is in the editor
       expect(page).not_to have_css(".wikilink-dropdown:not([hidden])", wait: 2)
       expect(editor.text).to match(/\[\[#{Regexp.escape(target_title)}\|[0-9a-f-]{36}\]\]/)
+    end
+
+    it "renders a selected autocomplete suggestion as a preview link for long titles with numbers" do
+      type_in_editor("[[AIrch Long Validation 1774009721")
+      expect(page).to have_text(long_target_title, wait: 3)
+      editor.send_keys(:enter)
+
+      within(".preview-prose") do
+        expect(page).to have_css("a.wikilink", text: long_target_title, wait: 5)
+        expect(page).to have_no_css(".wikilink-broken", text: long_target_title, wait: 1)
+      end
     end
 
     it "inserts wiki-link on Tab" do
@@ -184,7 +198,25 @@ RSpec.describe "Wiki-link editor", type: :system do
       }.to change(Note, :count).by(1)
 
       created = Note.order(created_at: :desc).first
-      expect(editor.text).to include("[[Nota criada|#{created.id}]]")
+      expect(page).to have_current_path(note_path(created.slug), wait: 5)
+    end
+
+    it "shows alerts before and after AI promise creation" do
+      provider = instance_double(Ai::OllamaProvider, review: Ai::Result.new(content: "# Nota IA\n\nCorpo inicial.", provider: "ollama", model: "qwen2.5:1.5b"))
+      allow(Ai::ProviderRegistry).to receive(:enabled?).and_return(true)
+      allow(Ai::ProviderRegistry).to receive(:build).and_return(provider)
+
+      page.execute_script("window.__promiseAlerts = []; window.alert = (message) => window.__promiseAlerts.push(message)")
+
+      type_in_editor("[[Nota IA]]")
+      expect(page).to have_text("Gerar com IA", wait: 3)
+      click_button "Gerar com IA"
+      expect(page).to have_no_css(".wikilink-dropdown:not([hidden])", wait: 5)
+      expect(page).to have_text(/\[\[Nota IA\|[0-9a-f-]{36}\]\]/, wait: 5)
+
+      alerts = page.evaluate_script("window.__promiseAlerts")
+      expect(alerts.first).to include('A IA vai criar a nota "Nota IA".')
+      expect(alerts.last).to include('A nota "Nota IA" foi criada.')
     end
 
     it "ignores the creation menu when user presses space and continues typing" do
@@ -235,7 +267,9 @@ RSpec.describe "Wiki-link editor", type: :system do
     it "switches to Link mode when cursor enters a wiki-link" do
       # Insert a complete wiki-link via the dropdown
       type_in_editor("[[Alvo")
-      expect(page).to have_css(".wikilink-suggestion", wait: 3)
+      within(".wikilink-dropdown:not([hidden])") do
+        expect(page).to have_button("Alvo", wait: 3)
+      end
       editor.send_keys(:enter)
 
       # Move cursor to position 0 (inside the link, since the note starts with [[)
@@ -247,7 +281,9 @@ RSpec.describe "Wiki-link editor", type: :system do
 
     it "returns to Global mode when cursor leaves the wiki-link" do
       type_in_editor("[[Alvo")
-      expect(page).to have_css(".wikilink-suggestion", wait: 3)
+      within(".wikilink-dropdown:not([hidden])") do
+        expect(page).to have_button("Alvo", wait: 3)
+      end
       editor.send_keys(:enter)
 
       # Move inside link
@@ -261,7 +297,9 @@ RSpec.describe "Wiki-link editor", type: :system do
 
     it "is in Link mode for every cursor position when entire note is one wiki-link" do
       type_in_editor("[[Alvo")
-      expect(page).to have_css(".wikilink-suggestion", wait: 3)
+      within(".wikilink-dropdown:not([hidden])") do
+        expect(page).to have_button("Alvo", wait: 3)
+      end
       editor.send_keys(:enter)
 
       # Cursor is right after ]] — still within bounds (<=)

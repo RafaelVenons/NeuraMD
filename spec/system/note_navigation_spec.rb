@@ -7,6 +7,7 @@ require "rails_helper"
 RSpec.describe "Note navigation via links", type: :system do
   let(:user) { create(:user) }
   let!(:dest_note) { create(:note, title: "Nota Destino") }
+  let!(:long_title_dest_note) { create(:note, title: "AIrch Long Validation 1774009721") }
 
   def editor
     find(".cm-content")
@@ -75,6 +76,16 @@ RSpec.describe "Note navigation via links", type: :system do
       # even after Turbo navigation (setTimeout(0) fix in codemirror_controller).
       expect(page).to have_css(".preview-prose h1", text: "Título Destino", wait: 5)
       expect(page).not_to have_text("Comece a digitar para ver o preview")
+    end
+
+    it "navigates correctly when the preview link points to a long title with numbers" do
+      editor.click
+      editor.send_keys("[[AIrch Long Validation 1774009721|#{long_title_dest_note.id}]]")
+      expect(page).to have_css(".preview-prose a.wikilink", text: "AIrch Long Validation 1774009721", wait: 5)
+
+      find(".preview-prose a.wikilink", text: "AIrch Long Validation 1774009721").click
+
+      expect(page).to have_current_path(note_path(long_title_dest_note.slug), wait: 5)
     end
 
     it "prefers newer local content on reopen and saves that version before navigation" do

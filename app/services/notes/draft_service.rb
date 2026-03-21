@@ -4,8 +4,10 @@ module Notes
   # revision history, but they do update the current link graph so link tags
   # can be attached against the latest saved content.
   #
-  # Returns the draft NoteRevision.
+  # Returns the draft NoteRevision and whether the active link graph changed.
   class DraftService
+    Result = Struct.new(:revision, :graph_changed, keyword_init: true)
+
     def self.call(note:, content:, author: nil)
       new(note:, content:, author:).call
     end
@@ -25,9 +27,9 @@ module Notes
           author: @author
         )
 
-        Links::SyncService.call(src_note: @note, revision: draft, content: @content)
+        sync_result = Links::SyncService.call(src_note: @note, revision: draft, content: @content)
 
-        draft
+        Result.new(revision: draft, graph_changed: sync_result.graph_changed)
       end
     end
   end

@@ -221,12 +221,14 @@ export default class extends Controller {
         body: JSON.stringify(payload)
       })
       if (!response.ok) throw new Error(`HTTP ${response.status}`)
+      const data = await response.json()
 
       if (kind === "checkpoint") {
         this._pendingContent = null
         this._localSnapshot = null
         this._pendingAiAcceptance = null
       }
+      this.dispatch("saved", { detail: { kind, graphChanged: !!data.graph_changed }, bubbles: true })
       this._setStatus(kind === "checkpoint" ? "salvo" : "rascunho")
     } catch (err) {
       console.error(`${kind} save error:`, err)

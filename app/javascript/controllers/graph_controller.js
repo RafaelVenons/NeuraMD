@@ -61,10 +61,12 @@ export default class extends Controller {
     this._resizeObserver.observe(this.graphHostTarget)
     window.addEventListener("resize", this._boundResize)
     this._boundTooltipClick = (event) => this.handleTooltipClick(event)
+    this._boundAutosaveSaved = (event) => this.handleAutosaveSaved(event)
     this._edgeAnimationFrame = null
     this._edgeAnimationTick = 0
     this._lastEdgeAnimationAt = 0
     this.tooltipLayerTarget.addEventListener("click", this._boundTooltipClick)
+    document.addEventListener("autosave:saved", this._boundAutosaveSaved)
     this._boundDropdownToggle = (event) => this.handleDropdownToggle(event)
     this.element.querySelectorAll(".nm-graph__dropdown").forEach((dropdown) => {
       dropdown.addEventListener("toggle", this._boundDropdownToggle)
@@ -78,6 +80,7 @@ export default class extends Controller {
     window.removeEventListener("resize", this._boundResize)
     this._resizeObserver?.disconnect()
     this.tooltipLayerTarget.removeEventListener("click", this._boundTooltipClick)
+    document.removeEventListener("autosave:saved", this._boundAutosaveSaved)
     this.element.querySelectorAll(".nm-graph__dropdown").forEach((dropdown) => {
       dropdown.removeEventListener("toggle", this._boundDropdownToggle)
     })
@@ -85,6 +88,10 @@ export default class extends Controller {
   }
 
   async load() {
+    const preservedGraphSnapshot = this._pendingGraphSnapshot
+    this._pendingGraphSnapshot = null
+    const reloadingWithPreservedCamera = !!preservedGraphSnapshot
+
     this.errorTarget.classList.add("hidden")
     if (this.hasMetaTarget) this.metaTarget.textContent = "Carregando dataset..."
 
@@ -102,7 +109,7 @@ export default class extends Controller {
       this.state.graph = graph
       this.state.indexes = buildIndexes(payload, graph)
       this.state.ui.activeTagsOrdered = deriveInitialTagOrder(payload)
-      if (this.hasInitialFocusedNodeIdValue && graph.hasNode(this.initialFocusedNodeIdValue)) {
+      if (!reloadingWithPreservedCamera && this.hasInitialFocusedNodeIdValue && graph.hasNode(this.initialFocusedNodeIdValue)) {
         this.state.ui.focusedNodeId = this.initialFocusedNodeIdValue
         this.state.ui.pinnedTooltipNodeId = this.embeddedModeValue ? null : this.initialFocusedNodeIdValue
         this.state.ui.focusDepth = 2
@@ -110,17 +117,68 @@ export default class extends Controller {
       }
 
       applyLayout(graph, this.state, { rebuild: true })
+      this.restoreNodePositions(preservedGraphSnapshot?.positions, graph)
       this.mountRenderer()
+      this.restoreCameraState(preservedGraphSnapshot?.camera)
       this.renderSidebar()
       this.applyDisplayState({
-        relayout: this.hasInitialFocusedNodeIdValue,
-        animateFocus: this.hasInitialFocusedNodeIdValue
+        relayout: !reloadingWithPreservedCamera && this.hasInitialFocusedNodeIdValue,
+        animateFocus: !reloadingWithPreservedCamera && this.hasInitialFocusedNodeIdValue
       })
     } catch (error) {
       this.errorTarget.textContent = error.message
       this.errorTarget.classList.remove("hidden")
       if (this.hasMetaTarget) this.metaTarget.textContent = ""
     }
+  }
+
+  async handleAutosaveSaved(event) {
+    if (!this.embeddedModeValue) return
+    if (!event.detail?.graphChanged) return
+    if (this._reloadingFromAutosave) return
+
+    this._reloadingFromAutosave = true
+    try {
+      this._pendingGraphSnapshot = this.captureGraphSnapshot()
+      await this.load()
+    } finally {
+      this._reloadingFromAutosave = false
+    }
+  }
+
+  captureGraphSnapshot() {
+    return {
+      camera: this.captureCameraState(),
+      positions: captureNodePositions(this.state.graph)
+    }
+  }
+
+  captureCameraState() {
+    const camera = this.state.renderer?.getCamera?.()
+    if (!camera?.getState) return null
+
+    const state = camera.getState()
+    if (!state) return null
+
+    return {
+      x: state.x,
+      y: state.y,
+      angle: state.angle,
+      ratio: state.ratio
+    }
+  }
+
+  restoreCameraState(cameraState) {
+    if (!cameraState) return
+
+    const camera = this.state.renderer?.getCamera?.()
+    if (!camera?.setState) return
+    camera.setState(cameraState)
+  }
+
+  restoreNodePositions(positions, graph = this.state.graph) {
+    if (!positions || !graph) return
+    assignNodePositions(graph, positions)
   }
 
   async parseGraphResponse(response) {

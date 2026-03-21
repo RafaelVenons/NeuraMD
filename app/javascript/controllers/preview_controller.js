@@ -85,12 +85,17 @@ export default class extends Controller {
       const uuid = link.dataset.uuid
       if (!uuid) return
 
-      if (this._wikilinkState.get(uuid) === false) {
+      const cachedState = this._wikilinkState.get(uuid)
+
+      if (cachedState === false) {
         this._replaceBrokenWikilink(link)
         return
       }
 
-      if (this._wikilinkState.get(uuid) === true) return
+      if (cachedState?.ok) {
+        if (cachedState.href) link.href = cachedState.href
+        return
+      }
 
       pendingChecks.push(this._checkWikilink(uuid, renderVersion))
     })
@@ -102,8 +107,11 @@ export default class extends Controller {
     if (renderVersion !== this._renderVersion) return
 
     this.outputTarget.querySelectorAll("a.wikilink[data-uuid]").forEach(link => {
-      if (this._wikilinkState.get(link.dataset.uuid) === false) {
+      const cachedState = this._wikilinkState.get(link.dataset.uuid)
+      if (cachedState === false) {
         this._replaceBrokenWikilink(link)
+      } else if (cachedState?.ok && cachedState.href) {
+        link.href = cachedState.href
       }
     })
   }
@@ -117,11 +125,30 @@ export default class extends Controller {
       })
 
       if (renderVersion !== this._renderVersion) return
-      this._wikilinkState.set(uuid, response.ok)
+      if (response.ok) {
+        this._wikilinkState.set(uuid, { ok: true, href: this._canonicalHref(response) })
+        return
+      }
+
+      if (response.status === 404) {
+        this._wikilinkState.set(uuid, false)
+        return
+      }
+
+      this._wikilinkState.delete(uuid)
     } catch (error) {
       if (renderVersion !== this._renderVersion) return
-      this._wikilinkState.set(uuid, false)
+      this._wikilinkState.delete(uuid)
       console.warn("Failed to validate wikilink preview:", error)
+    }
+  }
+
+  _canonicalHref(response) {
+    try {
+      const url = new URL(response.url, window.location.origin)
+      return `${url.pathname}${url.search}${url.hash}`
+    } catch (_) {
+      return null
     }
   }
 

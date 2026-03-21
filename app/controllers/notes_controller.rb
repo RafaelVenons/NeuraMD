@@ -84,21 +84,28 @@ class NotesController < ApplicationController
 
   def draft
     authorize @note, :update?
-    Notes::DraftService.call(note: @note, content: params[:content_markdown].to_s, author: current_user)
-    render json: {saved: true, kind: "draft"}
+    result = Notes::DraftService.call(note: @note, content: params[:content_markdown].to_s, author: current_user)
+    render json: {saved: true, kind: "draft", graph_changed: result.graph_changed}
   rescue => e
     render json: {error: e.message}, status: :unprocessable_entity
   end
 
   def checkpoint
     authorize @note, :update?
-    revision = Notes::CheckpointService.call(
+    result = Notes::CheckpointService.call(
       note: @note,
       content: params[:content_markdown].to_s,
       author: current_user,
       accepted_ai_request: accepted_ai_request_for_checkpoint
     )
-    render json: {saved: true, kind: "checkpoint", revision_id: revision.id, created_at: revision.created_at.iso8601}
+    revision = result.revision
+    render json: {
+      saved: true,
+      kind: "checkpoint",
+      revision_id: revision.id,
+      created_at: revision.created_at.iso8601,
+      graph_changed: result.graph_changed
+    }
   rescue => e
     render json: {error: e.message}, status: :unprocessable_entity
   end
@@ -139,12 +146,12 @@ class NotesController < ApplicationController
   def restore_revision
     authorize @note, :update?
     source = @note.note_revisions.where(revision_kind: :checkpoint).find(params[:revision_id])
-    revision = Notes::CheckpointService.call(
+    result = Notes::CheckpointService.call(
       note: @note,
       content: source.content_markdown,
       author: current_user
     )
-    render json: {saved: true, revision_id: revision.id}
+    render json: {saved: true, revision_id: result.revision.id, graph_changed: result.graph_changed}
   rescue => e
     render json: {error: e.message}, status: :unprocessable_entity
   end
@@ -153,18 +160,21 @@ class NotesController < ApplicationController
     authorize @note, :update?
     authorize Note.new, :create?
 
-    promise_note = Notes::PromiseCreationService.call(
+    promise_result = Notes::PromiseCreationService.call(
       source_note: @note,
       title: params[:title],
       author: current_user,
       mode: params[:mode]
     )
+    promise_note = promise_result.note
 
     render json: {
       note_id: promise_note.id,
       note_slug: promise_note.slug,
       note_title: promise_note.title,
-      note_url: note_path(promise_note.slug)
+      note_url: note_path(promise_note.slug),
+      created: promise_result.created,
+      seeded: promise_result.seeded
     }, status: :created
   rescue Ai::Error, ArgumentError => e
     render json: {error: e.message}, status: :unprocessable_entity

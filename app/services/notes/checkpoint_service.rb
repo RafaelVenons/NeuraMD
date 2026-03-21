@@ -3,8 +3,10 @@ module Notes
   # Checkpoints appear in the revision history and trigger link sync.
   # Also deletes any existing draft for this note (checkpoint supersedes draft).
   #
-  # Returns the new NoteRevision checkpoint.
+  # Returns the new NoteRevision checkpoint and whether the active link graph changed.
   class CheckpointService
+    Result = Struct.new(:revision, :graph_changed, keyword_init: true)
+
     def self.call(note:, content:, author: nil, accepted_ai_request: nil)
       new(note:, content:, author:, accepted_ai_request:).call
     end
@@ -36,7 +38,7 @@ module Notes
 
         @note.update!(head_revision_id: revision.id)
 
-        Links::SyncService.call(src_note: @note, revision: revision, content: @content)
+        sync_result = Links::SyncService.call(src_note: @note, revision: revision, content: @content)
 
         if draft_ids.any?
           @note.outgoing_links.where(created_in_revision_id: draft_ids).update_all(created_in_revision_id: revision.id)
@@ -45,7 +47,7 @@ module Notes
 
         annotate_ai_acceptance!(revision) if @accepted_ai_request.present?
 
-        revision
+        Result.new(revision:, graph_changed: sync_result.graph_changed)
       end
     end
 
