@@ -99,6 +99,17 @@ RSpec.describe "AI review", type: :system do
     end
   end
 
+  def wait_until(timeout: 5)
+    Timeout.timeout(timeout) do
+      loop do
+        result = yield
+        return result if result
+
+        sleep 0.1
+      end
+    end
+  end
+
   def expect_ai_workspace(text:, wait: 5)
     expect(page).to have_css("[data-ai-review-target='workspace']:not(.hidden)", wait:)
     if page.has_css?("[data-ai-review-target='proposalDiff']", visible: :visible, wait:)
@@ -485,6 +496,10 @@ RSpec.describe "AI review", type: :system do
     click_button "Recusar"
 
     expect(page).to have_no_css("[data-request-id='#{succeeded_request.id}']", wait: 5)
+
+    visit current_path
+
+    expect(page).to have_no_css("[data-request-id='#{succeeded_request.id}']", wait: 5)
   end
 
   it "lets the user reject a created promise note and restores the original wikilink" do
@@ -524,8 +539,18 @@ RSpec.describe "AI review", type: :system do
     click_button "Recusar"
 
     expect(page).to have_no_css("[data-request-id='#{request_record.id}']", wait: 5)
-    expect(promise_note.reload).to be_deleted
-    expect(source_note.reload.note_revisions.find_by(revision_kind: :draft).content_markdown).to eq("Abrir [[Meu novo camarada]]")
+    wait_until do
+      promise_note_record = Note.find_by(id: promise_note.id)
+      promise_note_record.nil? || promise_note_record.deleted?
+    end
+    restored_content = wait_until do
+      source_note.reload.note_revisions.find_by(revision_kind: :draft)&.content_markdown == "Abrir [[Meu novo camarada]]"
+    end
+    expect(restored_content).to eq(true)
+
+    visit note_path(source_note.slug)
+
+    expect(page).to have_no_css("[data-request-id='#{request_record.id}']", wait: 5)
   end
 
   it "shows queue cards while the AI workspace is open" do
@@ -552,6 +577,10 @@ RSpec.describe "AI review", type: :system do
     within("[data-ai-review-target='queueDock']") do
       find("button[title='Desistir'][data-request-id='#{failed_request.id}']").click
     end
+
+    expect(page).to have_no_css("[data-request-id='#{failed_request.id}']", wait: 5)
+
+    visit current_path
 
     expect(page).to have_no_css("[data-request-id='#{failed_request.id}']", wait: 5)
   end

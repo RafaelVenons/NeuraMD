@@ -38,6 +38,7 @@ export default class extends Controller {
     queueRequestUrlTemplate: String,
     queueRetryUrlTemplate: String,
     queueCancelUrlTemplate: String,
+    queueResolveUrlTemplate: String,
     statusUrl: String,
     reviewUrl: String,
     historyUrl: String,
@@ -45,6 +46,7 @@ export default class extends Controller {
     requestUrlTemplate: String,
     retryUrlTemplate: String,
     cancelUrlTemplate: String,
+    resolveUrlTemplate: String,
     createTranslatedNoteUrlTemplate: String,
     noteTitle: String,
     noteLanguage: String,
@@ -111,6 +113,7 @@ export default class extends Controller {
     this.queueRequestUrlTemplateValue = urls.queue_request_template || this.queueRequestUrlTemplateValue
     this.queueRetryUrlTemplateValue = urls.queue_retry_template || this.queueRetryUrlTemplateValue
     this.queueCancelUrlTemplateValue = urls.queue_cancel_template || this.queueCancelUrlTemplateValue
+    this.queueResolveUrlTemplateValue = urls.queue_resolve_template || this.queueResolveUrlTemplateValue
     this.statusUrlValue = urls.ai_status || this.statusUrlValue
     this.reviewUrlValue = urls.ai_review || this.reviewUrlValue
     this.historyUrlValue = urls.ai_history || this.historyUrlValue
@@ -118,6 +121,7 @@ export default class extends Controller {
     this.requestUrlTemplateValue = urls.ai_request_template || this.requestUrlTemplateValue
     this.retryUrlTemplateValue = urls.ai_retry_template || this.retryUrlTemplateValue
     this.cancelUrlTemplateValue = urls.ai_cancel_template || this.cancelUrlTemplateValue
+    this.resolveUrlTemplateValue = urls.ai_resolve_template || this.resolveUrlTemplateValue
     this.createTranslatedNoteUrlTemplateValue =
       urls.ai_create_translated_note_template || this.createTranslatedNoteUrlTemplateValue
     this.noteTitleValue = ai.note_title || this.noteTitleValue
@@ -329,6 +333,9 @@ export default class extends Controller {
   async queueAction(event) {
     event.preventDefault()
     event.stopPropagation()
+    event.stopImmediatePropagation?.()
+
+    if (event.currentTarget !== event.target && event.target.closest("button")) return
 
     const requestId = event.currentTarget.dataset.requestId
     const actionType = event.currentTarget.dataset.queueAction
@@ -345,9 +352,7 @@ export default class extends Controller {
     }
 
     if (actionType === "dismiss") {
-      this.dismissedQueueRequestIds.add(String(requestId))
-      this.resolvedQueueRequestIds.add(String(requestId))
-      this._renderQueue()
+      await this._persistQueueResolution(requestId)
       return
     }
 
@@ -771,6 +776,10 @@ export default class extends Controller {
 
   _queueCancelUrl(requestId) {
     return this.queueCancelUrlTemplateValue.replace("__REQUEST_ID__", requestId)
+  }
+
+  _queueResolveUrl(requestId) {
+    return this.queueResolveUrlTemplateValue.replace("__REQUEST_ID__", requestId)
   }
 
   _queueRetryUrl(requestId) {
@@ -1230,6 +1239,12 @@ export default class extends Controller {
   }
 
   _queueEligible(request) {
+    if (request.queue_hidden) return false
+
+    if (request.capability === "seed_note" && request.status === "succeeded" && !request.promise_note_slug) {
+      return false
+    }
+
     return ["queued", "running", "retrying", "failed", "succeeded"].includes(request.status)
   }
 
@@ -1271,16 +1286,18 @@ export default class extends Controller {
         "drop->ai-review#handleQueueDrop"
       )
     }
-    if (cardAction) actionList.push("click->ai-review#queueAction")
     const actionAttr = actionList.length > 0 ? `data-action="${actionList.join(" ")}"` : ""
     const titleClass = request.status === "failed" ? "text-red-300" : "text-[var(--theme-text-primary)]"
     const dragClass = reorderable ? "cursor-grab active:cursor-grabbing" : ""
-    const requestAttrs = `data-request-id="${this._escapeHtml(request.id)}" data-queue-reorderable="${reorderable}" data-queue-status="${this._escapeHtml(request.status)}"${cardAction ? ` data-queue-action="${cardAction}"` : ""}`
+    const requestAttrs = `data-request-id="${this._escapeHtml(request.id)}" data-queue-reorderable="${reorderable}" data-queue-status="${this._escapeHtml(request.status)}"`
+    const cardClickAttrs = cardAction
+      ? `data-request-id="${this._escapeHtml(request.id)}" data-queue-action="${cardAction}" data-action="click->ai-review#queueAction"`
+      : ""
 
     return `
       <article class="pointer-events-auto ml-auto w-fit min-w-[11rem] max-w-[min(17rem,calc(100vw-1.5rem))] rounded-xl border-2 ${borderClass} bg-[var(--theme-bg-secondary)] px-2.5 py-2 shadow-xl backdrop-blur transition-[transform,opacity,box-shadow] duration-150 ease-out ${cardInteractiveClass} ${dragClass}" ${dragAttrs} ${requestAttrs} ${actionAttr}>
         <div class="flex items-start gap-3">
-          <div class="min-w-0 flex-1">
+          <div class="min-w-0 flex-1 ${cardInteractiveClass}" ${cardClickAttrs}>
             <p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-[var(--theme-text-faint)]">${this._escapeHtml(serviceLabel)}</p>
             <p class="mt-1 break-words text-sm font-semibold leading-5 ${titleClass}">${this._escapeHtml(noteTitle)}</p>
             <p class="mt-1 break-all text-[11px] text-[var(--theme-text-secondary)]">${this._escapeHtml(modelLabel)}</p>
@@ -1456,6 +1473,8 @@ export default class extends Controller {
     if (!requestId) return
 
     const requestIdString = String(requestId)
+    const queueRequest = this.queueRequests.find((item) => String(item.id) === requestIdString)
+    if (queueRequest) queueRequest.queue_hidden = true
     this.resolvedQueueRequestIds.add(requestIdString)
     this.dismissedQueueRequestIds.delete(requestIdString)
     this._renderQueue()
@@ -1470,8 +1489,39 @@ export default class extends Controller {
       return
     }
 
-    this._resolveQueueRequest(this.lastCompletedRequest.id)
+    await this._persistQueueResolution(this.lastCompletedRequest.id)
     this.lastCompletedRequest = null
+  }
+
+  async _persistQueueResolution(requestId) {
+    const requestIdString = String(requestId)
+    this.resolvedQueueRequestIds.add(requestIdString)
+    this.dismissedQueueRequestIds.add(requestIdString)
+    this._renderQueue()
+
+    try {
+      const response = await fetch(this._queueResolveUrl(requestId), {
+        method: "PATCH",
+        credentials: "same-origin",
+        headers: {
+          Accept: "application/json",
+          "X-CSRF-Token": this._csrfToken()
+        }
+      })
+      const data = await response.json()
+      if (!response.ok || data.error) throw new Error(data.error || "Falha ao remover item da queue.")
+
+      this._upsertQueueRequest(data)
+      this._upsertGlobalHistoryRequest(data)
+      if (this._belongsToCurrentNote(data)) this._upsertHistoryRequest(data)
+      this._resolveQueueRequest(requestId)
+      if (this.historyDialogTarget?.open) this._renderHistory()
+    } catch (error) {
+      this.resolvedQueueRequestIds.delete(requestIdString)
+      this.dismissedQueueRequestIds.delete(requestIdString)
+      this._renderQueue()
+      window.alert(error.message || "Falha ao remover item da queue.")
+    }
   }
 
   _buildQueuePlaceholder(card) {

@@ -268,6 +268,7 @@ class NotesController < ApplicationController
         queue_request_template: ai_request_payload_path("__REQUEST_ID__"),
         queue_retry_template: retry_ai_request_path("__REQUEST_ID__"),
         queue_cancel_template: ai_request_dashboard_path("__REQUEST_ID__"),
+        queue_resolve_template: resolve_ai_request_queue_path("__REQUEST_ID__"),
         ai_status: ai_status_note_path(note.slug),
         ai_review: ai_review_note_path(note.slug),
         ai_history: ai_requests_note_path(note.slug),
@@ -275,6 +276,7 @@ class NotesController < ApplicationController
         ai_request_template: ai_request_note_path(note.slug, "__REQUEST_ID__"),
         ai_retry_template: retry_ai_request_note_path(note.slug, "__REQUEST_ID__"),
         ai_cancel_template: ai_request_note_path(note.slug, "__REQUEST_ID__"),
+        ai_resolve_template: resolve_ai_request_queue_note_path(note.slug, "__REQUEST_ID__"),
         ai_create_translated_note_template: ai_request_translated_note_note_path(note.slug, "__REQUEST_ID__"),
         wikilink_create_promise: create_from_promise_note_path(note.slug),
         link_info_template: "#{link_info_note_path(note.slug)}?dst_uuid=__DST_UUID__"

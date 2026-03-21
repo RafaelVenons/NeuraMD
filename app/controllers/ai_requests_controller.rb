@@ -1,6 +1,6 @@
 class AiRequestsController < ApplicationController
   before_action :set_filters
-  before_action :set_request, only: [:show, :retry, :destroy]
+  before_action :set_request, only: [:show, :retry, :destroy, :resolve_queue]
 
   SORT_OPTIONS = {
     "newest" => "Mais recentes",
@@ -14,7 +14,7 @@ class AiRequestsController < ApplicationController
     authorize AiRequest
 
     if request.format.json?
-      requests = queue_scope.limit(limit_param)
+      requests = queue_scope.reject(&:queue_hidden?).first(limit_param)
       recent_history = recent_history_scope.limit(limit_param)
       return render json: {
         requests: requests.map { |ai_request| serialize_request(ai_request) },
@@ -73,6 +73,13 @@ class AiRequestsController < ApplicationController
     end
   end
 
+  def resolve_queue
+    authorize @request
+
+    @request.mark_queue_hidden!
+    render json: serialize_request(@request.reload)
+  end
+
   def destroy
     authorize @request
 
@@ -80,6 +87,7 @@ class AiRequestsController < ApplicationController
     request =
       if @request.capability == "seed_note"
         cleanup_result = Notes::PromiseCleanupService.call(ai_request: @request)
+        @request.mark_queue_hidden!
         @request.reload
       else
         Ai::ReviewService.cancel_request!(@request)

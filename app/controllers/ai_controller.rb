@@ -1,6 +1,6 @@
 class AiController < ApplicationController
   before_action :set_note
-  before_action :set_request, only: [:show, :retry, :destroy, :create_translated_note]
+  before_action :set_request, only: [:show, :retry, :destroy, :create_translated_note, :resolve_queue]
 
   def status
     authorize @note, :show?
@@ -49,6 +49,13 @@ class AiController < ApplicationController
     render json: {error: e.message}, status: :unprocessable_entity
   end
 
+  def resolve_queue
+    authorize @note, :update?
+
+    @request.mark_queue_hidden!
+    render json: serialize_request(@request.reload)
+  end
+
   def review
     authorize @note, :update?
 
@@ -86,6 +93,7 @@ class AiController < ApplicationController
     request =
       if @request.capability == "seed_note"
         cleanup_result = Notes::PromiseCleanupService.call(ai_request: @request)
+        @request.mark_queue_hidden!
         @request.reload
       else
         Ai::ReviewService.cancel_request!(@request)

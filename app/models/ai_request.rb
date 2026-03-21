@@ -141,8 +141,8 @@ class AiRequest < ApplicationRecord
       note_slug: note_revision&.note&.slug,
       note_title: note_revision&.note&.title,
       queue_position: queue_position,
-      source_language: metadata["language"],
-      target_language: metadata["target_language"],
+      source_language: metadata_payload["language"],
+      target_language: metadata_payload["target_language"],
       attempts_count: attempts_count,
       max_attempts: max_attempts,
       next_retry_at: next_retry_at&.iso8601,
@@ -157,23 +157,43 @@ class AiRequest < ApplicationRecord
       duration_human: duration_human,
       remote_long_job: remote_long_job?,
       remote_hint: remote_status_hint,
-      promise_note_id: metadata["promise_note_id"],
-      promise_note_title: metadata["promise_note_title"],
-      promise_note_slug: promise_note&.slug
+      promise_note_id: metadata_payload["promise_note_id"],
+      promise_note_title: metadata_payload["promise_note_title"],
+      promise_note_slug: promise_note&.slug,
+      queue_hidden: queue_hidden?
     }
   end
 
+  def queue_hidden?
+    metadata_payload["queue_hidden_at"].present?
+  end
+
+  def mark_queue_hidden!
+    update!(metadata: metadata_payload.merge("queue_hidden_at" => Time.current.iso8601))
+  end
+
+  def clear_queue_hidden!
+    return unless queue_hidden?
+
+    next_metadata = metadata_payload.except("queue_hidden_at")
+    update!(metadata: next_metadata)
+  end
+
   private
+
+  def metadata_payload
+    self[:metadata] || {}
+  end
 
   def assign_queue_position
     self.queue_position ||= self.class.next_queue_position
   end
 
   def promise_note_record
-    promise_note_id = metadata["promise_note_id"]
+    promise_note_id = metadata_payload["promise_note_id"]
     return nil if promise_note_id.blank?
 
-    Note.find_by(id: promise_note_id)
+    Note.active.find_by(id: promise_note_id)
   end
 
   class << self

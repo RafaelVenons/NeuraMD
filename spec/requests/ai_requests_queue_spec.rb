@@ -96,4 +96,92 @@ RSpec.describe "AI requests queue API", type: :request do
     )
     expect(promise_note.reload).to be_deleted
   end
+
+  it "does not expose queue navigation for a deleted promise note" do
+    note = create(:note, :with_head_revision)
+    deleted_promise = create(:note, title: "Gigante")
+    deleted_promise.soft_delete!
+    request_record = create(
+      :ai_request,
+      note_revision: note.head_revision,
+      capability: "seed_note",
+      status: "succeeded",
+      metadata: {
+        "language" => note.detected_language,
+        "promise_note_id" => deleted_promise.id,
+        "promise_note_title" => deleted_promise.title
+      }
+    )
+
+    get ai_requests_dashboard_path(format: :json)
+
+    expect(response).to have_http_status(:ok)
+    payload = response.parsed_body["requests"].find { |item| item["id"] == request_record.id }
+    expect(payload).to include(
+      "promise_note_id" => deleted_promise.id,
+      "promise_note_title" => "Gigante",
+      "promise_note_slug" => nil
+    )
+  end
+
+  it "hides a resolved queue request from future queue loads" do
+    note = create(:note, :with_head_revision)
+    request_record = create(
+      :ai_request,
+      note_revision: note.head_revision,
+      capability: "grammar_review",
+      provider: "openai",
+      requested_provider: "openai",
+      model: "gpt-4o-mini",
+      status: "succeeded",
+      completed_at: Time.current
+    )
+
+    patch resolve_ai_request_queue_path(request_record.id), as: :json
+
+    expect(response).to have_http_status(:ok)
+    expect(response.parsed_body).to include(
+      "id" => request_record.id,
+      "queue_hidden" => true
+    )
+
+    get ai_requests_dashboard_path(format: :json)
+
+    expect(response).to have_http_status(:ok)
+    expect(response.parsed_body["requests"]).not_to include(a_hash_including("id" => request_record.id))
+    expect(response.parsed_body["recent_history"]).to include(a_hash_including("id" => request_record.id))
+  end
+
+  it "keeps an undone seed_note request hidden from future queue loads" do
+    source_note = create(:note, :with_head_revision)
+    promise_note = create(:note, title: "Promessa Persistida")
+    Notes::DraftService.call(note: source_note, content: "Abrir [[Promessa Persistida|#{promise_note.id}]]", author: user)
+    request_record = create(
+      :ai_request,
+      note_revision: source_note.head_revision,
+      capability: "seed_note",
+      status: "succeeded",
+      metadata: {
+        "language" => source_note.detected_language,
+        "promise_source_note_id" => source_note.id,
+        "promise_note_id" => promise_note.id,
+        "promise_note_title" => promise_note.title
+      }
+    )
+
+    delete ai_request_dashboard_path(request_record.id), as: :json
+
+    expect(response).to have_http_status(:ok)
+    expect(response.parsed_body).to include(
+      "id" => request_record.id,
+      "undone" => true,
+      "queue_hidden" => true
+    )
+
+    get ai_requests_dashboard_path(format: :json)
+
+    expect(response).to have_http_status(:ok)
+    expect(response.parsed_body["requests"]).not_to include(a_hash_including("id" => request_record.id))
+    expect(response.parsed_body["recent_history"]).to include(a_hash_including("id" => request_record.id))
+  end
 end

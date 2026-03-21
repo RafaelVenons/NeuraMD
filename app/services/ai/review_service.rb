@@ -140,7 +140,8 @@ module Ai
             request_hash: nil,
             response_summary: nil,
             tokens_in: nil,
-            tokens_out: nil
+            tokens_out: nil,
+            metadata: request.metadata.except("queue_hidden_at")
           )
         end
 

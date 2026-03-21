@@ -1,5 +1,6 @@
 class AiRequestPolicy < ApplicationPolicy
   def retry? = update?
+  def resolve_queue? = show?
 
   class Scope < Scope
     def resolve
