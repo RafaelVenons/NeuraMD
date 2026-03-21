@@ -25,6 +25,7 @@ export default class extends Controller {
     "historyEmpty",
     "historyStatus",
     "acceptButton",
+    "declineButton",
     "transportBadge",
     "translationMeta",
     "translationSummary",
@@ -32,6 +33,11 @@ export default class extends Controller {
   ]
 
   static values = {
+    queueUrl: String,
+    queueReorderUrl: String,
+    queueRequestUrlTemplate: String,
+    queueRetryUrlTemplate: String,
+    queueCancelUrlTemplate: String,
     statusUrl: String,
     reviewUrl: String,
     historyUrl: String,
@@ -58,7 +64,10 @@ export default class extends Controller {
     this.pendingApplyMode = "document"
     this.pendingOriginalText = ""
     this.historyRequests = []
+    this.globalHistoryRequests = []
+    this.queueRequests = []
     this.dismissedQueueRequestIds = new Set()
+    this.resolvedQueueRequestIds = new Set()
     this.draggedQueueRequestId = null
     this.draggedQueueElement = null
     this.queuePlaceholder = null
@@ -79,6 +88,7 @@ export default class extends Controller {
     document.addEventListener("click", this._boundDocumentClick)
     this._observeStreamSource()
     this.checkAvailability()
+    this.refreshQueue()
     this.refreshHistory()
   }
 
@@ -90,6 +100,32 @@ export default class extends Controller {
     this._stopPolling()
     this._clearProposalStage()
     this._clearActiveTrigger()
+  }
+
+  hydrateNoteContext(payload) {
+    const urls = payload.urls || {}
+    const ai = payload.ai || {}
+
+    this.queueUrlValue = urls.queue || this.queueUrlValue
+    this.queueReorderUrlValue = urls.queue_reorder || this.queueReorderUrlValue
+    this.queueRequestUrlTemplateValue = urls.queue_request_template || this.queueRequestUrlTemplateValue
+    this.queueRetryUrlTemplateValue = urls.queue_retry_template || this.queueRetryUrlTemplateValue
+    this.queueCancelUrlTemplateValue = urls.queue_cancel_template || this.queueCancelUrlTemplateValue
+    this.statusUrlValue = urls.ai_status || this.statusUrlValue
+    this.reviewUrlValue = urls.ai_review || this.reviewUrlValue
+    this.historyUrlValue = urls.ai_history || this.historyUrlValue
+    this.reorderUrlValue = urls.ai_reorder || this.reorderUrlValue
+    this.requestUrlTemplateValue = urls.ai_request_template || this.requestUrlTemplateValue
+    this.retryUrlTemplateValue = urls.ai_retry_template || this.retryUrlTemplateValue
+    this.cancelUrlTemplateValue = urls.ai_cancel_template || this.cancelUrlTemplateValue
+    this.createTranslatedNoteUrlTemplateValue =
+      urls.ai_create_translated_note_template || this.createTranslatedNoteUrlTemplateValue
+    this.noteTitleValue = ai.note_title || this.noteTitleValue
+    this.noteLanguageValue = ai.note_language || this.noteLanguageValue
+    this.languageOptionsValue = ai.language_options || this.languageOptionsValue
+    this.languageLabelsValue = ai.language_labels || this.languageLabelsValue
+
+    if (this.historyDialogTarget?.open) this.refreshHistory()
   }
 
   openGrammar(event) {
@@ -205,16 +241,20 @@ export default class extends Controller {
     }
   }
 
-  close() {
+  async close() {
     this._cancelCurrentRequest()
+    await this._rejectPendingResult()
     this._clearProposalStage()
     this._hideWorkspace()
   }
 
   async openHistory() {
     this.historyDialogTarget.showModal()
+    this.historyFilter = "shell"
     this._syncHistoryFilters()
-    await this.refreshHistory()
+    await this.refreshQueue()
+    await this._loadNoteHistory()
+    this._renderHistory()
   }
 
   closeHistory() {
@@ -227,6 +267,17 @@ export default class extends Controller {
   }
 
   async refreshHistory() {
+    if (this.historyFilter === "shell" && this.queueUrlValue) {
+      await this.refreshQueue()
+      this._renderHistory()
+      return
+    }
+
+    await this._loadNoteHistory()
+    this._renderHistory()
+  }
+
+  async _loadNoteHistory() {
     this.historyStatusTarget.textContent = "Carregando execuções recentes..."
 
     try {
@@ -239,13 +290,32 @@ export default class extends Controller {
       if (!response.ok) throw new Error(data.error || "Falha ao carregar o histórico de IA.")
 
       this.historyRequests = data.requests || []
-      this._renderHistory()
       this._renderQueue()
     } catch (error) {
       this.historyRequests = []
       this.historyListTarget.innerHTML = ""
       this.historyEmptyTarget.classList.add("hidden")
       this.historyStatusTarget.textContent = error.message || "Falha ao carregar o histórico de IA."
+      this._renderQueue()
+    }
+  }
+
+  async refreshQueue() {
+    if (!this.queueUrlValue) return
+
+    try {
+      const response = await fetch(this.queueUrlValue, {
+        headers: { Accept: "application/json" },
+        credentials: "same-origin"
+      })
+      const data = await response.json()
+      if (!response.ok) throw new Error(data.error || "Falha ao carregar a fila de IA.")
+
+      this.queueRequests = data.requests || []
+      this.globalHistoryRequests = data.recent_history || []
+      this._renderQueue()
+      if (this.historyDialogTarget?.open && this.historyFilter === "shell") this._renderHistory()
+    } catch (_) {
       this._renderQueue()
     }
   }
@@ -257,6 +327,9 @@ export default class extends Controller {
   }
 
   async queueAction(event) {
+    event.preventDefault()
+    event.stopPropagation()
+
     const requestId = event.currentTarget.dataset.requestId
     const actionType = event.currentTarget.dataset.queueAction
     if (!requestId || !actionType) return
@@ -266,8 +339,14 @@ export default class extends Controller {
       return
     }
 
+    if (actionType === "open-result") {
+      await this._openCompletedRequest(requestId)
+      return
+    }
+
     if (actionType === "dismiss") {
       this.dismissedQueueRequestIds.add(String(requestId))
+      this.resolvedQueueRequestIds.add(String(requestId))
       this._renderQueue()
       return
     }
@@ -373,12 +452,20 @@ export default class extends Controller {
 
       try {
         await this._createTranslatedNote(correctedText)
+        this._resolveQueueRequest(this.lastCompletedRequest?.id)
       } catch (error) {
         window.alert(error.message || "Falha ao criar nota traduzida.")
       } finally {
         this.acceptButtonTarget.disabled = false
         this.acceptButtonTarget.textContent = previousLabel
       }
+      return
+    }
+
+    if (this.pendingApplyMode === "seed_note_review") {
+      this._resolveQueueRequest(this.lastCompletedRequest?.id)
+      this.lastCompletedRequest = null
+      this._hideWorkspace()
       return
     }
 
@@ -395,6 +482,7 @@ export default class extends Controller {
       bubbles: true
     })
 
+    this._resolveQueueRequest(this.lastCompletedRequest?.id)
     editor.focus()
     this._hideWorkspace()
   }
@@ -487,6 +575,7 @@ export default class extends Controller {
     this.processingBoxTarget.classList.add("hidden")
     this.resultBoxTarget.classList.remove("hidden")
     this.resultBoxTarget.classList.add("flex")
+    if (this.hasDeclineButtonTarget) this.declineButtonTarget.textContent = "Recusar"
     this.acceptButtonTarget.textContent =
       this.pendingApplyMode === "translation_note" ? "Criar nota traduzida" : "Aplicar"
     if (this.pendingApplyMode !== "translation_note") {
@@ -500,10 +589,36 @@ export default class extends Controller {
     this._syncTranslationMeta(suggestionForPreview)
   }
 
+  _showSeedNoteReview(request) {
+    this._clearProposalStage()
+    this._showWorkspace()
+    this.configNoticeTarget.classList.add("hidden")
+    this.processingBoxTarget.classList.add("hidden")
+    this.resultBoxTarget.classList.remove("hidden")
+    this.resultBoxTarget.classList.add("flex")
+    this.translationMetaTarget.classList.add("hidden")
+    if (this.hasDeclineButtonTarget) this.declineButtonTarget.textContent = "Recusar"
+    this.acceptButtonTarget.textContent = "Aplicar"
+    this.correctedTextTarget.value = ""
+    this.proposalDiffTarget.innerHTML = `
+      <div class="space-y-3">
+        <p class="text-sm font-semibold text-[var(--theme-text-primary)]">Nota criada com IA</p>
+        <p class="text-sm text-[var(--theme-text-secondary)]">
+          Revise a nota criada no editor. Aplique para manter esta nota; recuse para apagar a nota criada, remover o link gerado e restaurar o wikilink original.
+        </p>
+        <p class="text-xs uppercase tracking-[0.18em] text-[var(--theme-text-faint)]">${this._escapeHtml(request.promise_note_title || request.note_title || "Nota criada")}</p>
+      </div>
+    `
+  }
+
   _showWorkspace() {
     this.workspaceTarget.classList.remove("hidden")
     this.workspaceTarget.classList.add("flex")
     this.previewShellTarget.classList.add("hidden")
+  }
+
+  _aiStageVisible() {
+    return this.hasWorkspaceTarget && !this.workspaceTarget.classList.contains("hidden")
   }
 
   _hideWorkspace() {
@@ -514,6 +629,7 @@ export default class extends Controller {
     this.processingBoxTarget.classList.add("hidden")
     this.resultBoxTarget.classList.add("hidden")
     this.translationMetaTarget.classList.add("hidden")
+    if (this.hasDeclineButtonTarget) this.declineButtonTarget.textContent = "Fechar"
     this._hideRequestMenu()
     this.pendingMenu = null
     this.aiSuggestedText = ""
@@ -557,7 +673,7 @@ export default class extends Controller {
     this.pollAttempt += 1
 
     try {
-      const response = await fetch(this._requestUrl(requestId), {
+      const response = await fetch(this._queueRequestUrl(requestId), {
         headers: { Accept: "application/json" },
         credentials: "same-origin"
       })
@@ -584,6 +700,7 @@ export default class extends Controller {
         this.currentRequestId = null
         this._clearActiveTrigger()
         this.refreshHistory()
+        this.refreshQueue()
         return
       }
 
@@ -594,6 +711,7 @@ export default class extends Controller {
         this.currentRequestId = null
         this._hideWorkspace()
         this.refreshHistory()
+        this.refreshQueue()
         return
       }
 
@@ -627,7 +745,7 @@ export default class extends Controller {
     this.currentRequestId = null
 
     try {
-      await fetch(this._cancelUrl(requestId), {
+      await fetch(this._queueCancelUrl(requestId), {
         method: "DELETE",
         credentials: "same-origin",
         headers: {
@@ -638,6 +756,7 @@ export default class extends Controller {
     } catch (_) {
     } finally {
       this.refreshHistory()
+      this.refreshQueue()
       this._clearActiveTrigger()
     }
   }
@@ -646,12 +765,16 @@ export default class extends Controller {
     return this.requestUrlTemplateValue.replace("__REQUEST_ID__", requestId)
   }
 
-  _cancelUrl(requestId) {
-    return this.cancelUrlTemplateValue.replace("__REQUEST_ID__", requestId)
+  _queueRequestUrl(requestId) {
+    return this.queueRequestUrlTemplateValue.replace("__REQUEST_ID__", requestId)
   }
 
-  _retryUrl(requestId) {
-    return this.retryUrlTemplateValue.replace("__REQUEST_ID__", requestId)
+  _queueCancelUrl(requestId) {
+    return this.queueCancelUrlTemplateValue.replace("__REQUEST_ID__", requestId)
+  }
+
+  _queueRetryUrl(requestId) {
+    return this.queueRetryUrlTemplateValue.replace("__REQUEST_ID__", requestId)
   }
 
   _updateProcessingState(data) {
@@ -688,7 +811,9 @@ export default class extends Controller {
     const request = event.detail
     if (!request?.id) return
 
-    this._upsertHistoryRequest(request)
+    this._upsertQueueRequest(request)
+    this._upsertGlobalHistoryRequest(request)
+    if (this._belongsToCurrentNote(request)) this._upsertHistoryRequest(request)
     if (this.historyDialogTarget?.open) this._renderHistory()
     this._renderQueue()
     if (String(request.id) !== String(this.currentRequestId)) return
@@ -729,14 +854,16 @@ export default class extends Controller {
     if (!requestId) return
 
     try {
-      const response = await fetch(this._requestUrl(requestId), {
+      const response = await fetch(this._queueRequestUrl(requestId), {
         headers: { Accept: "application/json" },
         credentials: "same-origin"
       })
       const request = await response.json()
       if (!response.ok || !request?.id) return
 
-      this._upsertHistoryRequest(request)
+      this._upsertQueueRequest(request)
+      this._upsertGlobalHistoryRequest(request)
+      if (this._belongsToCurrentNote(request)) this._upsertHistoryRequest(request)
       if (this.historyDialogTarget?.open) this._renderHistory()
       this._renderQueue()
     } catch (_) {
@@ -776,9 +903,29 @@ export default class extends Controller {
     this._renderQueue()
   }
 
+  _upsertGlobalHistoryRequest(request) {
+    const existingIndex = this.globalHistoryRequests.findIndex((item) => String(item.id) === String(request.id))
+    if (existingIndex >= 0) this.globalHistoryRequests.splice(existingIndex, 1, request)
+    else this.globalHistoryRequests.unshift(request)
+
+    this.globalHistoryRequests = this.globalHistoryRequests
+      .sort((left, right) => new Date(right.created_at || 0) - new Date(left.created_at || 0))
+      .slice(0, 20)
+  }
+
+  _upsertQueueRequest(request) {
+    const existingIndex = this.queueRequests.findIndex((item) => String(item.id) === String(request.id))
+    if (existingIndex >= 0) this.queueRequests.splice(existingIndex, 1, request)
+    else this.queueRequests.unshift(request)
+
+    this.queueRequests = this.queueRequests
+      .sort((left, right) => new Date(right.created_at || 0) - new Date(left.created_at || 0))
+      .slice(0, 30)
+  }
+
   async _retryRequest(requestId) {
     try {
-      const response = await fetch(this._retryUrl(requestId), {
+      const response = await fetch(this._queueRetryUrl(requestId), {
         method: "POST",
         credentials: "same-origin",
         headers: {
@@ -790,8 +937,12 @@ export default class extends Controller {
       if (!response.ok || data.error) throw new Error(data.error || "Falha ao reenfileirar request.")
 
       this.dismissedQueueRequestIds.delete(String(requestId))
-      this._upsertHistoryRequest(data)
+      this.resolvedQueueRequestIds.delete(String(requestId))
+      this._upsertQueueRequest(data)
+      this._upsertGlobalHistoryRequest(data)
+      if (this._belongsToCurrentNote(data)) this._upsertHistoryRequest(data)
       if (this.historyDialogTarget?.open) this._renderHistory()
+      this._renderQueue()
     } catch (error) {
       window.alert(error.message || "Falha ao reenfileirar request.")
     }
@@ -991,6 +1142,7 @@ export default class extends Controller {
 
   _filteredHistoryRequests() {
     switch (this.historyFilter) {
+      case "shell": return this.globalHistoryRequests
       case "active": return this.historyRequests.filter((request) => ["queued", "running", "retrying"].includes(request.status))
       case "failed": return this.historyRequests.filter((request) => request.status === "failed")
       case "succeeded": return this.historyRequests.filter((request) => request.status === "succeeded")
@@ -1006,6 +1158,7 @@ export default class extends Controller {
 
   _historySummaryLabel(count) {
     return {
+      shell: `${count} execucoes recentes do shell`,
       all: `${count} execucoes recentes`,
       active: `${count} execucoes ativas`,
       failed: `${count} falhas recentes`,
@@ -1015,6 +1168,7 @@ export default class extends Controller {
 
   _emptyHistoryLabel() {
     return {
+      shell: "Nenhuma execução global recente no shell.",
       all: "Nenhuma execução recente.",
       active: "Nenhuma execução ativa.",
       failed: "Nenhuma falha recente.",
@@ -1024,6 +1178,7 @@ export default class extends Controller {
 
   _historyCard(request) {
     const provider = request.provider && request.model ? `${request.provider}: ${request.model}` : (request.provider || "IA")
+    const noteLabel = request.note_title ? `<p class="mt-1 text-xs text-[var(--theme-text-faint)]">${this._escapeHtml(request.note_title)}</p>` : ""
     const statusClass = this._statusClass(request.status)
     const duration = this._durationLabel(request)
     const error = request.error ? `<p class="mt-2 text-xs text-amber-300">${this._escapeHtml(request.error)}</p>` : ""
@@ -1035,6 +1190,7 @@ export default class extends Controller {
           <div>
             <p class="text-sm font-semibold text-[var(--theme-text-primary)]">${this._escapeHtml(this._capabilityLabel(request.capability))}</p>
             <p class="text-xs text-[var(--theme-text-muted)]">${this._escapeHtml(provider)}</p>
+            ${noteLabel}
           </div>
           <span class="rounded-full px-2 py-1 text-[11px] font-medium ${statusClass}">
             ${this._escapeHtml(this._statusLabel(request.status))}
@@ -1061,6 +1217,7 @@ export default class extends Controller {
 
     const requests = this._sortedQueueRequests()
       .filter((request) => !this.dismissedQueueRequestIds.has(String(request.id)))
+      .filter((request) => !this.resolvedQueueRequestIds.has(String(request.id)))
 
     if (requests.length === 0) {
       this.queueDockTarget.innerHTML = ""
@@ -1077,12 +1234,12 @@ export default class extends Controller {
   }
 
   _sortedQueueRequests() {
-    const supplemental = this.historyRequests
+    const supplemental = this.queueRequests
       .filter((request) => this._queueEligible(request))
       .filter((request) => !this._queueReorderable(request))
       .sort((left, right) => new Date(right.created_at || 0) - new Date(left.created_at || 0))
 
-    const active = this.historyRequests
+    const active = this.queueRequests
       .filter((request) => this._queueEligible(request))
       .filter((request) => this._queueReorderable(request))
       .sort((left, right) => {
@@ -1157,9 +1314,15 @@ export default class extends Controller {
 
     if (request.status === "failed") {
       return `
-        <span class="rounded-full border border-red-700 bg-red-900/40 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-red-300">
-          Retry
-        </span>
+        <button type="button"
+                title="Desistir"
+                aria-label="Desistir"
+                class="rounded-full border border-red-700 bg-red-900/40 px-2 py-0.5 text-[11px] font-semibold text-red-300 hover:text-red-400"
+                data-request-id="${this._escapeHtml(request.id)}"
+                data-queue-action="dismiss"
+                data-action="click->ai-review#queueAction">
+          X
+        </button>
       `
     }
 
@@ -1228,9 +1391,87 @@ export default class extends Controller {
       label: this._queueServiceLabel(request),
       borderClass: this._queueBorderClass(request.status),
       reorderable: this._queueReorderable(request),
-      cardAction: request.status === "failed" ? "retry" : "",
+      cardAction: request.status === "failed" ? "retry" : (request.status === "succeeded" ? "open-result" : ""),
       actionButton: this._queueActionButton(request)
     }
+  }
+
+  async _openCompletedRequest(requestId) {
+    const request = await this._fetchQueueRequest(requestId)
+    if (!request || request.status !== "succeeded") return
+
+    if (request.promise_note_slug) {
+      const shell = this.application.getControllerForElementAndIdentifier(this.element, "note-shell")
+      if (shell?.navigateTo) await shell.navigateTo(`/notes/${request.promise_note_slug}`)
+      else if (window.Turbo?.visit) window.Turbo.visit(`/notes/${request.promise_note_slug}`)
+      else window.location.assign(`/notes/${request.promise_note_slug}`)
+
+      this.pendingApplyMode = "seed_note_review"
+      this.pendingOriginalText = ""
+      this.lastCompletedRequest = {
+        id: request.id,
+        capability: request.capability,
+        provider: request.provider,
+        model: request.model,
+        targetLanguage: request.target_language || this.selectedTargetLanguage()
+      }
+      this._showSeedNoteReview(request)
+      return
+    }
+
+    this._ensurePreviewVisible()
+    this.pendingApplyMode = request.capability === "translate" ? "translation_note" : "document"
+    this.pendingOriginalText = request.input_text || this._editor().getValue()
+    this.lastCompletedRequest = {
+      id: request.id,
+      capability: request.capability,
+      provider: request.provider,
+      model: request.model,
+      targetLanguage: request.target_language || this.selectedTargetLanguage()
+    }
+    this._showProposal(request.corrected || "")
+  }
+
+  async _fetchQueueRequest(requestId) {
+    const existing = this.queueRequests.find((item) => String(item.id) === String(requestId))
+    if (existing?.corrected || existing?.promise_note_slug) return existing
+
+    try {
+      const response = await fetch(this._queueRequestUrl(requestId), {
+        headers: { Accept: "application/json" },
+        credentials: "same-origin"
+      })
+      const data = await response.json()
+      if (!response.ok || !data?.id) return existing || null
+      this._upsertQueueRequest(data)
+      this._upsertGlobalHistoryRequest(data)
+      if (this._belongsToCurrentNote(data)) this._upsertHistoryRequest(data)
+      return data
+    } catch (_) {
+      return existing || null
+    }
+  }
+
+  _resolveQueueRequest(requestId) {
+    if (!requestId) return
+
+    const requestIdString = String(requestId)
+    this.resolvedQueueRequestIds.add(requestIdString)
+    this.dismissedQueueRequestIds.delete(requestIdString)
+    this._renderQueue()
+  }
+
+  async _rejectPendingResult() {
+    if (!this.lastCompletedRequest?.id) return
+
+    if (this.pendingApplyMode === "seed_note_review" || this.lastCompletedRequest.capability === "seed_note") {
+      await this._destroyRequest(this.lastCompletedRequest.id)
+      this.lastCompletedRequest = null
+      return
+    }
+
+    this._resolveQueueRequest(this.lastCompletedRequest.id)
+    this.lastCompletedRequest = null
   }
 
   _buildQueuePlaceholder(card) {
@@ -1266,7 +1507,7 @@ export default class extends Controller {
     if (!orderedRequestIds.length) return
 
     try {
-      const response = await fetch(this.reorderUrlValue, {
+      const response = await fetch(this.queueReorderUrlValue, {
         method: "PATCH",
         credentials: "same-origin",
         headers: {
@@ -1279,12 +1520,17 @@ export default class extends Controller {
       const data = await response.json()
       if (!response.ok || data.error) throw new Error(data.error || "Falha ao reordenar fila.")
 
-      ;(data.requests || []).forEach((request) => this._upsertHistoryRequest(request))
+      ;(data.requests || []).forEach((request) => {
+        this._upsertQueueRequest(request)
+        this._upsertGlobalHistoryRequest(request)
+        if (this._belongsToCurrentNote(request)) this._upsertHistoryRequest(request)
+      })
       if (this.historyDialogTarget?.open) this._renderHistory()
       this._renderQueue()
     } catch (error) {
       window.alert(error.message || "Falha ao reordenar fila.")
-      this.refreshHistory()
+      this.refreshQueue()
+      if (this.historyDialogTarget?.open) this.refreshHistory()
     }
   }
 
@@ -1447,7 +1693,7 @@ export default class extends Controller {
 
     let data
     try {
-      const response = await fetch(this._cancelUrl(requestId), {
+      const response = await fetch(this._queueCancelUrl(requestId), {
         method: "DELETE",
         credentials: "same-origin",
         headers: {
@@ -1459,14 +1705,22 @@ export default class extends Controller {
       if (!response.ok || data.error) throw new Error(data.error || "Falha ao cancelar request de IA.")
     } catch (error) {
       if (!wasDismissed) this.dismissedQueueRequestIds.delete(requestIdString)
-      this.refreshHistory()
+      this.refreshQueue()
+      if (this.historyDialogTarget?.open) this.refreshHistory()
       throw error
     }
 
-    const request = this.historyRequests.find((item) => String(item.id) === String(requestId))
-    if (request) {
-      request.status = data.status
-      this._upsertHistoryRequest(request)
+    const queueRequest = this.queueRequests.find((item) => String(item.id) === String(requestId))
+    if (queueRequest) {
+      queueRequest.status = data.status
+      this._upsertQueueRequest(queueRequest)
+      this._upsertGlobalHistoryRequest(queueRequest)
+    }
+
+    const historyRequest = this.historyRequests.find((item) => String(item.id) === String(requestId))
+    if (historyRequest) {
+      historyRequest.status = data.status
+      this._upsertHistoryRequest(historyRequest)
     }
 
     if (data.undone) {
@@ -1486,6 +1740,17 @@ export default class extends Controller {
 
     if (this.historyDialogTarget?.open) this._renderHistory()
     this._renderQueue()
+  }
+
+  _belongsToCurrentNote(request) {
+    if (!request?.note_slug || !this.historyUrlValue) return false
+
+    try {
+      const url = new URL(this.historyUrlValue, window.location.origin)
+      return url.pathname.includes(`/notes/${request.note_slug}/`)
+    } catch (_) {
+      return false
+    }
   }
 
   _animateQueueExit(requestId) {

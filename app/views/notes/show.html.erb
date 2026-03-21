@@ -1,10 +1,10 @@
 <% content_for :title, "#{@note.title} — NeuraMD" %>
-<%= turbo_stream_from @note, :ai_requests %>
 
 <div id="editor-root"
      class="flex flex-col"
      style="height: 100dvh; background: var(--theme-bg-primary);"
-     data-controller="editor autosave ai-review"
+     data-controller="note-shell editor autosave ai-review"
+     data-note-shell-target="root"
      data-editor-autosave-url-value="<%= draft_note_path(@note.slug) %>"
      data-editor-revisions-url-value="<%= revisions_note_path(@note.slug) %>"
      data-editor-slug-value="<%= @note.slug %>"
@@ -14,6 +14,11 @@
      data-editor-initial-revision-id-value="<%= @revision&.id %>"
      data-editor-initial-revision-kind-value="<%= @revision&.revision_kind %>"
      data-editor-head-revision-id-value="<%= @note.head_revision_id %>"
+     data-ai-review-queue-url-value="<%= ai_requests_dashboard_path(format: :json) %>"
+     data-ai-review-queue-reorder-url-value="<%= reorder_ai_requests_dashboard_path %>"
+     data-ai-review-queue-request-url-template-value="<%= ai_request_payload_path("__REQUEST_ID__") %>"
+     data-ai-review-queue-retry-url-template-value="<%= retry_ai_request_path("__REQUEST_ID__") %>"
+     data-ai-review-queue-cancel-url-template-value="<%= ai_request_dashboard_path("__REQUEST_ID__") %>"
      data-ai-review-status-url-value="<%= ai_status_note_path(@note.slug) %>"
      data-ai-review-review-url-value="<%= ai_review_note_path(@note.slug) %>"
      data-ai-review-history-url-value="<%= ai_requests_note_path(@note.slug) %>"
@@ -32,6 +37,10 @@
      data-autosave-server-updated-at-value="<%= @revision&.updated_at&.iso8601 %>"
      data-autosave-draft-ms-value="60000"
      data-autosave-local-ms-value="3000">
+
+  <div data-note-shell-target="streamSource">
+    <%= render "notes/ai_requests_stream", note: @note %>
+  </div>
 
   <%# ── Toolbar ─────────────────────────────────────────── %>
   <div id="editor-toolbar"
@@ -238,7 +247,7 @@
 
   <aside data-ai-review-target="queueDock"
          data-action="dragover->ai-review#handleQueueDockDragOver drop->ai-review#handleQueueDockDrop"
-         class="fixed bottom-24 right-4 z-40 hidden flex max-h-[70vh] flex-col items-end gap-2 overflow-y-auto pr-1">
+         class="fixed bottom-24 right-4 z-50 hidden flex max-h-[70vh] flex-col items-end gap-2 overflow-y-auto pr-1">
   </aside>
 
   <%# ── Main editor area ──────────────────────────────────── %>
@@ -442,6 +451,7 @@ AI_ENABLED_PROVIDERS=ollama</pre>
 
           <footer class="flex items-center justify-between gap-3 border-t border-[var(--theme-border)] bg-[var(--theme-bg-secondary)] px-5 py-4">
             <button type="button"
+                    data-ai-review-target="declineButton"
                     data-action="click->ai-review#close"
                     class="rounded-md border border-[var(--theme-border)] px-4 py-2 text-sm text-[var(--theme-text-secondary)] hover:bg-[var(--theme-bg-primary)]">
               Fechar
@@ -499,54 +509,9 @@ AI_ENABLED_PROVIDERS=ollama</pre>
             </div>
           </div>
 
-          <%
-            incoming = @note.active_incoming_links.includes(:src_note)
-            fathers  = incoming.select { |l| l.hier_role == "target_is_child"   }.map(&:src_note).compact
-            brothers = incoming.select { |l| l.hier_role == "same_level"        }.map(&:src_note).compact
-            children = incoming.select { |l| l.hier_role == "target_is_parent"  }.map(&:src_note).compact
-            plain    = incoming.select { |l| l.hier_role.nil?                   }.map(&:src_note).compact
-          %>
           <section class="backlinks-panel hidden"
                    data-editor-target="backlinksPanel">
-            <% if fathers.any? %>
-              <div class="backlinks-group">
-                <span class="backlinks-group-label">Fathers:</span>
-                <ul class="backlinks-list">
-                  <% fathers.each do |n| %>
-                    <li><%= link_to n.title, note_path(n.slug), class: "backlink-child" %></li>
-                  <% end %>
-                </ul>
-              </div>
-            <% end %>
-            <% if brothers.any? %>
-              <div class="backlinks-group">
-                <span class="backlinks-group-label">Brothers:</span>
-                <ul class="backlinks-list">
-                  <% brothers.each do |n| %>
-                    <li><%= link_to n.title, note_path(n.slug), class: "backlink-brother" %></li>
-                  <% end %>
-                </ul>
-              </div>
-            <% end %>
-            <% if children.any? %>
-              <div class="backlinks-group">
-                <span class="backlinks-group-label">Children:</span>
-                <ul class="backlinks-list">
-                  <% children.each do |n| %>
-                    <li><%= link_to n.title, note_path(n.slug), class: "backlink-father" %></li>
-                  <% end %>
-                </ul>
-              </div>
-            <% end %>
-            <% if plain.any? %>
-              <div class="backlinks-group">
-                <ul class="backlinks-list">
-                  <% plain.each do |n| %>
-                    <li><%= link_to n.title, note_path(n.slug), class: "backlink-null" %></li>
-                  <% end %>
-                </ul>
-              </div>
-            <% end %>
+            <%= render "notes/backlinks_content", note: @note %>
           </section>
         </section>
       </div>
@@ -645,6 +610,13 @@ AI_ENABLED_PROVIDERS=ollama</pre>
 
       <div class="p-6 overflow-y-auto">
         <div class="mb-4 flex flex-wrap gap-2">
+          <button type="button"
+                  class="ai-history-filter"
+                  data-ai-review-target="historyFilter"
+                  data-filter-value="shell"
+                  data-action="click->ai-review#selectHistoryFilter">
+            Shell
+          </button>
           <button type="button"
                   class="ai-history-filter is-active"
                   data-ai-review-target="historyFilter"

@@ -9,6 +9,7 @@ class AiRequest < ApplicationRecord
 
   after_commit :broadcast_dashboard_refresh_later
   after_commit :broadcast_note_update_later
+  after_commit :broadcast_queue_update_later
 
   validates :attempts_count, numericality: {greater_than_or_equal_to: 0}
   validates :max_attempts, numericality: {greater_than: 0}
@@ -128,12 +129,16 @@ class AiRequest < ApplicationRecord
   end
 
   def realtime_payload
+    promise_note = promise_note_record
+
     {
       id: id,
       status: status,
       provider: provider,
       model: model,
       capability: capability,
+      note_id: note_revision&.note_id,
+      note_slug: note_revision&.note&.slug,
       note_title: note_revision&.note&.title,
       queue_position: queue_position,
       source_language: metadata["language"],
@@ -142,6 +147,7 @@ class AiRequest < ApplicationRecord
       max_attempts: max_attempts,
       next_retry_at: next_retry_at&.iso8601,
       last_error_kind: last_error_kind,
+      input_text: input_text,
       corrected: output_text,
       error: error_message,
       created_at: created_at.iso8601,
@@ -152,7 +158,8 @@ class AiRequest < ApplicationRecord
       remote_long_job: remote_long_job?,
       remote_hint: remote_status_hint,
       promise_note_id: metadata["promise_note_id"],
-      promise_note_title: metadata["promise_note_title"]
+      promise_note_title: metadata["promise_note_title"],
+      promise_note_slug: promise_note&.slug
     }
   end
 
@@ -160,6 +167,13 @@ class AiRequest < ApplicationRecord
 
   def assign_queue_position
     self.queue_position ||= self.class.next_queue_position
+  end
+
+  def promise_note_record
+    promise_note_id = metadata["promise_note_id"]
+    return nil if promise_note_id.blank?
+
+    Note.find_by(id: promise_note_id)
   end
 
   class << self
@@ -177,6 +191,27 @@ class AiRequest < ApplicationRecord
           .queue_order
           .to_a
 
+        by_id = scoped.index_by { |request| request.id.to_s }
+        ordered = request_ids.filter_map { |id| by_id[id] }
+        remaining = scoped.reject { |request| request_ids.include?(request.id.to_s) }
+        final = ordered + remaining
+
+        final.each_with_index do |request, index|
+          next_position = index + 1
+          next if request.queue_position == next_position
+
+          request.update!(queue_position: next_position)
+        end
+
+        final
+      end
+    end
+
+    def reorder_globally!(ordered_request_ids:)
+      request_ids = Array(ordered_request_ids).map(&:to_s)
+
+      transaction do
+        scoped = reorderable.queue_order.to_a
         by_id = scoped.index_by { |request| request.id.to_s }
         ordered = request_ids.filter_map { |id| by_id[id] }
         remaining = scoped.reject { |request| request_ids.include?(request.id.to_s) }
@@ -234,6 +269,19 @@ class AiRequest < ApplicationRecord
     Turbo::StreamsChannel.broadcast_action_later_to(
       note_revision.note,
       :ai_requests,
+      action: :dispatch_event,
+      target: "editor-root",
+      attributes: {
+        name: "ai-request:update",
+        detail: realtime_payload.to_json
+      },
+      render: false
+    )
+  end
+
+  def broadcast_queue_update_later
+    Turbo::StreamsChannel.broadcast_action_later_to(
+      "ai_requests_queue",
       action: :dispatch_event,
       target: "editor-root",
       attributes: {

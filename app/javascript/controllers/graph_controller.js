@@ -7,7 +7,7 @@ import { buildIndexes } from "graph/graph_indexes"
 import { deriveInitialTagOrder, moveTag, moveTagRelative, moveTagToFront, moveTagsToFront } from "graph/graph_tags"
 import { computeDisplayState } from "graph/graph_filters"
 import { animateNodePositions, applyLayout, assignNodePositions, captureNodePositions } from "graph/graph_layout"
-import { animateCameraToNode, cancelCameraAnimation } from "graph/graph_focus"
+import { animateCameraToNode, cancelCameraAnimation, centerCameraOnFocusedNode } from "graph/graph_focus"
 import { renderTooltip } from "graph/graph_tooltip"
 import { renderTagList, renderNoteCollections } from "graph/graph_sidebar"
 import { createEdgeProgramClasses } from "graph/graph_custom_edge_program"
@@ -46,6 +46,8 @@ export default class extends Controller {
   }
 
   connect() {
+    this._instanceId = this.element.dataset.graphInstanceId || `${Date.now()}-${Math.random().toString(16).slice(2)}`
+    this.element.dataset.graphInstanceId = this._instanceId
     this.state = createAppState()
     this.state.ui.isEmbedded = this.embeddedModeValue
     window.__graphDebug = this
@@ -664,7 +666,55 @@ export default class extends Controller {
   }
 
   visit(path, options = {}) {
+    const editorRoot = document.getElementById("editor-root")
+    const shell = editorRoot
+      ? this.application.getControllerForElementAndIdentifier(editorRoot, "note-shell")
+      : null
+    if (shell?.navigateTo && typeof path === "string" && path.startsWith("/notes/")) {
+      shell.navigateTo(path)
+      return
+    }
+
     visitWithPageTransition(path, options)
+  }
+
+  focusNote(noteId) {
+    if (!noteId || !this.state.graph?.hasNode(noteId)) return
+
+    this.initialFocusedNodeIdValue = noteId
+    this.state.ui.focusedNodeId = noteId
+    this.state.ui.pinnedTooltipNodeId = this.embeddedModeValue ? null : noteId
+    this.state.ui.focusDepth = 2
+    if (this.hasFocusDepthTarget) this.focusDepthTarget.value = "2"
+    this.renderSidebar()
+    if (this.embeddedModeValue) {
+      this.applyDisplayState({ relayout: false, animateFocus: false })
+      this._focusEmbeddedCamera(noteId)
+      return
+    }
+
+    this.applyDisplayState({ relayout: true, animateFocus: true })
+  }
+
+  _focusEmbeddedCamera(noteId) {
+    if (!this.state.renderer || !this.state.graph?.hasNode(noteId)) return
+
+    const viewportPoint = this.state.renderer.graphToViewport(this.state.graph.getNodeAttributes(noteId))
+    if (!viewportPoint) return
+
+    const withinViewport =
+      viewportPoint.x >= -80 &&
+      viewportPoint.y >= -80 &&
+      viewportPoint.x <= this.graphHostTarget.clientWidth + 80 &&
+      viewportPoint.y <= this.graphHostTarget.clientHeight + 80
+
+    if (withinViewport) {
+      animateCameraToNode(this.state.renderer, this.state)
+      return
+    }
+
+    centerCameraOnFocusedNode(this.state.renderer, this.state)
+    this.positionTooltip()
   }
 
   edgeArrowGeometry(edgeId) {

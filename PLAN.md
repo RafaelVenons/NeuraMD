@@ -34,6 +34,7 @@ As prioridades correntes do produto, acima de polimento e expansões laterais, s
 4. **Toolbar mínima de IA:** a toolbar deve expor apenas três ações de IA: melhoria de marcação Markdown, revisão gramatical e tradução.
 5. **Tradução com idioma e modelo independentes:** a ação de tradução deve permitir escolher separadamente língua alvo e modelo; deve criar/manter associação com a nota original, atualizar o título da nota traduzida e preservar/atualizar links relevantes.
 6. **Promessa com geração por IA ao fechar `]]`:** ao concluir uma promessa e escolher gerar por IA, o backend já cria a nota vazia/preparada para receber o conteúdo, o editor insere o UUID correto no link, a requisição de IA segue de forma assíncrona e o usuário permanece na nota atual. Se reprovar a resposta, deve existir opção de desfazer, removendo a nota criada no banco e o link correspondente.
+7. **Workflow de `/notes` com shell persistente:** a navegação entre notas deve preservar queue, estado de IA, finder e o máximo possível do estado do grafo/preview, atualizando apenas o conteúdo específico da nota. O objetivo não é migrar para React nem criar uma SPA paralela; a direção é usar a stack atual (Rails + Turbo + Stimulus + CodeMirror) para reduzir reloads completos.
 
 ---
 
@@ -52,6 +53,22 @@ As prioridades correntes do produto, acima de polimento e expansões laterais, s
 - CodeMirror 6 — mesmo editor do FrankMD
 - Preview HTML client-side via `marked.js` + extensões locais de wikilink
 - Suporte a Unicode completo: Mandarim (CJK), Japonês (Hiragana/Katakana/Kanji), Coreano (Hangul)
+
+**Direção arquitetural atual para navegação:**
+- não reescrever a aplicação como SPA em React/Vue
+- preservar a stack Rails + Turbo + Stimulus
+- evoluir `/notes` para um **shell persistente** com troca parcial de conteúdo
+- manter componentes globais montados uma vez só quando fizer sentido:
+  - queue dock de IA
+  - workspace/painel operacional de IA
+  - note finder
+  - casca estrutural do editor
+- trocar apenas o contexto da nota atual:
+  - conteúdo markdown
+  - metadados da nota
+  - backlinks
+  - endpoints dependentes de `slug`
+  - foco/painel do grafo embutido
 
 ### Infra
 - Docker + docker-compose
@@ -109,6 +126,42 @@ armazenamento local em vez de filesystem + S3.
 - Sempre que houver divergência:
   - **UX do FrankMD** pode ser mantida
   - **persistência, autorização, auditoria e domínio** devem seguir o NeuraMD
+
+### 3.1.1 Direção de Navegação e Persistência de Estado
+
+Para a experiência de editor, o NeuraMD deve evitar reload completo da página ao trocar de nota.
+
+**Objetivo:**
+- fazer `/notes` se comportar como fluxo contínuo
+- preservar estado de componentes operacionais
+- reduzir remendos de restauração manual de estado após navegação
+
+**Abordagem aprovada:**
+- usar **shell persistente** com Rails + Turbo + Stimulus
+- evitar criar frontend paralelo em React
+- tratar a página da nota como:
+  - **casca persistente**
+  - **miolo trocável por nota**
+
+**Estado que deve permanecer vivo entre trocas de nota quando possível:**
+- queue dock da IA
+- estado transitório da UI de IA que não depende exclusivamente do DOM da nota anterior
+- note finder
+- estado visual do app shell
+- estado do grafo que puder ser preservado sem inconsistência
+
+**Estado que pode ser reidratado a cada nota:**
+- conteúdo do editor
+- título/slug/idioma da nota atual
+- URLs de autosave/checkpoint/IA dependentes do `slug`
+- backlinks
+- painel embutido do grafo focado na nota atual
+- assinatura/realtime específica da nota atual
+
+**Regra de implementação:**
+- preferir navegação parcial em `/notes`
+- evitar `window.location`/reload completo para trocar entre notas quando a navegação estiver dentro do fluxo do editor
+- usar reload completo apenas quando a troca de contexto realmente exigir reinicialização integral da página
 
 ### 3.2 Reaproveitamento Específico da Fase 5
 
@@ -933,6 +986,37 @@ Executar nesta ordem, porque cada etapa reduz ambiguidade da próxima e evita re
 - [ ] Implementar retry de erro por clique no balão e blindagem contra respostas tardias após cancelamento
 - [ ] Só abrir workspace de resposta quando existir conteúdo relevante para revisão/aplicação
 - [ ] Cobrir com specs de system para fila, cancelamento, polling e ausência de takeover do preview
+
+#### Etapa C.5 — Transformar `/notes` em shell persistente
+- [x] Extrair a casca estrutural do editor para permanecer montada entre trocas de nota
+- [x] Tirar queue dock, workspace operacional de IA e note finder do fragmento específico da nota
+- [x] Definir um contrato de carregamento parcial para `/notes/:slug` que permita trocar só o conteúdo dependente da nota atual
+- [x] Interceptar navegação interna entre notas no workflow do editor para evitar reload completo
+- [x] Atualizar URL e histórico sem desmontar o shell do editor
+- [x] Reidratar apenas estado dependente da nota:
+  - editor markdown
+  - metadados (`title`, `slug`, `language`)
+  - endpoints de autosave/checkpoint/IA
+  - backlinks
+  - painel embutido do grafo focado na nota atual
+- [x] Preservar entre notas, sempre que consistente:
+  - queue de IA global ao shell
+  - workspace operacional de IA
+  - note finder
+  - estado visual do shell
+- [x] Subir parte do histórico de IA para o shell global:
+  - atividade recente de requests fora da nota atual
+  - filtro explícito de shell no diálogo de histórico
+- [x] Cobrir com specs de system para navegação entre notas sem reload integral da página e sem perda da queue
+- [x] Expandir a cobertura para transições adicionais do workflow do editor:
+  - note finder
+  - backlinks
+  - grafo embutido
+  - histórico back/forward em sequências mais longas
+- [x] Manter o grafo embutido persistente com foco barato por nota, evitando relayout quando só o nó focado muda
+- [ ] Refinar o histórico global do shell para decidir quanto sobe além da atividade recente:
+  - somente requests recentes
+  - ou também resultados aplicáveis/reabertos
 
 #### Etapa D — Endurecer preservação estrutural de wikilinks
 - [ ] Incluir nos prompts instruções explícitas para preservar a estrutura `[[texto|uuid]]`, `[[texto|f:uuid]]`, `[[texto|c:uuid]]` e `[[texto|b:uuid]]`

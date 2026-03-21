@@ -50,6 +50,18 @@ export function animateCameraToNode(renderer, state) {
   }, 620)
 }
 
+export function centerCameraOnFocusedNode(renderer, state) {
+  if (!renderer || !state.ui.focusedNodeId) return
+
+  const targetState = resolveCameraTargetState(renderer, state)
+  if (!targetState) return
+
+  const camera = renderer.getCamera()
+  if (!camera?.setState) return
+
+  camera.setState(targetState)
+}
+
 export function cancelCameraAnimation(renderer, state) {
   if (!renderer || !state?.layout) return
 
@@ -64,7 +76,7 @@ export function cancelCameraAnimation(renderer, state) {
   camera.setState(camera.getState())
 }
 
-function resolveCameraTargetState(renderer, state) {
+export function resolveCameraTargetState(renderer, state) {
   const focusIds = []
   const maxDepth = state.ui.focusDepth
 

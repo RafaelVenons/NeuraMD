@@ -145,9 +145,39 @@ RSpec.describe "AI review", type: :system do
   end
 
   def queue_titles
-    within("[data-ai-review-target='queueDock']") do
-      all("article", visible: :all).map { |card| card.all("p", visible: :all)[1].text }
+    page.evaluate_script(<<~JS)
+      (() => {
+        const dock = document.querySelector("[data-ai-review-target='queueDock']")
+        if (!dock) return []
+        return Array.from(dock.querySelectorAll("article")).map((card) => {
+          const paragraphs = card.querySelectorAll("p")
+          return paragraphs[1] ? paragraphs[1].textContent.trim() : ""
+        })
+      })()
+    JS
+  end
+
+  def wait_for_request_queue_position(request, position, timeout: Capybara.default_max_wait_time)
+    Timeout.timeout(timeout) do
+      loop do
+        request.reload
+        return if request.queue_position == position
+
+        sleep 0.1
+      end
     end
+  end
+
+  def dispatch_request_update(request)
+    payload = request.reload.realtime_payload.to_json
+    page.execute_script(<<~JS, payload)
+      const [detail] = arguments
+      const root = document.getElementById("editor-root")
+      root.dispatchEvent(new CustomEvent("ai-request:update", {
+        bubbles: true,
+        detail: JSON.parse(detail)
+      }))
+    JS
   end
 
   def drag_queue_card_after(source_id, target_id)
@@ -419,12 +449,12 @@ RSpec.describe "AI review", type: :system do
     expect(failed_request.reload.status).to eq("queued")
     within("[data-ai-review-target='queueDock']") do
       expect(page).to have_text(/revisar/i)
-      expect(page).to have_button("Cancelar")
+      expect(page).to have_button("Cancelar", wait: 5)
     end
   end
 
-  it "shows a completed request in the queue without a cancel button" do
-    create(
+  it "keeps a completed request in the queue until approval and lets the user reject it" do
+    succeeded_request = create(
       :ai_request,
       note_revision: note.head_revision,
       capability: "grammar_review",
@@ -443,7 +473,87 @@ RSpec.describe "AI review", type: :system do
       expect(page).to have_text(note.title)
       expect(page).to have_text("gpt-4o-mini")
       expect(page).to have_no_button("Cancelar")
+      find("article", text: note.title).click
     end
+
+    expect_ai_workspace(text: "Texto corrigido.")
+    expect(page).to have_button("Recusar", wait: 5)
+    expect(page).to have_button("Aplicar", wait: 5)
+    expect(page).to have_css("[data-ai-review-target='queueDock']:not(.hidden)", wait: 5)
+    expect(page).to have_css("[data-request-id='#{succeeded_request.id}']", wait: 5)
+
+    click_button "Recusar"
+
+    expect(page).to have_no_css("[data-request-id='#{succeeded_request.id}']", wait: 5)
+  end
+
+  it "lets the user reject a created promise note and restores the original wikilink" do
+    source_note = create(:note, :with_head_revision, title: "Nota Origem IA")
+    promise_note = create(:note, title: "Meu novo camarada")
+    Notes::DraftService.call(
+      note: source_note,
+      content: "Abrir [[Meu novo camarada|#{promise_note.id}]]",
+      author: user
+    )
+    request_record = create(
+      :ai_request,
+      note_revision: source_note.head_revision,
+      capability: "seed_note",
+      provider: "openai",
+      requested_provider: "openai",
+      model: "gpt-4o-mini",
+      status: "succeeded",
+      metadata: {
+        "language" => source_note.detected_language,
+        "promise_source_note_id" => source_note.id,
+        "promise_note_id" => promise_note.id,
+        "promise_note_title" => promise_note.title
+      },
+      output_text: "# Meu novo camarada\n\nConteudo criado.",
+      completed_at: Time.current
+    )
+
+    visit note_path(source_note.slug)
+
+    within("[data-ai-review-target='queueDock']") do
+      find("article", text: "Meu novo camarada").click
+    end
+
+    expect(page).to have_current_path(note_path(promise_note.slug), wait: 5)
+    expect(page).to have_button("Recusar", wait: 5)
+    click_button "Recusar"
+
+    expect(page).to have_no_css("[data-request-id='#{request_record.id}']", wait: 5)
+    expect(promise_note.reload).to be_deleted
+    expect(source_note.reload.note_revisions.find_by(revision_kind: :draft).content_markdown).to eq("Abrir [[Meu novo camarada]]")
+  end
+
+  it "shows queue cards while the AI workspace is open" do
+    choose_ai_option("Revisar gramática com IA")
+
+    expect_ai_workspace(text: "Texto corrigido pela IA.")
+    expect(page).to have_css("[data-ai-review-target='queueDock']:not(.hidden)", wait: 5)
+  end
+
+  it "allows dismissing a failed request from the queue with X" do
+    failed_request = create(
+      :ai_request,
+      note_revision: note.head_revision,
+      capability: "grammar_review",
+      provider: "openai",
+      requested_provider: "openai",
+      model: "gpt-4o-mini",
+      status: "failed",
+      error_message: "Falha temporaria"
+    )
+
+    visit note_path(note.slug)
+
+    within("[data-ai-review-target='queueDock']") do
+      find("button[title='Desistir'][data-request-id='#{failed_request.id}']").click
+    end
+
+    expect(page).to have_no_css("[data-request-id='#{failed_request.id}']", wait: 5)
   end
 
   it "reorders active queue cards via drag and drop and persists priority" do
@@ -567,7 +677,7 @@ RSpec.describe "AI review", type: :system do
     drag_queue_card_after(requests.first.id, requests[2].id)
 
     expect(queue_titles).to eq(["Fila 8", "Fila 7", "Fila 6", "Fila 5", "Fila 4", "Fila 3", "Fila 1", "Fila 2"])
-    expect(requests.first.reload.queue_position).to eq(2)
+    wait_for_request_queue_position(requests.first, 2)
   end
 
   it "shows an explicit remote long-job hint while an ollama request is still running" do
@@ -783,5 +893,26 @@ RSpec.describe "AI review", type: :system do
     click_button "Concluídas"
     expect(page).to have_text("Revisao gramatical", wait: 5)
     expect(page).to have_no_text("Falha remota", wait: 5)
+  end
+
+  it "shows recent shell-wide AI activity in the history dialog" do
+    other_note = create(:note, :with_head_revision, title: "Nota Global")
+    create(
+      :ai_request,
+      note_revision: other_note.head_revision,
+      capability: "translate",
+      provider: "openai",
+      requested_provider: "openai",
+      model: "gpt-4o-mini",
+      status: "succeeded",
+      completed_at: Time.current
+    )
+
+    find("button[title='Histórico de IA']").click
+
+    expect(page).to have_css("dialog[open]", text: "Histórico de IA", wait: 5)
+    click_button "Shell"
+    expect(page).to have_text("Traducao", wait: 5)
+    expect(page).to have_text("Nota Global", wait: 5)
   end
 end

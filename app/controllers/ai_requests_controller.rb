@@ -1,5 +1,6 @@
 class AiRequestsController < ApplicationController
   before_action :set_filters
+  before_action :set_request, only: [:show, :retry, :destroy]
 
   SORT_OPTIONS = {
     "newest" => "Mais recentes",
@@ -11,6 +12,15 @@ class AiRequestsController < ApplicationController
 
   def index
     authorize AiRequest
+
+    if request.format.json?
+      requests = queue_scope.limit(limit_param)
+      recent_history = recent_history_scope.limit(limit_param)
+      return render json: {
+        requests: requests.map { |ai_request| serialize_request(ai_request) },
+        recent_history: recent_history.map { |ai_request| serialize_request(ai_request) }
+      }
+    end
 
     @requests = scoped_requests.limit(limit_param)
     @provider_options = policy_scope(AiRequest).distinct.order(:provider).pluck(:provider).compact_blank
@@ -24,30 +34,80 @@ class AiRequestsController < ApplicationController
     render partial: "dashboard_content", layout: false if partial_request?
   end
 
+  def show
+    authorize @request
+    render json: serialize_request(@request)
+  end
+
+  def reorder
+    authorize AiRequest, :update?
+
+    requests = AiRequest.reorder_globally!(
+      ordered_request_ids: params[:ordered_request_ids]
+    )
+
+    render json: {
+      requests: requests.map { |ai_request| serialize_request(ai_request.reload) }
+    }
+  end
+
   def retry
-    request = policy_scope(AiRequest).find(params[:id])
-    authorize request
+    authorize @request
 
-    Ai::ReviewService.retry_request!(request)
+    Ai::ReviewService.retry_request!(@request)
 
-    redirect_to dashboard_path_for(status: nil),
-      notice: "Request de IA reenfileirada."
+    respond_to do |format|
+      format.json { render json: serialize_request(@request.reload) }
+      format.html do
+        redirect_to dashboard_path_for(status: nil),
+          notice: "Request de IA reenfileirada."
+      end
+    end
   rescue Ai::Error => e
-    redirect_to dashboard_path_for(status: params[:status].presence),
-      alert: e.message
+    respond_to do |format|
+      format.json { render json: {error: e.message}, status: :unprocessable_entity }
+      format.html do
+        redirect_to dashboard_path_for(status: params[:status].presence),
+          alert: e.message
+      end
+    end
   end
 
   def destroy
-    request = policy_scope(AiRequest).find(params[:id])
-    authorize request
+    authorize @request
 
-    Ai::ReviewService.cancel_request!(request)
+    cleanup_result = nil
+    request =
+      if @request.capability == "seed_note"
+        cleanup_result = Notes::PromiseCleanupService.call(ai_request: @request)
+        @request.reload
+      else
+        Ai::ReviewService.cancel_request!(@request)
+      end
 
-    redirect_to dashboard_path_for(status: "canceled"),
-      notice: "Request de IA cancelada."
+    respond_to do |format|
+      format.json do
+        render json: serialize_request(request).merge(
+          undone: cleanup_result.present?,
+          promise_note_id: request.metadata["promise_note_id"],
+          promise_note_deleted: cleanup_result&.note_deleted || false,
+          restored_content: cleanup_result&.source_content,
+          graph_changed: cleanup_result&.graph_changed || false
+        )
+      end
+      format.html do
+        redirect_to dashboard_path_for(status: "canceled"),
+          notice: "Request de IA cancelada."
+      end
+    end
   rescue Ai::Error => e
-    redirect_to dashboard_path_for(status: params[:status].presence),
-      alert: e.message
+    respond_to do |format|
+      format.json { render json: {error: e.message}, status: :unprocessable_entity }
+      format.html do
+        redirect_to dashboard_path_for(status: params[:status].presence),
+          alert: e.message
+      end
+    end
   end
 
   def retry_visible
@@ -88,12 +148,30 @@ class AiRequestsController < ApplicationController
 
   private
 
+  def set_request
+    @request = policy_scope(AiRequest).includes(note_revision: :note).find(params[:id])
+  end
+
   def scoped_requests
     scope = policy_scope(AiRequest).includes(note_revision: :note)
     scope = scope.where(status: @status_filter) if @status_filter.present?
     scope = scope.where(provider: @provider_filter) if @provider_filter.present?
     scope = scope.where(model: @model_filter) if @model_filter.present?
     apply_sort(scope)
+  end
+
+  def queue_scope
+    policy_scope(AiRequest)
+      .includes(note_revision: :note)
+      .where(status: %w[queued running retrying failed succeeded])
+      .recent_first
+  end
+
+  def recent_history_scope
+    policy_scope(AiRequest)
+      .includes(note_revision: :note)
+      .where(status: %w[queued running retrying failed succeeded canceled])
+      .recent_first
   end
 
   def build_summary(requests)
@@ -255,5 +333,9 @@ class AiRequestsController < ApplicationController
 
   def partial_request?
     params[:partial] == "1"
+  end
+
+  def serialize_request(request)
+    request.realtime_payload
   end
 end

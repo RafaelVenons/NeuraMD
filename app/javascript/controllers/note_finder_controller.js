@@ -175,6 +175,15 @@ export default class extends Controller {
     if (!result) return
     this.close()
     const href = `/notes/${result.slug}`
+    const editorRoot = document.getElementById("editor-root")
+    const shell = editorRoot
+      ? this.application.getControllerForElementAndIdentifier(editorRoot, "note-shell")
+      : null
+    if (shell?.navigateTo) {
+      shell.navigateTo(href)
+      return
+    }
+
     if (window.Turbo?.visit) {
       window.Turbo.visit(href)
     } else {

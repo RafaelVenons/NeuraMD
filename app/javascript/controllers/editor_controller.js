@@ -50,6 +50,7 @@ export default class extends Controller {
     this._bindAiStageState()
     this._bindNoteNavigation()
     this._restoreLayoutState()
+    this._scheduleInitialWorkspaceSync()
     this._syncPrimaryAction()
     this._focusTitleIfRequested()
     document.addEventListener("click", this._onDocumentClick)
@@ -237,6 +238,12 @@ export default class extends Controller {
       if (!href || href.startsWith("#")) return
 
       e.preventDefault()
+      const shell = this.application.getControllerForElementAndIdentifier(this.element, "note-shell")
+      if (shell?.navigateTo) {
+        await shell.navigateTo(href)
+        return
+      }
+
       await this._getAutosaveController()?.saveDraftNow()
       Turbo.visit(href)
     })
@@ -551,6 +558,12 @@ export default class extends Controller {
     this._getPreviewController()?.update(content)
   }
 
+  _scheduleInitialWorkspaceSync() {
+    requestAnimationFrame(() => {
+      this._applyContentToWorkspace(this._currentDisplayedContent())
+    })
+  }
+
   _findRevision(revisionId) {
     if (!revisionId) return null
     return this._revisionsById.get(String(revisionId)) || null
@@ -588,10 +601,46 @@ export default class extends Controller {
 
       this._revisionsLoaded = false
       this._closeRevisions()
-      Turbo.visit(`/notes/${this.slugValue}`)
+      const shell = this.application.getControllerForElementAndIdentifier(this.element, "note-shell")
+      if (shell?.navigateTo) await shell.navigateTo(`/notes/${this.slugValue}`)
+      else Turbo.visit(`/notes/${this.slugValue}`)
     } catch (error) {
       console.error("Revision restore error:", error)
     }
+  }
+
+  hydrateNoteContext(payload) {
+    const note = payload.note || {}
+    const revision = payload.revision || {}
+    const urls = payload.urls || {}
+
+    this.slugValue = note.slug || this.slugValue
+    this.titleValue = note.title || this.titleValue
+    this.languageValue = note.detected_language || this.languageValue
+    this.revisionsUrlValue = urls.revisions || this.revisionsUrlValue
+    this.initialRevisionIdValue = revision.id || ""
+    this.initialRevisionKindValue = revision.kind || ""
+    this.headRevisionIdValue = note.head_revision_id || ""
+    this._layoutStorageKey = `editor-layout:${this.slugValue}`
+    this._revisionsOpen = false
+    this._revisionsLoaded = false
+    this._revisionsById = new Map()
+    this._hoveredRevisionId = null
+    this._selectedRevision = {
+      id: revision.id || null,
+      kind: revision.kind || null,
+      isHead: revision.id && revision.id === note.head_revision_id
+    }
+    this._selectedRevisionContent = revision.content_markdown || ""
+    this._workingContent = this._selectedRevisionContent
+
+    if (this.hasTitleInputTarget) this.titleInputTarget.value = note.title || ""
+    if (this.hasLangBadgeTarget) this.langBadgeTarget.textContent = note.detected_language || "auto"
+    if (this.hasBacklinksPanelTarget) this.backlinksPanelTarget.innerHTML = payload.html?.backlinks || ""
+
+    this._closeRevisions()
+    this._applyContentToWorkspace(this._selectedRevisionContent)
+    this._syncPrimaryAction()
   }
 
   _syncPrimaryAction() {

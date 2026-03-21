@@ -27,10 +27,19 @@ class NotesController < ApplicationController
     authorize @note
     # UUID-based URLs (from client-side wiki-link preview) → redirect to slug URL
     if params[:slug] != @note.slug
+      if request.format.json?
+        @revision = @note.note_revisions.find_by(revision_kind: :draft) || @note.head_revision
+        return render json: note_shell_payload(@note, @revision)
+      end
+
       redirect_to note_path(@note.slug), status: :moved_permanently and return
     end
     # Load draft for crash recovery if one exists; otherwise use head checkpoint
     @revision = @note.note_revisions.find_by(revision_kind: :draft) || @note.head_revision
+    respond_to do |format|
+      format.html
+      format.json { render json: note_shell_payload(@note, @revision) }
+    end
   end
 
   def edit
@@ -230,5 +239,63 @@ class NotesController < ApplicationController
     end
 
     revision&.search_preview_text(limit: 180).to_s
+  end
+
+  def note_shell_payload(note, revision)
+    {
+      title: "#{note.title} — NeuraMD",
+      note: {
+        id: note.id,
+        slug: note.slug,
+        title: note.title,
+        detected_language: note.detected_language,
+        head_revision_id: note.head_revision_id
+      },
+      revision: {
+        id: revision&.id,
+        kind: revision&.revision_kind,
+        content_markdown: revision&.content_markdown.to_s,
+        updated_at: revision&.updated_at&.iso8601
+      },
+      urls: {
+        draft: draft_note_path(note.slug),
+        checkpoint: checkpoint_note_path(note.slug),
+        revisions: revisions_note_path(note.slug),
+        update: note_path(note.slug),
+        show: note_path(note.slug),
+        queue: ai_requests_dashboard_path(format: :json),
+        queue_reorder: reorder_ai_requests_dashboard_path,
+        queue_request_template: ai_request_payload_path("__REQUEST_ID__"),
+        queue_retry_template: retry_ai_request_path("__REQUEST_ID__"),
+        queue_cancel_template: ai_request_dashboard_path("__REQUEST_ID__"),
+        ai_status: ai_status_note_path(note.slug),
+        ai_review: ai_review_note_path(note.slug),
+        ai_history: ai_requests_note_path(note.slug),
+        ai_reorder: reorder_ai_requests_note_path(note.slug),
+        ai_request_template: ai_request_note_path(note.slug, "__REQUEST_ID__"),
+        ai_retry_template: retry_ai_request_note_path(note.slug, "__REQUEST_ID__"),
+        ai_cancel_template: ai_request_note_path(note.slug, "__REQUEST_ID__"),
+        ai_create_translated_note_template: ai_request_translated_note_note_path(note.slug, "__REQUEST_ID__"),
+        wikilink_create_promise: create_from_promise_note_path(note.slug),
+        link_info_template: "#{link_info_note_path(note.slug)}?dst_uuid=__DST_UUID__"
+      },
+      ai: {
+        note_title: note.title,
+        note_language: note.detected_language,
+        language_options: Note::SUPPORTED_LANGUAGES.reject { |lang| lang == note.detected_language },
+        language_labels: Notes::TranslationNoteService::LANGUAGE_LABELS
+      },
+      html: {
+        backlinks: render_to_string(partial: "notes/backlinks_content", formats: [:html], locals: {note:}),
+        ai_requests_stream: render_to_string(partial: "notes/ai_requests_stream", formats: [:html], locals: {note:})
+      },
+      link_tags_map: outgoing_link_tags_payload(note)
+    }
+  end
+
+  def outgoing_link_tags_payload(note)
+    note.outgoing_links.includes(:tags).each_with_object({}) do |link, payload|
+      payload[link.dst_note_id.to_s] = link.tags.map(&:id).map(&:to_s)
+    end
   end
 end

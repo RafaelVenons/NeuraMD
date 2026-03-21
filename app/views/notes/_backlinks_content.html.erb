@@ -1,0 +1,46 @@
+<%
+  incoming = note.active_incoming_links.includes(:src_note)
+  fathers  = incoming.select { |link| link.hier_role == "target_is_child" }.map(&:src_note).compact
+  brothers = incoming.select { |link| link.hier_role == "same_level" }.map(&:src_note).compact
+  children = incoming.select { |link| link.hier_role == "target_is_parent" }.map(&:src_note).compact
+  plain    = incoming.select { |link| link.hier_role.nil? }.map(&:src_note).compact
+%>
+<% if fathers.any? %>
+  <div class="backlinks-group">
+    <span class="backlinks-group-label">Fathers:</span>
+    <ul class="backlinks-list">
+      <% fathers.each do |backlink_note| %>
+        <li><%= link_to backlink_note.title, note_path(backlink_note.slug), class: "backlink-child" %></li>
+      <% end %>
+    </ul>
+  </div>
+<% end %>
+<% if brothers.any? %>
+  <div class="backlinks-group">
+    <span class="backlinks-group-label">Brothers:</span>
+    <ul class="backlinks-list">
+      <% brothers.each do |backlink_note| %>
+        <li><%= link_to backlink_note.title, note_path(backlink_note.slug), class: "backlink-brother" %></li>
+      <% end %>
+    </ul>
+  </div>
+<% end %>
+<% if children.any? %>
+  <div class="backlinks-group">
+    <span class="backlinks-group-label">Children:</span>
+    <ul class="backlinks-list">
+      <% children.each do |backlink_note| %>
+        <li><%= link_to backlink_note.title, note_path(backlink_note.slug), class: "backlink-father" %></li>
+      <% end %>
+    </ul>
+  </div>
+<% end %>
+<% if plain.any? %>
+  <div class="backlinks-group">
+    <ul class="backlinks-list">
+      <% plain.each do |backlink_note| %>
+        <li><%= link_to backlink_note.title, note_path(backlink_note.slug), class: "backlink-null" %></li>
+      <% end %>
+    </ul>
+  </div>
+<% end %>

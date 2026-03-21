@@ -8,6 +8,8 @@ Rails.application.routes.draw do
 
   get "up" => "rails/health#show", as: :rails_health_check
   get "ai/requests", to: "ai_requests#index", as: :ai_requests_dashboard
+  patch "ai/requests/reorder", to: "ai_requests#reorder", as: :reorder_ai_requests_dashboard
+  get "ai/requests/:id/payload", to: "ai_requests#show", as: :ai_request_payload
   post "ai/requests/retry_visible", to: "ai_requests#retry_visible", as: :retry_visible_ai_requests
   delete "ai/requests/cancel_visible", to: "ai_requests#cancel_visible", as: :cancel_visible_ai_requests
   post "ai/requests/:id/retry", to: "ai_requests#retry", as: :retry_ai_request

@@ -82,6 +82,16 @@ export default class extends Controller {
     this._closeDropdown()
   }
 
+  hydrateNoteContext(payload) {
+    const note = payload.note || {}
+    const urls = payload.urls || {}
+
+    this.createPromiseUrlValue = urls.wikilink_create_promise || this.createPromiseUrlValue
+    this.currentNoteIdValue = note.id || this.currentNoteIdValue
+    this._closeDropdown({ preserveFocus: true })
+    this._lastFocusedUUID = null
+  }
+
   // ── Editor change handler ────────────────────────────────
 
   _handleEditorChange(event) {
@@ -331,7 +341,9 @@ export default class extends Controller {
       await this._autosaveController()?.saveDraftNow?.()
 
       if (option.action === "blank") {
-        window.location.assign(data.note_url)
+        const shell = this.application.getControllerForElementAndIdentifier(this.element.closest("#editor-root"), "note-shell")
+        if (shell?.navigateTo) await shell.navigateTo(data.note_url)
+        else window.location.assign(data.note_url)
         return
       }
     } catch (error) {

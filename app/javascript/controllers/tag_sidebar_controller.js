@@ -63,6 +63,20 @@ export default class extends Controller {
     this._clearHighlight()
   }
 
+  hydrateNoteContext(payload) {
+    const note = payload.note || {}
+
+    this.noteSlugValue = note.slug || this.noteSlugValue
+    this.linkTagsDataValue = JSON.stringify(payload.link_tags_map || {})
+    this._linkTagsMap = this._parseLinkTagsData()
+    this._focusedLink = null
+    this._activatedTagId = null
+    this._searchQuery = ""
+    if (this.hasSearchInputTarget) this.searchInputTarget.value = ""
+    this._clearHighlight()
+    this._renderList()
+  }
+
   // ── Collapse toggle ──────────────────────────────────────
 
   toggle() {

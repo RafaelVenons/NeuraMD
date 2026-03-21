@@ -50,6 +50,25 @@ export default class extends Controller {
     window.removeEventListener("beforeunload", this._onBeforeUnload)
   }
 
+  hydrateNoteContext(payload) {
+    const note = payload.note || {}
+    const revision = payload.revision || {}
+    const urls = payload.urls || {}
+
+    clearTimeout(this._localTimer)
+    clearTimeout(this._draftTimer)
+    this.draftUrlValue = urls.draft || this.draftUrlValue
+    this.checkpointUrlValue = urls.checkpoint || this.checkpointUrlValue
+    this.localKeyValue = note.id ? `note-draft-${note.id}` : this.localKeyValue
+    this.serverUpdatedAtValue = revision.updated_at || ""
+    this._lastDraftContent = revision.content_markdown || ""
+    this._pendingContent = null
+    this._pendingAiAcceptance = null
+    this._localSnapshot = this._loadLocalEntry()
+    this._ignoreInitialServerEcho = false
+    this._setStatus("salvo")
+  }
+
   // Called by the Save button
   async saveCheckpoint() {
     if (this._aiStageActive) {
