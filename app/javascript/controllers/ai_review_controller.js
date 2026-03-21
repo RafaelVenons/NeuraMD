@@ -62,6 +62,7 @@ export default class extends Controller {
     this.draggedQueueRequestId = null
     this.draggedQueueElement = null
     this.queuePlaceholder = null
+    this.queueRenderDeferred = false
     this.historyFilter = "all"
     this.realtimeConnected = false
     this.streamObserver = null
@@ -291,7 +292,10 @@ export default class extends Controller {
     event.dataTransfer.setDragImage(this._transparentDragImage(), 0, 0)
 
     card.after(this.queuePlaceholder)
-    requestAnimationFrame(() => card.classList.add("hidden"))
+    requestAnimationFrame(() => {
+      card.classList.add("opacity-0", "scale-95")
+      card.style.visibility = "hidden"
+    })
   }
 
   handleQueueDragOver(event) {
@@ -305,6 +309,32 @@ export default class extends Controller {
     const insertAfter = event.clientY > rect.top + (rect.height / 2)
     if (insertAfter) targetCard.after(this.queuePlaceholder)
     else targetCard.before(this.queuePlaceholder)
+  }
+
+  handleQueueDockDragOver(event) {
+    if (!this.draggedQueueElement || !this.queuePlaceholder) return
+
+    event.preventDefault()
+    const targetCard = event.target.closest("[data-request-id][data-queue-reorderable='true']")
+    if (targetCard) return
+
+    this.queueDockTarget.append(this.queuePlaceholder)
+  }
+
+  async handleQueueDockDrop(event) {
+    if (!this.draggedQueueElement || !this.queuePlaceholder) return
+
+    event.preventDefault()
+    this.queuePlaceholder.before(this.draggedQueueElement)
+    this.draggedQueueElement.classList.remove("hidden")
+    this.queuePlaceholder.remove()
+
+    const orderedRequestIds = Array.from(
+      this.queueDockTarget.querySelectorAll("[data-request-id][data-queue-reorderable='true']")
+    ).map((card) => card.dataset.requestId).reverse()
+
+    this._cleanupQueueDrag()
+    await this._persistQueueOrder(orderedRequestIds)
   }
 
   async handleQueueDrop(event) {
@@ -324,7 +354,10 @@ export default class extends Controller {
   }
 
   handleQueueDragEnd() {
-    if (this.draggedQueueElement) this.draggedQueueElement.classList.remove("hidden")
+    if (this.draggedQueueElement) {
+      this.draggedQueueElement.classList.remove("opacity-0", "scale-95")
+      this.draggedQueueElement.style.visibility = ""
+    }
     if (this.queuePlaceholder) this.queuePlaceholder.remove()
     this._cleanupQueueDrag()
   }
@@ -1021,10 +1054,13 @@ export default class extends Controller {
 
   _renderQueue() {
     if (!this.hasQueueDockTarget) return
+    if (this.draggedQueueElement) {
+      this.queueRenderDeferred = true
+      return
+    }
 
     const requests = this._sortedQueueRequests()
       .filter((request) => !this.dismissedQueueRequestIds.has(String(request.id)))
-      .slice(0, 6)
 
     if (requests.length === 0) {
       this.queueDockTarget.innerHTML = ""
@@ -1037,8 +1073,7 @@ export default class extends Controller {
   }
 
   _queueEligible(request) {
-    if (["queued", "running", "retrying", "failed"].includes(request.status)) return true
-    return request.capability === "seed_note" && request.status === "succeeded"
+    return ["queued", "running", "retrying", "failed", "succeeded"].includes(request.status)
   }
 
   _sortedQueueRequests() {
@@ -1061,33 +1096,40 @@ export default class extends Controller {
   }
 
   _queueCard(request) {
+    const presentation = this._queuePresentation(request)
     const noteTitle = request.promise_note_title || request.note_title || "Nota"
-    const serviceLabel = this._queueServiceLabel(request)
+    const serviceLabel = presentation.label
     const modelLabel = request.model || request.provider || "IA"
-    const borderClass = this._queueBorderClass(request.status)
-    const reorderable = this._queueReorderable(request)
-    const cardAction = request.status === "failed" ? "retry" : ""
-    const cardActionAttr = cardAction ? `data-request-id="${this._escapeHtml(request.id)}" data-queue-action="${cardAction}" data-action="click->ai-review#queueAction"` : ""
+    const borderClass = presentation.borderClass
+    const reorderable = presentation.reorderable
+    const cardAction = presentation.cardAction
     const cardInteractiveClass = cardAction ? "cursor-pointer hover:bg-[var(--theme-bg-hover)]" : ""
-    const dragAttrs = reorderable
-      ? `draggable="true"
-         data-request-id="${this._escapeHtml(request.id)}"
-         data-queue-reorderable="true"
-         data-action="dragstart->ai-review#handleQueueDragStart dragend->ai-review#handleQueueDragEnd dragover->ai-review#handleQueueDragOver drop->ai-review#handleQueueDrop"`
-      : `data-request-id="${this._escapeHtml(request.id)}" data-queue-reorderable="false"`
+    const dragAttrs = reorderable ? `draggable="true"` : ""
+    const actionList = []
+    if (reorderable) {
+      actionList.push(
+        "dragstart->ai-review#handleQueueDragStart",
+        "dragend->ai-review#handleQueueDragEnd",
+        "dragover->ai-review#handleQueueDragOver",
+        "drop->ai-review#handleQueueDrop"
+      )
+    }
+    if (cardAction) actionList.push("click->ai-review#queueAction")
+    const actionAttr = actionList.length > 0 ? `data-action="${actionList.join(" ")}"` : ""
     const titleClass = request.status === "failed" ? "text-red-300" : "text-[var(--theme-text-primary)]"
     const dragClass = reorderable ? "cursor-grab active:cursor-grabbing" : ""
+    const requestAttrs = `data-request-id="${this._escapeHtml(request.id)}" data-queue-reorderable="${reorderable}" data-queue-status="${this._escapeHtml(request.status)}"${cardAction ? ` data-queue-action="${cardAction}"` : ""}`
 
     return `
-      <article class="pointer-events-auto w-56 max-w-[calc(100vw-1.5rem)] rounded-xl border-2 ${borderClass} bg-[var(--theme-bg-secondary)] px-2.5 py-2 shadow-xl backdrop-blur transition ${cardInteractiveClass} ${dragClass}" ${dragAttrs} ${cardActionAttr}>
+      <article class="pointer-events-auto ml-auto w-fit min-w-[11rem] max-w-[min(17rem,calc(100vw-1.5rem))] rounded-xl border-2 ${borderClass} bg-[var(--theme-bg-secondary)] px-2.5 py-2 shadow-xl backdrop-blur transition-[transform,opacity,box-shadow] duration-150 ease-out ${cardInteractiveClass} ${dragClass}" ${dragAttrs} ${requestAttrs} ${actionAttr}>
         <div class="flex items-start gap-3">
           <div class="min-w-0 flex-1">
             <p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-[var(--theme-text-faint)]">${this._escapeHtml(serviceLabel)}</p>
-            <p class="mt-1 truncate text-sm font-semibold ${titleClass}">${this._escapeHtml(noteTitle)}</p>
-            <p class="mt-1 truncate text-[11px] text-[var(--theme-text-secondary)]">${this._escapeHtml(modelLabel)}</p>
+            <p class="mt-1 break-words text-sm font-semibold leading-5 ${titleClass}">${this._escapeHtml(noteTitle)}</p>
+            <p class="mt-1 break-all text-[11px] text-[var(--theme-text-secondary)]">${this._escapeHtml(modelLabel)}</p>
           </div>
           <div class="flex flex-col items-end gap-2">
-            ${this._queueActionButton(request)}
+            ${presentation.actionButton}
           </div>
         </div>
       </article>
@@ -1095,10 +1137,10 @@ export default class extends Controller {
   }
 
   _queueActionButton(request) {
-    if (["queued", "running", "retrying"].includes(request.status) || (request.capability === "seed_note" && request.status === "succeeded")) {
-      const label = request.capability === "seed_note" && request.status === "succeeded" ? "↺" : "X"
-      const action = request.capability === "seed_note" && request.status === "succeeded" ? "undo" : "cancel"
-      const title = request.capability === "seed_note" && request.status === "succeeded" ? "Desfazer" : "Cancelar"
+    if (["queued", "running", "retrying"].includes(request.status)) {
+      const label = "X"
+      const action = "cancel"
+      const title = "Cancelar"
 
       return `
         <button type="button"
@@ -1121,21 +1163,11 @@ export default class extends Controller {
       `
     }
 
-    return `
-      <button type="button"
-              title="Fechar"
-              aria-label="Fechar"
-              class="rounded-full border border-[var(--theme-border)] px-2 py-0.5 text-[11px] text-[var(--theme-text-faint)] hover:bg-[var(--theme-bg-hover)]"
-              data-request-id="${this._escapeHtml(request.id)}"
-              data-queue-action="dismiss"
-              data-action="click->ai-review#queueAction">
-        ×
-      </button>
-    `
+    return ""
   }
 
   _queueReorderable(request) {
-    return ["queued", "running", "retrying"].includes(request.status)
+    return ["queued", "retrying"].includes(request.status)
   }
 
   _queueServiceLabel(request) {
@@ -1191,10 +1223,22 @@ export default class extends Controller {
     }[status] || "border-[var(--theme-border)]"
   }
 
+  _queuePresentation(request) {
+    return {
+      label: this._queueServiceLabel(request),
+      borderClass: this._queueBorderClass(request.status),
+      reorderable: this._queueReorderable(request),
+      cardAction: request.status === "failed" ? "retry" : "",
+      actionButton: this._queueActionButton(request)
+    }
+  }
+
   _buildQueuePlaceholder(card) {
     const placeholder = document.createElement("div")
-    placeholder.className = "pointer-events-none w-56 max-w-[calc(100vw-1.5rem)] rounded-xl border-2 border-dashed border-[var(--theme-border)] bg-transparent px-2.5 py-5 opacity-70"
+    placeholder.className = "pointer-events-none ml-auto rounded-xl border-2 border-dashed border-[var(--theme-border)] bg-transparent opacity-70 transition-[height,transform,opacity] duration-150 ease-out"
     placeholder.dataset.queuePlaceholder = "true"
+    placeholder.style.width = `${card.offsetWidth}px`
+    placeholder.style.height = `${card.offsetHeight}px`
     return placeholder
   }
 
@@ -1212,6 +1256,10 @@ export default class extends Controller {
     this.draggedQueueRequestId = null
     this.draggedQueueElement = null
     this.queuePlaceholder = null
+    if (this.queueRenderDeferred) {
+      this.queueRenderDeferred = false
+      this._renderQueue()
+    }
   }
 
   async _persistQueueOrder(orderedRequestIds) {
@@ -1389,16 +1437,31 @@ export default class extends Controller {
   }
 
   async _destroyRequest(requestId) {
-    const response = await fetch(this._cancelUrl(requestId), {
-      method: "DELETE",
-      credentials: "same-origin",
-      headers: {
-        Accept: "application/json",
-        "X-CSRF-Token": this._csrfToken()
-      }
-    })
-    const data = await response.json()
-    if (!response.ok || data.error) throw new Error(data.error || "Falha ao cancelar request de IA.")
+    const requestIdString = String(requestId)
+    const wasDismissed = this.dismissedQueueRequestIds.has(requestIdString)
+    const exitAnimation = this._animateQueueExit(requestIdString)
+
+    this.dismissedQueueRequestIds.add(requestIdString)
+    await exitAnimation
+    this._renderQueue()
+
+    let data
+    try {
+      const response = await fetch(this._cancelUrl(requestId), {
+        method: "DELETE",
+        credentials: "same-origin",
+        headers: {
+          Accept: "application/json",
+          "X-CSRF-Token": this._csrfToken()
+        }
+      })
+      data = await response.json()
+      if (!response.ok || data.error) throw new Error(data.error || "Falha ao cancelar request de IA.")
+    } catch (error) {
+      if (!wasDismissed) this.dismissedQueueRequestIds.delete(requestIdString)
+      this.refreshHistory()
+      throw error
+    }
 
     const request = this.historyRequests.find((item) => String(item.id) === String(requestId))
     if (request) {
@@ -1407,10 +1470,12 @@ export default class extends Controller {
     }
 
     if (data.undone) {
-      this.dismissedQueueRequestIds.add(String(requestId))
+      this.dismissedQueueRequestIds.add(requestIdString)
       this._restorePromiseLinkInEditor(data.promise_note_id, data.restored_content)
     } else if (data.status === "canceled") {
-      this.dismissedQueueRequestIds.add(String(requestId))
+      this.dismissedQueueRequestIds.add(requestIdString)
+    } else if (!wasDismissed) {
+      this.dismissedQueueRequestIds.delete(requestIdString)
     }
 
     if (data.graph_changed) {
@@ -1421,6 +1486,24 @@ export default class extends Controller {
 
     if (this.historyDialogTarget?.open) this._renderHistory()
     this._renderQueue()
+  }
+
+  _animateQueueExit(requestId) {
+    const card = this.queueDockTarget?.querySelector(`[data-request-id="${CSS.escape(String(requestId))}"]`)
+    if (!card) return Promise.resolve()
+
+    card.classList.add("pointer-events-none", "opacity-0", "translate-x-2", "scale-95")
+    card.style.maxHeight = `${card.offsetHeight}px`
+    requestAnimationFrame(() => {
+      card.style.maxHeight = "0px"
+      card.style.marginTop = "0px"
+      card.style.marginBottom = "0px"
+      card.style.paddingTop = "0px"
+      card.style.paddingBottom = "0px"
+      card.style.overflow = "hidden"
+    })
+
+    return new Promise((resolve) => window.setTimeout(resolve, 160))
   }
 
   _restorePromiseLinkInEditor(noteId, restoredContent) {

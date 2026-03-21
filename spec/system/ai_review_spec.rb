@@ -144,6 +144,129 @@ RSpec.describe "AI review", type: :system do
     end
   end
 
+  def queue_titles
+    within("[data-ai-review-target='queueDock']") do
+      all("article", visible: :all).map { |card| card.all("p", visible: :all)[1].text }
+    end
+  end
+
+  def drag_queue_card_after(source_id, target_id)
+    page.execute_script(<<~JS, source_id, target_id)
+      const [sourceId, targetId] = arguments
+      const source = document.querySelector(`[data-request-id="${sourceId}"]`)
+      const target = document.querySelector(`[data-request-id="${targetId}"]`)
+      if (!source || !target) throw new Error("Queue card not found")
+
+      const dataTransfer = new DataTransfer()
+      const rect = target.getBoundingClientRect()
+      const clientY = rect.bottom - 2
+
+      source.dispatchEvent(new DragEvent("dragstart", {
+        bubbles: true,
+        cancelable: true,
+        dataTransfer
+      }))
+
+      target.dispatchEvent(new DragEvent("dragover", {
+        bubbles: true,
+        cancelable: true,
+        dataTransfer,
+        clientY
+      }))
+
+      target.dispatchEvent(new DragEvent("drop", {
+        bubbles: true,
+        cancelable: true,
+        dataTransfer,
+        clientY
+      }))
+
+      source.dispatchEvent(new DragEvent("dragend", {
+        bubbles: true,
+        cancelable: true,
+        dataTransfer
+      }))
+    JS
+  end
+
+  def start_queue_drag(source_id)
+    page.execute_script(<<~JS, source_id)
+      const [sourceId] = arguments
+      const source = document.querySelector(`[data-request-id="${sourceId}"]`)
+      if (!source) throw new Error("Queue card not found")
+
+      window.__nmQueueDragDataTransfer = new DataTransfer()
+      source.dispatchEvent(new DragEvent("dragstart", {
+        bubbles: true,
+        cancelable: true,
+        dataTransfer: window.__nmQueueDragDataTransfer
+      }))
+    JS
+  end
+
+  def drag_queue_over(target_id, position: :bottom)
+    client_y = page.evaluate_script(<<~JS, target_id, position.to_s)
+      (() => {
+        const [targetId, position] = arguments
+        const target = document.querySelector(`[data-request-id="${targetId}"]`)
+        if (!target) throw new Error("Queue card not found")
+        const rect = target.getBoundingClientRect()
+        return position === "top" ? rect.top + 2 : rect.bottom - 2
+      })()
+    JS
+
+    page.execute_script(<<~JS, target_id, client_y)
+      const [targetId, clientY] = arguments
+      const target = document.querySelector(`[data-request-id="${targetId}"]`)
+      if (!target) throw new Error("Queue card not found")
+      const dataTransfer = window.__nmQueueDragDataTransfer || new DataTransfer()
+
+      target.dispatchEvent(new DragEvent("dragover", {
+        bubbles: true,
+        cancelable: true,
+        dataTransfer,
+        clientY
+      }))
+    JS
+  end
+
+  def finish_queue_drag(target_id, position: :bottom)
+    client_y = page.evaluate_script(<<~JS, target_id, position.to_s)
+      (() => {
+        const [targetId, position] = arguments
+        const target = document.querySelector(`[data-request-id="${targetId}"]`)
+        if (!target) throw new Error("Queue card not found")
+        const rect = target.getBoundingClientRect()
+        return position === "top" ? rect.top + 2 : rect.bottom - 2
+      })()
+    JS
+
+    page.execute_script(<<~JS, target_id, client_y)
+      const [targetId, clientY] = arguments
+      const source = document.querySelector("[data-request-id][style*='visibility: hidden'], [data-request-id].opacity-0")
+      const target = document.querySelector(`[data-request-id="${targetId}"]`)
+      const dataTransfer = window.__nmQueueDragDataTransfer || new DataTransfer()
+      if (!target) throw new Error("Queue card not found")
+
+      target.dispatchEvent(new DragEvent("drop", {
+        bubbles: true,
+        cancelable: true,
+        dataTransfer,
+        clientY
+      }))
+
+      if (source) {
+        source.dispatchEvent(new DragEvent("dragend", {
+          bubbles: true,
+          cancelable: true,
+          dataTransfer
+        }))
+      }
+
+      window.__nmQueueDragDataTransfer = null
+    JS
+  end
+
   it "processes the entire document when there is no selection" do
     expect(page).to have_text(/TEMPO REAL|FALLBACK POLLING/i, wait: 5)
 
@@ -298,6 +421,153 @@ RSpec.describe "AI review", type: :system do
       expect(page).to have_text(/revisar/i)
       expect(page).to have_button("Cancelar")
     end
+  end
+
+  it "shows a completed request in the queue without a cancel button" do
+    create(
+      :ai_request,
+      note_revision: note.head_revision,
+      capability: "grammar_review",
+      provider: "openai",
+      requested_provider: "openai",
+      model: "gpt-4o-mini",
+      status: "succeeded",
+      output_text: "Texto corrigido.",
+      completed_at: Time.current
+    )
+
+    visit note_path(note.slug)
+
+    within("[data-ai-review-target='queueDock']") do
+      expect(page).to have_text(/revisado/i)
+      expect(page).to have_text(note.title)
+      expect(page).to have_text("gpt-4o-mini")
+      expect(page).to have_no_button("Cancelar")
+    end
+  end
+
+  it "reorders active queue cards via drag and drop and persists priority" do
+    low = create(
+      :ai_request,
+      note_revision: note.head_revision,
+      capability: "grammar_review",
+      provider: "openai",
+      requested_provider: "openai",
+      model: "model-low",
+      status: "queued",
+      queue_position: 1,
+      metadata: {"language" => "pt-BR", "promise_note_title" => "Fila Baixa"}
+    )
+    mid = create(
+      :ai_request,
+      note_revision: note.head_revision,
+      capability: "grammar_review",
+      provider: "openai",
+      requested_provider: "openai",
+      model: "model-mid",
+      status: "queued",
+      queue_position: 2,
+      metadata: {"language" => "pt-BR", "promise_note_title" => "Fila Media"}
+    )
+    high = create(
+      :ai_request,
+      note_revision: note.head_revision,
+      capability: "grammar_review",
+      provider: "openai",
+      requested_provider: "openai",
+      model: "model-high",
+      status: "queued",
+      queue_position: 3,
+      metadata: {"language" => "pt-BR", "promise_note_title" => "Fila Alta"}
+    )
+
+    visit note_path(note.slug)
+
+    expect(page).to have_css("[data-ai-review-target='queueDock']:not(.hidden)", wait: 5)
+    expect(page).to have_css("[data-ai-review-target='queueDock'] article", count: 3, wait: 5)
+    expect(queue_titles).to eq(["Fila Alta", "Fila Media", "Fila Baixa"])
+
+    drag_queue_card_after(high.id, low.id)
+
+    expect(page).to have_text("Fila Alta", wait: 5)
+    expect(queue_titles).to eq(["Fila Media", "Fila Baixa", "Fila Alta"])
+
+    expect(high.reload.queue_position).to eq(1)
+    expect(low.reload.queue_position).to eq(2)
+    expect(mid.reload.queue_position).to eq(3)
+  end
+
+  it "shows only a placeholder while dragging and ignores running items in manual reorder" do
+    running = create(
+      :ai_request,
+      note_revision: note.head_revision,
+      capability: "grammar_review",
+      provider: "openai",
+      requested_provider: "openai",
+      model: "model-running",
+      status: "running",
+      queue_position: 9,
+      metadata: {"language" => "pt-BR", "promise_note_title" => "Fila Rodando"}
+    )
+    queued = create(
+      :ai_request,
+      note_revision: note.head_revision,
+      capability: "grammar_review",
+      provider: "openai",
+      requested_provider: "openai",
+      model: "model-queued",
+      status: "queued",
+      queue_position: 1,
+      metadata: {"language" => "pt-BR", "promise_note_title" => "Fila Pendente"}
+    )
+
+    visit note_path(note.slug)
+
+    expect(page).to have_css("[data-ai-review-target='queueDock'] article", count: 2, wait: 5)
+    expect(page).to have_css("[data-request-id='#{running.id}'][data-queue-reorderable='false']")
+    expect(page).to have_css("[data-request-id='#{queued.id}'][data-queue-reorderable='true']")
+
+    start_queue_drag(queued.id)
+    drag_queue_over(running.id, position: :top)
+
+    expect(page).to have_css("[data-queue-placeholder='true']", count: 1)
+    expect(page).to have_css("[data-request-id='#{queued.id}'][style*='visibility: hidden']", visible: :all)
+    expect(page).to have_css("[data-ai-review-target='queueDock'] article", count: 2, visible: :all)
+
+    finish_queue_drag(running.id, position: :top)
+
+    expect(queue_titles).to include("Fila Rodando", "Fila Pendente")
+    expect(queued.reload.queue_position).to eq(1)
+  end
+
+  it "keeps drag and drop working with scroll in the queue dock" do
+    requests = 8.times.map do |index|
+      create(
+        :ai_request,
+        note_revision: note.head_revision,
+        capability: "grammar_review",
+        provider: "openai",
+        requested_provider: "openai",
+        model: "model-#{index}",
+        status: "queued",
+        queue_position: index + 1,
+        metadata: {"language" => "pt-BR", "promise_note_title" => "Fila #{index + 1}"}
+      )
+    end
+
+    visit note_path(note.slug)
+
+    expect(page).to have_css("[data-ai-review-target='queueDock'] article", count: 8, wait: 5)
+    expect(queue_titles).to eq(["Fila 8", "Fila 7", "Fila 6", "Fila 5", "Fila 4", "Fila 3", "Fila 2", "Fila 1"])
+    page.execute_script(<<~JS)
+      const dock = document.querySelector("[data-ai-review-target='queueDock']")
+      dock.scrollTop = dock.scrollHeight
+    JS
+
+    drag_queue_card_after(requests.first.id, requests[2].id)
+
+    expect(queue_titles).to eq(["Fila 8", "Fila 7", "Fila 6", "Fila 5", "Fila 4", "Fila 3", "Fila 1", "Fila 2"])
+    expect(requests.first.reload.queue_position).to eq(2)
   end
 
   it "shows an explicit remote long-job hint while an ollama request is still running" do
