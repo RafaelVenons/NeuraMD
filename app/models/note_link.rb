@@ -13,6 +13,9 @@ class NoteLink < ApplicationRecord
   validates :hier_role, inclusion: {in: HIER_ROLES}, allow_nil: true
   validate :no_self_links
 
+  scope :active, -> { where(active: true) }
+  scope :inactive, -> { where(active: false) }
+
   private
 
   def no_self_links

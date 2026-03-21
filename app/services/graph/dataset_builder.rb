@@ -61,6 +61,7 @@ module Graph
 
       NoteLink
         .includes(:tags)
+        .active
         .where(src_note_id: note_ids.to_a, dst_note_id: note_ids.to_a)
         .order(:created_at)
         .each_with_object([]) do |link, memo|

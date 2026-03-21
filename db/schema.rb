@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_03_19_230715) do
+ActiveRecord::Schema[8.1].define(version: 2026_03_21_090000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
   enable_extension "pg_trgm"
@@ -104,6 +104,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_03_19_230715) do
   end
 
   create_table "note_links", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.boolean "active", default: true, null: false
     t.jsonb "context", default: {}
     t.datetime "created_at", null: false
     t.uuid "created_in_revision_id", null: false
@@ -111,6 +112,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_03_19_230715) do
     t.string "hier_role"
     t.uuid "src_note_id", null: false
     t.datetime "updated_at", null: false
+    t.index ["active"], name: "index_note_links_on_active"
     t.index ["created_in_revision_id"], name: "index_note_links_on_created_in_revision_id"
     t.index ["dst_note_id"], name: "index_note_links_on_dst_note_id"
     t.index ["hier_role"], name: "index_note_links_on_hier_role"

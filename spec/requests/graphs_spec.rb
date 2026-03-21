@@ -122,6 +122,23 @@ RSpec.describe "Graphs", type: :request do
       expect(response.parsed_body["links"]).to eq([])
     end
 
+    it "omits inactive links from the graph dataset" do
+      src = create(:note, title: "Origem")
+      src_revision = create(:note_revision, note: src, content_markdown: "Corpo origem")
+      src.update_columns(head_revision_id: src_revision.id)
+
+      dst = create(:note, title: "Destino")
+      dst_revision = create(:note_revision, note: dst, content_markdown: "Corpo destino")
+      dst.update_columns(head_revision_id: dst_revision.id)
+
+      create(:note_link, src_note: src, dst_note: dst, created_in_revision: src_revision, active: false)
+
+      get api_graph_path, headers: { "ACCEPT" => "application/json" }
+
+      expect(response).to have_http_status(:ok)
+      expect(response.parsed_body["links"]).to eq([])
+    end
+
     it "keeps the graph available when a note revision cannot be decrypted" do
       broken_note = create(:note, title: "Quebrada")
       broken_revision = create(:note_revision, note: broken_note, content_markdown: "Criar [[Promessa quebrada]]")

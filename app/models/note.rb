@@ -6,6 +6,8 @@ class Note < ApplicationRecord
   has_many :note_revisions, dependent: :destroy
   has_many :outgoing_links, class_name: "NoteLink", foreign_key: :src_note_id, dependent: :destroy
   has_many :incoming_links, class_name: "NoteLink", foreign_key: :dst_note_id, dependent: :destroy
+  has_many :active_outgoing_links, -> { active }, class_name: "NoteLink", foreign_key: :src_note_id
+  has_many :active_incoming_links, -> { active }, class_name: "NoteLink", foreign_key: :dst_note_id
   has_many :note_tags, dependent: :destroy
   has_many :tags, through: :note_tags
 

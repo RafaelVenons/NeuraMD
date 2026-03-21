@@ -493,7 +493,7 @@ AI_ENABLED_PROVIDERS=ollama</pre>
           </div>
 
           <%
-            incoming = @note.incoming_links.includes(:src_note)
+            incoming = @note.active_incoming_links.includes(:src_note)
             fathers  = incoming.select { |l| l.hier_role == "target_is_child"   }.map(&:src_note).compact
             brothers = incoming.select { |l| l.hier_role == "same_level"        }.map(&:src_note).compact
             children = incoming.select { |l| l.hier_role == "target_is_parent"  }.map(&:src_note).compact
