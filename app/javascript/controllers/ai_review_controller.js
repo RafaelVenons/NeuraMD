@@ -62,12 +62,15 @@ export default class extends Controller {
     this.currentRequestId = null
     this.lastCompletedRequest = null
     this.pollTimer = null
+    this.queuePollTimer = null
+    this.queuePollIntervalMs = null
     this.pollAttempt = 0
     this.pendingApplyMode = "document"
     this.pendingOriginalText = ""
     this.historyRequests = []
     this.globalHistoryRequests = []
     this.queueRequests = []
+    this.promiseQueueWatchers = new Map()
     this.dismissedQueueRequestIds = new Set()
     this.resolvedQueueRequestIds = new Set()
     this.draggedQueueRequestId = null
@@ -100,6 +103,8 @@ export default class extends Controller {
     document.removeEventListener("click", this._boundDocumentClick)
     this.streamObserver?.disconnect()
     this._stopPolling()
+    this._stopQueuePolling()
+    this._stopAllPromiseQueueWatchers()
     this._clearProposalStage()
     this._clearActiveTrigger()
   }
@@ -130,6 +135,7 @@ export default class extends Controller {
     this.languageLabelsValue = ai.language_labels || this.languageLabelsValue
 
     if (this.historyDialogTarget?.open) this.refreshHistory()
+    this._syncQueuePolling()
   }
 
   openGrammar(event) {
@@ -315,8 +321,9 @@ export default class extends Controller {
       const data = await response.json()
       if (!response.ok) throw new Error(data.error || "Falha ao carregar a fila de IA.")
 
-      this.queueRequests = data.requests || []
-      this.globalHistoryRequests = data.recent_history || []
+      this.queueRequests = this._mergeQueueSnapshot(data.requests || [])
+      this.globalHistoryRequests = this._mergeShellHistorySnapshot(data.recent_history || [])
+      this._syncActiveQueueWatchers()
       this._renderQueue()
       if (this.historyDialogTarget?.open && this.historyFilter === "shell") this._renderHistory()
     } catch (_) {
@@ -328,6 +335,34 @@ export default class extends Controller {
     this.historyFilter = event.currentTarget.dataset.filterValue || "all"
     this._syncHistoryFilters()
     this._renderHistory()
+  }
+
+  handlePromiseEnqueued(detail) {
+    this._handlePromiseAiEnqueuedEvent({ detail })
+  }
+
+  async historyAction(event) {
+    event.preventDefault()
+    event.stopPropagation()
+
+    const requestId = event.currentTarget.dataset.requestId
+    if (!requestId) return
+
+    const request = this._findRequestById(requestId)
+    if (!request) return
+
+    if (request.status === "succeeded") {
+      await this._openCompletedRequest(requestId)
+      return
+    }
+
+    const targetSlug = request.promise_note_slug || request.note_slug
+    if (!targetSlug) return
+
+    const shell = this.application.getControllerForElementAndIdentifier(this.element, "note-shell")
+    if (shell?.navigateTo) await shell.navigateTo(`/notes/${targetSlug}`)
+    else if (window.Turbo?.visit) window.Turbo.visit(`/notes/${targetSlug}`)
+    else window.location.assign(`/notes/${targetSlug}`)
   }
 
   async queueAction(event) {
@@ -862,6 +897,38 @@ export default class extends Controller {
     const requestId = event.detail?.requestId
     if (!requestId) return
 
+    this._upsertQueueRequest({
+      id: requestId,
+      status: event.detail?.requestStatus || "queued",
+      capability: "seed_note",
+      provider: event.detail?.provider || "",
+      model: event.detail?.model || "",
+      note_id: event.detail?.sourceNoteId || null,
+      note_slug: event.detail?.sourceNoteSlug || null,
+      note_title: this.noteTitleValue || "",
+      promise_note_id: event.detail?.noteId || null,
+      promise_note_title: event.detail?.noteTitle || "Nota",
+      promise_note_slug: event.detail?.noteSlug || null,
+      queue_position: Number.MAX_SAFE_INTEGER,
+      queue_hidden: false,
+      created_at: new Date().toISOString()
+    })
+    this._upsertGlobalHistoryRequest({
+      id: requestId,
+      status: event.detail?.requestStatus || "queued",
+      capability: "seed_note",
+      provider: event.detail?.provider || "",
+      model: event.detail?.model || "",
+      note_title: this.noteTitleValue || "",
+      promise_note_title: event.detail?.noteTitle || "Nota",
+      promise_note_slug: event.detail?.noteSlug || null,
+      created_at: new Date().toISOString()
+    })
+    this._renderQueue()
+    if (this.historyDialogTarget?.open && this.historyFilter === "shell") this._renderHistory()
+    this.refreshQueue()
+    this._watchPromiseQueueRequest(requestId)
+
     try {
       const response = await fetch(this._queueRequestUrl(requestId), {
         headers: { Accept: "application/json" },
@@ -875,6 +942,7 @@ export default class extends Controller {
       if (this._belongsToCurrentNote(request)) this._upsertHistoryRequest(request)
       if (this.historyDialogTarget?.open) this._renderHistory()
       this._renderQueue()
+      if (["succeeded", "failed", "canceled"].includes(request.status)) this._stopPromiseQueueWatcher(requestId)
     } catch (_) {
     }
   }
@@ -893,11 +961,102 @@ export default class extends Controller {
 
   _setTransportState(connected) {
     this.realtimeConnected = connected
+    this._syncQueuePolling()
     if (!this.hasTransportBadgeTarget) return
 
     this.transportBadgeTarget.textContent = connected ? "Tempo real" : "Fallback polling"
     this.transportBadgeTarget.classList.toggle("nm-ai-transport--live", connected)
     this.transportBadgeTarget.classList.toggle("nm-ai-transport--fallback", !connected)
+  }
+
+  _syncQueuePolling() {
+    if (!this.queueUrlValue) return
+
+    const nextIntervalMs = 3000
+    if (this.queuePollTimer && this.queuePollIntervalMs === nextIntervalMs) return
+
+    this._stopQueuePolling()
+
+    this.queuePollTimer = window.setInterval(() => {
+      if (document.visibilityState === "hidden") return
+      this.refreshQueue()
+    }, nextIntervalMs)
+    this.queuePollIntervalMs = nextIntervalMs
+  }
+
+  _stopQueuePolling() {
+    if (!this.queuePollTimer) return
+
+    window.clearInterval(this.queuePollTimer)
+    this.queuePollTimer = null
+    this.queuePollIntervalMs = null
+  }
+
+  _watchPromiseQueueRequest(requestId, attempt = 0) {
+    const id = String(requestId)
+    if (attempt > 120) {
+      this._stopPromiseQueueWatcher(id)
+      return
+    }
+
+    this._stopPromiseQueueWatcher(id)
+    const timer = window.setTimeout(async () => {
+      try {
+        const response = await fetch(this._queueRequestUrl(id), {
+          headers: { Accept: "application/json" },
+          credentials: "same-origin"
+        })
+        const request = await response.json()
+        if (!response.ok || !request?.id) throw new Error("queue_request_missing")
+
+        this._upsertQueueRequest(request)
+        this._upsertGlobalHistoryRequest(request)
+        if (this._belongsToCurrentNote(request)) this._upsertHistoryRequest(request)
+        this._syncActiveQueueWatchers()
+        if (this.historyDialogTarget?.open) this._renderHistory()
+        this._renderQueue()
+
+        if (["succeeded", "failed", "canceled"].includes(request.status)) {
+          this._stopPromiseQueueWatcher(id)
+          return
+        }
+      } catch (_) {
+      }
+
+      this._watchPromiseQueueRequest(id, attempt + 1)
+    }, attempt === 0 ? 250 : 1500)
+
+    this.promiseQueueWatchers.set(id, timer)
+  }
+
+  _stopPromiseQueueWatcher(requestId) {
+    const id = String(requestId)
+    const timer = this.promiseQueueWatchers.get(id)
+    if (!timer) return
+
+    window.clearTimeout(timer)
+    this.promiseQueueWatchers.delete(id)
+  }
+
+  _stopAllPromiseQueueWatchers() {
+    this.promiseQueueWatchers.forEach((timer) => window.clearTimeout(timer))
+    this.promiseQueueWatchers.clear()
+  }
+
+  _syncActiveQueueWatchers() {
+    const activeIds = new Set(
+      this.queueRequests
+        .filter((request) => ["queued", "running", "retrying"].includes(request.status))
+        .map((request) => String(request.id))
+    )
+
+    activeIds.forEach((requestId) => {
+      if (!this.promiseQueueWatchers.has(requestId)) this._watchPromiseQueueRequest(requestId)
+    })
+
+    Array.from(this.promiseQueueWatchers.keys()).forEach((requestId) => {
+      if (!activeIds.has(requestId)) this._stopPromiseQueueWatcher(requestId)
+    })
   }
 
   _upsertHistoryRequest(request) {
@@ -1151,7 +1310,9 @@ export default class extends Controller {
 
   _filteredHistoryRequests() {
     switch (this.historyFilter) {
-      case "shell": return this.globalHistoryRequests
+      case "shell": {
+        return this._mergeShellHistorySnapshot(this.globalHistoryRequests)
+      }
       case "active": return this.historyRequests.filter((request) => ["queued", "running", "retrying"].includes(request.status))
       case "failed": return this.historyRequests.filter((request) => request.status === "failed")
       case "succeeded": return this.historyRequests.filter((request) => request.status === "succeeded")
@@ -1186,15 +1347,21 @@ export default class extends Controller {
   }
 
   _historyCard(request) {
+    const interactive = request.status === "succeeded" || request.promise_note_slug || request.note_slug
+    const interactiveClass = interactive ? "cursor-pointer hover:border-[var(--theme-accent)] hover:bg-[var(--theme-bg-hover)]" : ""
+    const interactiveAttrs = interactive
+      ? `data-request-id="${this._escapeHtml(request.id)}" data-action="click->ai-review#historyAction"`
+      : ""
     const provider = request.provider && request.model ? `${request.provider}: ${request.model}` : (request.provider || "IA")
-    const noteLabel = request.note_title ? `<p class="mt-1 text-xs text-[var(--theme-text-faint)]">${this._escapeHtml(request.note_title)}</p>` : ""
+    const noteTitle = request.promise_note_title || request.note_title
+    const noteLabel = noteTitle ? `<p class="mt-1 text-xs text-[var(--theme-text-faint)]">${this._escapeHtml(noteTitle)}</p>` : ""
     const statusClass = this._statusClass(request.status)
     const duration = this._durationLabel(request)
     const error = request.error ? `<p class="mt-2 text-xs text-amber-300">${this._escapeHtml(request.error)}</p>` : ""
     const remoteHint = request.remote_hint ? `<p class="mt-2 text-xs ${request.remote_long_job ? "text-amber-300" : "text-[var(--theme-text-secondary)]"}">${this._escapeHtml(request.remote_hint)}</p>` : ""
 
     return `
-      <article class="rounded-lg border border-[var(--theme-border)] bg-[var(--theme-bg-secondary)] p-4">
+      <article class="rounded-lg border border-[var(--theme-border)] bg-[var(--theme-bg-secondary)] p-4 ${interactiveClass}" ${interactiveAttrs}>
         <div class="flex items-start justify-between gap-4">
           <div>
             <p class="text-sm font-semibold text-[var(--theme-text-primary)]">${this._escapeHtml(this._capabilityLabel(request.capability))}</p>
@@ -1449,6 +1616,46 @@ export default class extends Controller {
     this._showProposal(request.corrected || "")
   }
 
+  _findRequestById(requestId) {
+    const id = String(requestId)
+
+    return this.queueRequests.find((item) => String(item.id) === id) ||
+      this.globalHistoryRequests.find((item) => String(item.id) === id) ||
+      this.historyRequests.find((item) => String(item.id) === id) ||
+      null
+  }
+
+  _mergeQueueSnapshot(serverRequests) {
+    const merged = [...serverRequests]
+
+    this.queueRequests.forEach((request) => {
+      if (merged.some((item) => String(item.id) === String(request.id))) return
+      if (request.queue_hidden) return
+      if (this.promiseQueueWatchers.has(String(request.id)) || ["queued", "running", "retrying"].includes(request.status)) {
+        merged.push(request)
+      }
+    })
+
+    return merged
+      .sort((left, right) => new Date(right.created_at || 0) - new Date(left.created_at || 0))
+      .slice(0, 30)
+  }
+
+  _mergeShellHistorySnapshot(serverHistory) {
+    const merged = [...serverHistory]
+    const supplemental = [...this.globalHistoryRequests, ...this.queueRequests]
+
+    supplemental.forEach((request) => {
+      if (merged.some((item) => String(item.id) === String(request.id))) return
+      if (request.queue_hidden) return
+      merged.push(request)
+    })
+
+    return merged
+      .sort((left, right) => new Date(right.created_at || 0) - new Date(left.created_at || 0))
+      .slice(0, 20)
+  }
+
   async _fetchQueueRequest(requestId) {
     const existing = this.queueRequests.find((item) => String(item.id) === String(requestId))
     if (existing?.corrected || existing?.promise_note_slug) return existing
@@ -1473,6 +1680,7 @@ export default class extends Controller {
     if (!requestId) return
 
     const requestIdString = String(requestId)
+    this._stopPromiseQueueWatcher(requestIdString)
     const queueRequest = this.queueRequests.find((item) => String(item.id) === requestIdString)
     if (queueRequest) queueRequest.queue_hidden = true
     this.resolvedQueueRequestIds.add(requestIdString)
@@ -1734,6 +1942,7 @@ export default class extends Controller {
 
   async _destroyRequest(requestId) {
     const requestIdString = String(requestId)
+    this._stopPromiseQueueWatcher(requestIdString)
     const wasDismissed = this.dismissedQueueRequestIds.has(requestIdString)
     const exitAnimation = this._animateQueueExit(requestIdString)
 

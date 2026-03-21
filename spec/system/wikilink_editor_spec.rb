@@ -221,8 +221,13 @@ RSpec.describe "Wiki-link editor", type: :system do
       expect(page).to have_text(/\[\[Nota IA\|[0-9a-f-]{36}\]\]/, wait: 5)
       expect(page).to have_css("[data-ai-review-target='queueDock']:not(.hidden)", wait: 5)
       expect(page).to have_text("Nota IA", wait: 5)
-      expect(page).to have_button("Cancelar", wait: 5)
+      expect(page).to have_css("[data-request-id]", wait: 5)
       expect(page).to have_current_path(%r{/notes/}, wait: 5)
+
+      find("button[title='Histórico de IA']").click
+      click_button "Shell"
+      expect(page).to have_text("Nota IA", wait: 5)
+      expect(page).to have_text(/criar|criando/i, wait: 5)
     end
 
     it "ignores the creation menu when user presses space and continues typing" do

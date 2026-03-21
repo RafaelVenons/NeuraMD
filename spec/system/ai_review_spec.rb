@@ -137,6 +137,26 @@ RSpec.describe "AI review", type: :system do
     JS
   end
 
+  def force_ai_queue_fallback_polling
+    page.execute_script(<<~JS)
+      (() => {
+        const host = document.querySelector("[data-controller~='ai-review']")
+        const controller = window.Stimulus.controllers.find((item) => item.element === host && item.identifier === "ai-review")
+        controller._setTransportState(false)
+      })()
+    JS
+  end
+
+  def refresh_ai_queue_now
+    page.execute_script(<<~JS)
+      (() => {
+        const host = document.querySelector("[data-controller~='ai-review']")
+        const controller = window.Stimulus.controllers.find((item) => item.element === host && item.identifier === "ai-review")
+        controller.refreshQueue()
+      })()
+    JS
+  end
+
   def replace_ai_suggested_text(text)
     page.execute_script(<<~JS, text)
       (() => {
@@ -943,5 +963,77 @@ RSpec.describe "AI review", type: :system do
     click_button "Shell"
     expect(page).to have_text("Traducao", wait: 5)
     expect(page).to have_text("Nota Global", wait: 5)
+  end
+
+  it "opens a succeeded seed note from the shell history" do
+    promise_note = create(:note, title: "Historico Promessa")
+    request_record = create(
+      :ai_request,
+      note_revision: head_revision,
+      capability: "seed_note",
+      provider: "ollama",
+      requested_provider: "ollama",
+      model: "qwen3.5:4b",
+      status: "succeeded",
+      completed_at: Time.current,
+      output_text: "# Historico Promessa\n\nConteudo criado.",
+      metadata: {
+        "language" => note.detected_language,
+        "promise_note_id" => promise_note.id,
+        "promise_note_title" => promise_note.title
+      }
+    )
+
+    find("button[title='Histórico de IA']").click
+    click_button "Shell"
+    within("[data-ai-review-target='historyList']") do
+      find("[data-request-id='#{request_record.id}']", text: "Historico Promessa").click
+    end
+
+    expect(page).to have_current_path(note_path(promise_note.slug), wait: 5)
+    expect(page).to have_button("Recusar", wait: 5)
+    expect(page).to have_button("Aplicar", wait: 5)
+  end
+
+  it "refreshes queue and shell history via fallback polling when realtime is unavailable" do
+    queued_request = create(
+      :ai_request,
+      note_revision: head_revision,
+      capability: "seed_note",
+      provider: "ollama",
+      requested_provider: "ollama",
+      model: "qwen3.5:4b",
+      status: "queued",
+      metadata: {
+        "language" => note.detected_language,
+        "promise_note_id" => create(:note, title: "Fila Fallback").id,
+        "promise_note_title" => "Fila Fallback"
+      }
+    )
+
+    visit note_path(note.slug)
+    force_ai_queue_fallback_polling
+    refresh_ai_queue_now
+
+    expect(page).to have_css("[data-ai-review-target='queueDock']:not(.hidden)", wait: 5)
+    within("[data-ai-review-target='queueDock']") do
+      expect(page).to have_text(/criar/i, wait: 5)
+      expect(page).to have_text("Fila Fallback", wait: 5)
+    end
+
+    queued_request.update!(
+      status: "succeeded",
+      completed_at: Time.current,
+      output_text: "# Fila Fallback\n\nConteudo inicial."
+    )
+
+    within("[data-ai-review-target='queueDock']") do
+      expect(page).to have_text(/criado/i, wait: 6)
+    end
+
+    find("button[title='Histórico de IA']").click
+    click_button "Shell"
+    expect(page).to have_text("Fila Fallback", wait: 6)
+    expect(page).to have_text("Concluida", wait: 6)
   end
 end

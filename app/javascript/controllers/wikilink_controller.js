@@ -327,13 +327,21 @@ export default class extends Controller {
       this._closeDropdown()
 
       if (option.action === "ai") {
+        const editorRoot = this.element.closest("#editor-root")
+        const aiReview = editorRoot
+          ? this.application.getControllerForElementAndIdentifier(editorRoot, "ai-review")
+          : null
+        const promiseDetail = {
+          requestId: data.request_id,
+          requestStatus: data.request_status,
+          noteId: data.note_id,
+          noteSlug: data.note_slug,
+          noteTitle: data.note_title
+        }
+
+        aiReview?.handlePromiseEnqueued?.(promiseDetail)
         this.element.dispatchEvent(new CustomEvent("promise:ai-enqueued", {
-          detail: {
-            requestId: data.request_id,
-            requestStatus: data.request_status,
-            noteId: data.note_id,
-            noteTitle: data.note_title
-          },
+          detail: promiseDetail,
           bubbles: true
         }))
       }
