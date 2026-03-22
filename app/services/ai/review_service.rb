@@ -187,7 +187,11 @@ module Ai
       def with_execution_slot_lock(request)
         ApplicationRecord.transaction(requires_new: true) do
           advisory_key = advisory_lock_key_for(request)
-          ApplicationRecord.connection.select_value("SELECT pg_advisory_xact_lock(#{advisory_key})")
+          ApplicationRecord.connection.exec_query(
+            "SELECT pg_advisory_xact_lock($1)",
+            "AI execution slot lock",
+            [[nil, advisory_key]]
+          )
           yield
         end
       end
