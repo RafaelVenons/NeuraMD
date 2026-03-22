@@ -77,6 +77,8 @@ export default class extends Controller {
     this.draggedQueueElement = null
     this.queuePlaceholder = null
     this.queueRenderDeferred = false
+    this.pendingQueuePointerDrag = null
+    this.queuePointerDragActive = false
     this.historyFilter = "all"
     this.realtimeConnected = false
     this.streamObserver = null
@@ -86,11 +88,15 @@ export default class extends Controller {
     this.aiSuggestedText = ""
     this.preferredTargetLanguage = "en-US"
     this._boundDocumentClick = (event) => this._handleDocumentClick(event)
+    this._boundQueuePointerMove = (event) => this.handleQueuePointerMove(event)
+    this._boundQueuePointerUp = (event) => this.handleQueuePointerUp(event)
     this._handleRequestUpdate = (event) => this._handleStreamRequestUpdate(event)
     this._handlePromiseAiEnqueued = (event) => this._handlePromiseAiEnqueuedEvent(event)
     this.element.addEventListener("ai-request:update", this._handleRequestUpdate)
     this.element.addEventListener("promise:ai-enqueued", this._handlePromiseAiEnqueued)
     document.addEventListener("click", this._boundDocumentClick)
+    window.addEventListener("pointermove", this._boundQueuePointerMove)
+    window.addEventListener("pointerup", this._boundQueuePointerUp)
     this._observeStreamSource()
     this.checkAvailability()
     this.refreshQueue()
@@ -101,6 +107,8 @@ export default class extends Controller {
     this.element.removeEventListener("ai-request:update", this._handleRequestUpdate)
     this.element.removeEventListener("promise:ai-enqueued", this._handlePromiseAiEnqueued)
     document.removeEventListener("click", this._boundDocumentClick)
+    window.removeEventListener("pointermove", this._boundQueuePointerMove)
+    window.removeEventListener("pointerup", this._boundQueuePointerUp)
     this.streamObserver?.disconnect()
     this._stopPolling()
     this._stopQueuePolling()
@@ -395,7 +403,12 @@ export default class extends Controller {
   }
 
   handleQueueDragStart(event) {
-    const card = event.currentTarget
+    if (this.queuePointerDragActive) {
+      event.preventDefault()
+      return
+    }
+
+    const card = event.currentTarget.closest("[data-queue-card='true']")
     const requestId = card.dataset.requestId
     if (!requestId || card.dataset.queueReorderable !== "true") {
       event.preventDefault()
@@ -421,7 +434,7 @@ export default class extends Controller {
     if (!this.draggedQueueElement || !this.queuePlaceholder) return
 
     event.preventDefault()
-    const targetCard = event.target.closest("[data-request-id][data-queue-reorderable='true']")
+    const targetCard = event.target.closest("[data-queue-card='true'][data-queue-reorderable='true']")
     if (!targetCard || targetCard === this.draggedQueueElement) return
 
     const rect = targetCard.getBoundingClientRect()
@@ -434,7 +447,7 @@ export default class extends Controller {
     if (!this.draggedQueueElement || !this.queuePlaceholder) return
 
     event.preventDefault()
-    const targetCard = event.target.closest("[data-request-id][data-queue-reorderable='true']")
+    const targetCard = event.target.closest("[data-queue-card='true'][data-queue-reorderable='true']")
     if (targetCard) return
 
     this.queueDockTarget.append(this.queuePlaceholder)
@@ -449,7 +462,7 @@ export default class extends Controller {
     this.queuePlaceholder.remove()
 
     const orderedRequestIds = Array.from(
-      this.queueDockTarget.querySelectorAll("[data-request-id][data-queue-reorderable='true']")
+      this.queueDockTarget.querySelectorAll("[data-queue-card='true'][data-queue-reorderable='true']")
     ).map((card) => card.dataset.requestId).reverse()
 
     this._cleanupQueueDrag()
@@ -465,7 +478,7 @@ export default class extends Controller {
     this.queuePlaceholder.remove()
 
     const orderedRequestIds = Array.from(
-      this.queueDockTarget.querySelectorAll("[data-request-id][data-queue-reorderable='true']")
+      this.queueDockTarget.querySelectorAll("[data-queue-card='true'][data-queue-reorderable='true']")
     ).map((card) => card.dataset.requestId).reverse()
 
     this._cleanupQueueDrag()
@@ -473,12 +486,64 @@ export default class extends Controller {
   }
 
   handleQueueDragEnd() {
+    if (this.queuePointerDragActive) return
     if (this.draggedQueueElement) {
       this.draggedQueueElement.classList.remove("opacity-0", "scale-95")
       this.draggedQueueElement.style.visibility = ""
     }
     if (this.queuePlaceholder) this.queuePlaceholder.remove()
     this._cleanupQueueDrag()
+  }
+
+  handleQueuePointerDown(event) {
+    const card = event.currentTarget.closest("[data-queue-card='true']")
+    if (!card || card.dataset.queueReorderable !== "true") return
+    if (event.button !== 0) return
+    if (event.target.closest("button, a, input, select, textarea")) return
+
+    event.preventDefault()
+
+    this.pendingQueuePointerDrag = {
+      card,
+      requestId: card.dataset.requestId,
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startY: event.clientY,
+      offsetX: event.clientX - card.getBoundingClientRect().left,
+      offsetY: event.clientY - card.getBoundingClientRect().top
+    }
+  }
+
+  handleQueuePointerMove(event) {
+    if (this.pendingQueuePointerDrag && !this.queuePointerDragActive) {
+      if (event.pointerId !== this.pendingQueuePointerDrag.pointerId) return
+
+      const deltaX = event.clientX - this.pendingQueuePointerDrag.startX
+      const deltaY = event.clientY - this.pendingQueuePointerDrag.startY
+      if (Math.hypot(deltaX, deltaY) < 6) return
+
+      this._beginQueuePointerDrag(event)
+    }
+
+    if (!this.queuePointerDragActive || !this.draggedQueueElement || !this.queuePlaceholder) return
+    if (event.pointerId !== this.pendingQueuePointerDrag?.pointerId) return
+
+    event.preventDefault()
+    this._positionDraggedQueueElement(event)
+    this._moveQueuePlaceholderForPointer(event)
+    this._autoScrollQueueDock(event)
+  }
+
+  async handleQueuePointerUp(event) {
+    if (this.pendingQueuePointerDrag && !this.queuePointerDragActive && event.pointerId === this.pendingQueuePointerDrag.pointerId) {
+      this.pendingQueuePointerDrag = null
+      return
+    }
+
+    if (!this.queuePointerDragActive || event.pointerId !== this.pendingQueuePointerDrag?.pointerId) return
+
+    event.preventDefault()
+    await this._completeQueuePointerDrag()
   }
 
   async accept() {
@@ -560,6 +625,8 @@ export default class extends Controller {
   }
 
   _showConfigNotice() {
+    this._editorController()?.exitAiReviewFocusMode?.()
+    this._setQueueFooterClearance(false)
     this._clearProposalStage()
     this._showWorkspace()
     this._clearActiveTrigger()
@@ -569,6 +636,8 @@ export default class extends Controller {
   }
 
   _showProcessing() {
+    this._editorController()?.exitAiReviewFocusMode?.()
+    this._setQueueFooterClearance(false)
     this._clearProposalStage()
     const provider = this.pendingMenu?.providerName || this.aiProvider
     const model = this.pendingMenu?.modelName || this.aiModel
@@ -589,6 +658,8 @@ export default class extends Controller {
   }
 
   _showProcessingFailure(message) {
+    this._editorController()?.exitAiReviewFocusMode?.()
+    this._setQueueFooterClearance(false)
     this._clearProposalStage()
     this._showWorkspace()
     this.configNoticeTarget.classList.add("hidden")
@@ -603,6 +674,8 @@ export default class extends Controller {
   }
 
   _showProposal(corrected) {
+    this._editorController()?.exitAiReviewFocusMode?.()
+    this._setQueueFooterClearance(false)
     const editor = this._editor()
     const suggestionForPreview = this.pendingApplyMode === "translation_note"
       ? corrected
@@ -632,6 +705,8 @@ export default class extends Controller {
 
   _showSeedNoteReview(request) {
     this._clearProposalStage()
+    this._editorController()?.enterAiReviewFocusMode?.()
+    this._setQueueFooterClearance(true)
     this._showWorkspace()
     this.configNoticeTarget.classList.add("hidden")
     this.processingBoxTarget.classList.add("hidden")
@@ -640,17 +715,12 @@ export default class extends Controller {
     this.translationMetaTarget.classList.add("hidden")
     if (this.hasDeclineButtonTarget) this.declineButtonTarget.textContent = "Recusar"
     this.acceptButtonTarget.textContent = "Aplicar"
-    this.correctedTextTarget.value = request.corrected || ""
-    this.proposalDiffTarget.innerHTML = `
-      <div class="space-y-3">
-        <p class="text-sm font-semibold text-[var(--theme-text-primary)]">Nota criada com IA</p>
-        <p class="text-sm text-[var(--theme-text-secondary)]">
-          Revise a nota criada no editor. Aplique para manter esta nota; recuse para apagar a nota criada, remover o link gerado e restaurar o wikilink original.
-        </p>
-        <p class="text-xs uppercase tracking-[0.18em] text-[var(--theme-text-faint)]">${this._escapeHtml(request.promise_note_title || request.note_title || "Nota criada")}</p>
-        <pre class="overflow-x-auto rounded-lg border border-[var(--theme-border)] bg-[var(--theme-bg-primary)] p-3 whitespace-pre-wrap text-sm leading-relaxed text-[var(--theme-text-primary)]">${this._escapeHtml(request.corrected || "")}</pre>
-      </div>
-    `
+    this.aiSuggestedText = request.corrected || ""
+    this.correctedTextTarget.value = this.aiSuggestedText
+    this.pendingOriginalText = this.aiSuggestedText
+    this.proposalDiffTarget.classList.add("ai-review-proposal--seed-note")
+    this.proposalDiffTarget.dataset.placeholder = "Edite o texto da nota criada com IA..."
+    this._renderProposal()
   }
 
   _showWorkspace() {
@@ -664,6 +734,8 @@ export default class extends Controller {
   }
 
   _hideWorkspace() {
+    this._editorController()?.exitAiReviewFocusMode?.()
+    this._setQueueFooterClearance(false)
     this.workspaceTarget.classList.add("hidden")
     this.workspaceTarget.classList.remove("flex")
     this.previewShellTarget.classList.remove("hidden")
@@ -675,6 +747,8 @@ export default class extends Controller {
     this._hideRequestMenu()
     this.pendingMenu = null
     this.aiSuggestedText = ""
+    this.proposalDiffTarget.classList.remove("ai-review-proposal--seed-note")
+    delete this.proposalDiffTarget.dataset.placeholder
     this._clearActiveTrigger()
   }
 
@@ -1148,8 +1222,13 @@ export default class extends Controller {
   _renderProposal() {
     const currentText = this.correctedTextTarget.value
     const selection = this._captureProposalSelection()
-    const aiAnnotated = this._annotateAiSuggestion(this.pendingOriginalText, this.aiSuggestedText)
-    const currentAnnotated = this._annotateCurrentSuggestion(aiAnnotated, this.aiSuggestedText, currentText)
+    const currentAnnotated = this.pendingApplyMode === "seed_note_review"
+      ? this._annotateSeedNoteSuggestion(this.aiSuggestedText, currentText)
+      : this._annotateCurrentSuggestion(
+          this._annotateAiSuggestion(this.pendingOriginalText, this.aiSuggestedText),
+          this.aiSuggestedText,
+          currentText
+        )
 
     this.proposalDiffTarget.innerHTML = currentAnnotated.map((item) => {
       const escaped = this._escapeHtml(item.value)
@@ -1191,6 +1270,16 @@ export default class extends Controller {
     })
 
     return this._mergeAnnotated(result)
+  }
+
+  _annotateSeedNoteSuggestion(aiSuggestedText, currentText) {
+    return this._mergeAnnotated(
+      computeWordDiff(aiSuggestedText, currentText).flatMap((item) => {
+        if (item.type === "insert") return [{ value: item.value, kind: "manual" }]
+        if (item.type === "equal") return [{ value: item.value, kind: "plain" }]
+        return []
+      })
+    )
   }
 
   _consumeAnnotated(segments, cursor, length) {
@@ -1445,26 +1534,21 @@ export default class extends Controller {
     const reorderable = presentation.reorderable
     const cardAction = presentation.cardAction
     const cardInteractiveClass = cardAction ? "cursor-pointer hover:bg-[var(--theme-bg-hover)]" : ""
-    const dragAttrs = reorderable ? `draggable="true"` : ""
     const actionList = []
     if (reorderable) {
       actionList.push(
-        "dragstart->ai-review#handleQueueDragStart",
-        "dragend->ai-review#handleQueueDragEnd",
-        "dragover->ai-review#handleQueueDragOver",
-        "drop->ai-review#handleQueueDrop"
+        "pointerdown->ai-review#handleQueuePointerDown"
       )
     }
     const actionAttr = actionList.length > 0 ? `data-action="${actionList.join(" ")}"` : ""
     const titleClass = request.status === "failed" ? "text-red-300" : "text-[var(--theme-text-primary)]"
-    const dragClass = reorderable ? "cursor-grab active:cursor-grabbing" : ""
-    const requestAttrs = `data-request-id="${this._escapeHtml(request.id)}" data-queue-reorderable="${reorderable}" data-queue-status="${this._escapeHtml(request.status)}"`
+    const dragClass = reorderable ? "cursor-grab active:cursor-grabbing select-none touch-none" : ""
+    const requestAttrs = `data-queue-card="true" data-request-id="${this._escapeHtml(request.id)}" data-queue-reorderable="${reorderable}" data-queue-status="${this._escapeHtml(request.status)}"`
     const cardClickAttrs = cardAction
       ? `data-request-id="${this._escapeHtml(request.id)}" data-queue-action="${cardAction}" data-action="click->ai-review#queueAction"`
       : ""
-
     return `
-      <article class="pointer-events-auto ml-auto w-fit min-w-[11rem] max-w-[min(17rem,calc(100vw-1.5rem))] rounded-xl border-2 ${borderClass} bg-[var(--theme-bg-secondary)] px-2.5 py-2 shadow-xl backdrop-blur transition-[transform,opacity,box-shadow] duration-150 ease-out ${cardInteractiveClass} ${dragClass}" ${dragAttrs} ${requestAttrs} ${actionAttr}>
+      <article class="pointer-events-auto ml-auto w-fit min-w-[11rem] max-w-[min(17rem,calc(100vw-1.5rem))] rounded-xl border-2 ${borderClass} bg-[var(--theme-bg-secondary)] px-2.5 py-2 shadow-xl backdrop-blur transition-[transform,opacity,box-shadow] duration-150 ease-out ${cardInteractiveClass} ${dragClass}" ${requestAttrs} ${actionAttr}>
         <div class="flex items-start gap-3">
           <div class="min-w-0 flex-1 ${cardInteractiveClass}" ${cardClickAttrs}>
             <p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-[var(--theme-text-faint)]">${this._escapeHtml(serviceLabel)}</p>
@@ -1745,6 +1829,103 @@ export default class extends Controller {
     return placeholder
   }
 
+  _beginQueuePointerDrag(event) {
+    const pending = this.pendingQueuePointerDrag
+    if (!pending?.card || pending.card.dataset.queueReorderable !== "true") return
+
+    this.queuePointerDragActive = true
+    this.draggedQueueRequestId = pending.requestId
+    this.draggedQueueElement = pending.card
+    this.queuePlaceholder = this._buildQueuePlaceholder(pending.card)
+
+    pending.card.after(this.queuePlaceholder)
+
+    const rect = pending.card.getBoundingClientRect()
+    pending.card.style.width = `${rect.width}px`
+    pending.card.style.left = `${rect.left}px`
+    pending.card.style.top = `${rect.top}px`
+    pending.card.style.position = "fixed"
+    pending.card.style.zIndex = "70"
+    pending.card.style.pointerEvents = "none"
+    pending.card.style.margin = "0"
+    pending.card.classList.add("scale-[1.02]", "shadow-2xl", "opacity-90")
+
+    this._positionDraggedQueueElement(event)
+  }
+
+  _positionDraggedQueueElement(event) {
+    const pending = this.pendingQueuePointerDrag
+    if (!pending?.card) return
+
+    pending.card.style.left = `${event.clientX - pending.offsetX}px`
+    pending.card.style.top = `${event.clientY - pending.offsetY}px`
+  }
+
+  _moveQueuePlaceholderForPointer(event) {
+    const targetCard = document.elementFromPoint(event.clientX, event.clientY)?.closest("[data-queue-card='true'][data-queue-reorderable='true']")
+    if (!targetCard || targetCard === this.draggedQueueElement) {
+      const dockRect = this.queueDockTarget.getBoundingClientRect()
+      const insideDock =
+        event.clientX >= dockRect.left &&
+        event.clientX <= dockRect.right &&
+        event.clientY >= dockRect.top &&
+        event.clientY <= dockRect.bottom
+
+      if (insideDock) this.queueDockTarget.append(this.queuePlaceholder)
+      return
+    }
+
+    const rect = targetCard.getBoundingClientRect()
+    const insertAfter = event.clientY > rect.top + (rect.height / 2)
+    if (insertAfter) targetCard.after(this.queuePlaceholder)
+    else targetCard.before(this.queuePlaceholder)
+  }
+
+  _autoScrollQueueDock(event) {
+    if (!this.hasQueueDockTarget) return
+
+    const rect = this.queueDockTarget.getBoundingClientRect()
+    const threshold = 32
+    if (event.clientY < rect.top + threshold) this.queueDockTarget.scrollTop -= 18
+    else if (event.clientY > rect.bottom - threshold) this.queueDockTarget.scrollTop += 18
+  }
+
+  async _completeQueuePointerDrag() {
+    if (!this.draggedQueueElement || !this.queuePlaceholder) {
+      this._cancelQueuePointerDrag()
+      return
+    }
+
+    this.queuePlaceholder.before(this.draggedQueueElement)
+    this._resetDraggedQueueElementStyles(this.draggedQueueElement)
+    this.queuePlaceholder.remove()
+
+    const orderedRequestIds = Array.from(
+      this.queueDockTarget.querySelectorAll("[data-queue-card='true'][data-queue-reorderable='true']")
+    ).map((card) => card.dataset.requestId).reverse()
+
+    this._cleanupQueueDrag()
+    await this._persistQueueOrder(orderedRequestIds)
+  }
+
+  _cancelQueuePointerDrag() {
+    if (this.draggedQueueElement) this._resetDraggedQueueElementStyles(this.draggedQueueElement)
+    if (this.queuePlaceholder) this.queuePlaceholder.remove()
+    this._cleanupQueueDrag()
+  }
+
+  _resetDraggedQueueElementStyles(card) {
+    card.classList.remove("scale-[1.02]", "shadow-2xl", "opacity-90", "opacity-0", "scale-95")
+    card.style.visibility = ""
+    card.style.width = ""
+    card.style.left = ""
+    card.style.top = ""
+    card.style.position = ""
+    card.style.zIndex = ""
+    card.style.pointerEvents = ""
+    card.style.margin = ""
+  }
+
   _transparentDragImage() {
     if (this._dragImage) return this._dragImage
 
@@ -1756,6 +1937,8 @@ export default class extends Controller {
   }
 
   _cleanupQueueDrag() {
+    this.pendingQueuePointerDrag = null
+    this.queuePointerDragActive = false
     this.draggedQueueRequestId = null
     this.draggedQueueElement = null
     this.queuePlaceholder = null
@@ -1903,6 +2086,11 @@ export default class extends Controller {
 
   _editorController() {
     return this.application.getControllerForElementAndIdentifier(this.element, "editor")
+  }
+
+  _setQueueFooterClearance(enabled) {
+    if (!this.hasQueueDockTarget) return
+    this.queueDockTarget.classList.toggle("ai-review-queue--footer-clearance", enabled)
   }
 
   _ensurePreviewVisible() {

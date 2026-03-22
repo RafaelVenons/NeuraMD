@@ -315,7 +315,7 @@ export default class extends Controller {
           mode: option.action
         })
       })
-      const data = await response.json()
+      const data = await this._parseJsonResponse(response, "Falha ao criar nota.")
       if (!response.ok || data.error) throw new Error(data.error || "Falha ao criar nota.")
 
       const rolePrefix = this._currentRole ? `${this._currentRole}:` : ""
@@ -530,6 +530,17 @@ export default class extends Controller {
 
   _csrfToken() {
     return document.querySelector('meta[name="csrf-token"]')?.content || ""
+  }
+
+  async _parseJsonResponse(response, fallbackMessage) {
+    const contentType = response.headers.get("content-type") || ""
+    if (contentType.includes("application/json")) return await response.json()
+
+    const body = await response.text()
+    const normalized = body.trim().toLowerCase()
+    const htmlLike = normalized.startsWith("<!doctype") || normalized.startsWith("<html")
+    if (htmlLike) throw new Error("O servidor retornou HTML em vez de JSON ao criar a nota.")
+    throw new Error(fallbackMessage)
   }
 
   _autosaveController() {

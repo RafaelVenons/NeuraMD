@@ -158,6 +158,19 @@ RSpec.describe "Notes", type: :request do
         "seeded" => true
       )
     end
+
+    it "returns JSON when an unexpected error happens during AI promise creation" do
+      note
+      allow(Notes::PromiseCreationService).to receive(:call).and_raise(StandardError, "boom")
+
+      post create_from_promise_note_path(note.slug),
+        params: { title: "Nova promessa", mode: "ai" },
+        as: :json
+
+      expect(response).to have_http_status(:internal_server_error)
+      expect(response.media_type).to eq("application/json")
+      expect(response.parsed_body).to include("error" => "Falha interna ao criar nota com IA.")
+    end
   end
 
   describe "GET /notes/:slug" do

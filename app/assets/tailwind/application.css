@@ -1460,6 +1460,9 @@
     text-decoration: line-through;
     text-decoration-thickness: 1px;
   }
+  .ai-review-queue--footer-clearance {
+    bottom: 5.5rem;
+  }
 
   /* ── Typewriter mode: keep cursor vertically centered ── */
   #codemirror-host.typewriter-mode .cm-scroller {
@@ -1765,6 +1768,15 @@
     color: var(--theme-text-primary);
     border-radius: 4px;
     text-decoration: line-through;
+  }
+  .ai-review-proposal--seed-note {
+    min-height: calc(100vh - 15rem);
+    max-width: 78ch;
+    margin: 0 auto;
+  }
+  .ai-review-proposal--seed-note:empty::before {
+    content: attr(data-placeholder);
+    color: var(--theme-text-faint);
   }
 
   /* ── Offline banner ── */

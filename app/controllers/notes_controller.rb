@@ -189,6 +189,10 @@ class NotesController < ApplicationController
     }, status: :created
   rescue Ai::Error, ArgumentError => e
     render json: {error: e.message}, status: :unprocessable_entity
+  rescue StandardError => e
+    Rails.logger.error("[NotesController#create_from_promise] #{e.class}: #{e.message}")
+    Rails.logger.error(e.backtrace.join("\n")) if e.backtrace.present?
+    render json: {error: "Falha interna ao criar nota com IA."}, status: :internal_server_error
   end
 
   private

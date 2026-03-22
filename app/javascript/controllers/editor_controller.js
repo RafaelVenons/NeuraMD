@@ -38,6 +38,8 @@ export default class extends Controller {
     this._selectedRevisionContent = this._initialEditorContent()
     this._workingContent = this._selectedRevisionContent
     this._aiStageActive = false
+    this._aiReviewFocusMode = false
+    this._storedAiReviewLayout = null
     this._onDocumentClick = this._handleDocumentClick.bind(this)
     this._layoutStorageKey = `editor-layout:${this.slugValue}`
     this._boundPointerMove = (event) => this._handlePointerMove(event)
@@ -87,6 +89,54 @@ export default class extends Controller {
     this.previewPaneTarget.classList.remove("hidden")
     this.previewToggleBtnTarget.classList.add("toolbar-btn--active")
     this._applyPreviewWidth(this._previewWidthRatio || 0.5)
+  }
+
+  enterAiReviewFocusMode() {
+    if (this._aiReviewFocusMode) return
+
+    const tagSidebar = document.getElementById("tag-sidebar")
+    this._storedAiReviewLayout = {
+      previewVisible: this._previewVisible,
+      previewPaneFlex: this.previewPaneTarget.style.flex,
+      editorPaneHidden: this.editorPaneTarget.classList.contains("hidden"),
+      resizeHandleHidden: this.previewResizeHandleTarget.classList.contains("hidden"),
+      tagSidebarHidden: tagSidebar?.classList.contains("hidden") || false
+    }
+
+    this._aiReviewFocusMode = true
+    this._previewVisible = true
+    this.previewPaneTarget.classList.remove("hidden")
+    this.previewPaneTarget.style.flex = "1 1 auto"
+    this.editorPaneTarget.classList.add("hidden")
+    this.previewResizeHandleTarget.classList.add("hidden")
+    tagSidebar?.classList.add("hidden")
+  }
+
+  exitAiReviewFocusMode() {
+    if (!this._aiReviewFocusMode) return
+
+    const tagSidebar = document.getElementById("tag-sidebar")
+    const stored = this._storedAiReviewLayout || {}
+
+    this._aiReviewFocusMode = false
+    this._storedAiReviewLayout = null
+
+    this.editorPaneTarget.classList.toggle("hidden", !!stored.editorPaneHidden)
+    this.previewResizeHandleTarget.classList.toggle("hidden", !!stored.resizeHandleHidden)
+    tagSidebar?.classList.toggle("hidden", !!stored.tagSidebarHidden)
+
+    this._previewVisible = stored.previewVisible !== false
+    if (this._previewVisible) {
+      this.previewPaneTarget.classList.remove("hidden")
+      this.previewToggleBtnTarget.classList.add("toolbar-btn--active")
+      this.previewPaneTarget.style.flex = stored.previewPaneFlex || ""
+      if (!stored.previewPaneFlex) this._applyPreviewWidth(this._previewWidthRatio || 0.5)
+    } else {
+      this.previewPaneTarget.classList.add("hidden")
+      this.previewToggleBtnTarget.classList.remove("toolbar-btn--active")
+      this.previewPaneTarget.style.flex = stored.previewPaneFlex || ""
+      this.editorPaneTarget.style.flex = "1 1 auto"
+    }
   }
 
   startPreviewResize(event) {

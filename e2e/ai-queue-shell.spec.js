@@ -52,4 +52,53 @@ test.describe("AI queue shell", () => {
       fullPage: true
     })
   })
+
+  test("reorders queued cards with pointer drag and keeps the order after reload", async ({ page }, testInfo) => {
+    const token = `${Date.now()}-${testInfo.retry}`
+    const scenario = runRailsScript("script/e2e/bootstrap_ai_queue_reorder.rb", { E2E_TOKEN: token })
+
+    await signIn(page, scenario.credentials)
+    await page.goto(scenario.note_path)
+
+    const dock = page.locator("[data-ai-review-target='queueDock']")
+    await expect(dock).toBeVisible()
+
+    const queueTitles = async () => {
+      return await page.locator("[data-ai-review-target='queueDock'] article p:nth-of-type(2)").evaluateAll((nodes) =>
+        nodes.map((node) => node.textContent.trim())
+      )
+    }
+
+    const highCard = page.locator("[data-ai-review-target='queueDock'] article").filter({ hasText: scenario.titles.high }).first()
+    const lowCard = page.locator("[data-ai-review-target='queueDock'] article").filter({ hasText: scenario.titles.low }).first()
+
+    await expect(queueTitles()).resolves.toEqual([
+      scenario.titles.high,
+      scenario.titles.mid,
+      scenario.titles.low
+    ])
+
+    const highBox = await highCard.boundingBox()
+    const lowBox = await lowCard.boundingBox()
+    if (!highBox || !lowBox) throw new Error("Queue cards not visible for pointer drag test")
+
+    await page.mouse.move(highBox.x + (highBox.width / 2), highBox.y + (highBox.height / 2))
+    await page.mouse.down()
+    await page.mouse.move(lowBox.x + (lowBox.width / 2), lowBox.y + lowBox.height - 4, { steps: 12 })
+    await page.mouse.up()
+
+    await expect.poll(queueTitles).toEqual([
+      scenario.titles.mid,
+      scenario.titles.low,
+      scenario.titles.high
+    ])
+
+    await page.reload()
+    await expect(dock).toBeVisible()
+    await expect.poll(queueTitles).toEqual([
+      scenario.titles.mid,
+      scenario.titles.low,
+      scenario.titles.high
+    ])
+  })
 })
