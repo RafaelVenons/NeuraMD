@@ -179,8 +179,108 @@ export default class extends Controller {
   }
 
   restoreNodePositions(positions, graph = this.state.graph) {
-    if (!positions || !graph) return
-    assignNodePositions(graph, positions)
+    if (!graph) return
+    if (positions) assignNodePositions(graph, positions)
+    this.seedEmbeddedNewNodes(graph, positions)
+    this.state.layout.basePositions = captureNodePositions(graph)
+  }
+
+  seedEmbeddedNewNodes(graph, previousPositions) {
+    if (!this.embeddedModeValue) return
+    if (!previousPositions?.size) return
+
+    const focusedNodeId = this.state.ui.focusedNodeId
+    if (!focusedNodeId || !graph.hasNode(focusedNodeId)) return
+
+    const focusPosition = graph.getNodeAttributes(focusedNodeId)
+    const directNeighborIds = this.collectDirectNeighborIds(focusedNodeId).filter((nodeId) => graph.hasNode(nodeId))
+    const newNeighborIds = directNeighborIds.filter((nodeId) => !previousPositions.has(nodeId))
+    if (newNeighborIds.length === 0) return
+
+    const ringRadius = this.resolveEmbeddedSpawnRadius(graph, previousPositions, focusedNodeId, directNeighborIds)
+    const occupiedAngles = directNeighborIds
+      .filter((nodeId) => !newNeighborIds.includes(nodeId))
+      .map((nodeId) => this.angleFromFocus(focusPosition, graph.getNodeAttributes(nodeId)))
+      .filter((angle) => Number.isFinite(angle))
+
+    const minGap = Math.PI / 10
+
+    newNeighborIds
+      .map((nodeId) => ({
+        nodeId,
+        preferredAngle: this.angleFromFocus(focusPosition, graph.getNodeAttributes(nodeId))
+      }))
+      .sort((left, right) => left.preferredAngle - right.preferredAngle)
+      .forEach((entry, index) => {
+        const fallbackAngle = ((Math.PI * 2) / Math.max(newNeighborIds.length, 1)) * index
+        const preferredAngle = Number.isFinite(entry.preferredAngle) ? entry.preferredAngle : fallbackAngle
+        const angle = this.resolveAvailableRingAngle(preferredAngle, occupiedAngles, minGap)
+
+        graph.mergeNodeAttributes(entry.nodeId, {
+          x: focusPosition.x + Math.cos(angle) * ringRadius,
+          y: focusPosition.y + Math.sin(angle) * ringRadius
+        })
+
+        occupiedAngles.push(angle)
+      })
+  }
+
+  collectDirectNeighborIds(nodeId) {
+    const neighborIds = new Set()
+
+    for (const edgeId of this.state.indexes?.outEdgesByNodeId?.get(nodeId) || []) {
+      neighborIds.add(this.state.graph.target(edgeId))
+    }
+
+    for (const edgeId of this.state.indexes?.inEdgesByNodeId?.get(nodeId) || []) {
+      neighborIds.add(this.state.graph.source(edgeId))
+    }
+
+    return [...neighborIds]
+  }
+
+  resolveEmbeddedSpawnRadius(graph, previousPositions, focusedNodeId, directNeighborIds) {
+    const focusPosition = previousPositions.get(focusedNodeId) || graph.getNodeAttributes(focusedNodeId)
+    const distances = directNeighborIds
+      .map((nodeId) => previousPositions.get(nodeId))
+      .filter(Boolean)
+      .map((position) => Math.hypot(position.x - focusPosition.x, position.y - focusPosition.y))
+      .filter((distance) => Number.isFinite(distance) && distance > 0.001)
+      .sort((left, right) => left - right)
+
+    const medianDistance = distances.length > 0 ? distances[Math.floor(distances.length / 2)] : 0.05
+    return Math.min(Math.max(medianDistance, 0.035), 0.085)
+  }
+
+  angleFromFocus(focusPosition, nodePosition) {
+    if (!focusPosition || !nodePosition) return NaN
+    const dx = nodePosition.x - focusPosition.x
+    const dy = nodePosition.y - focusPosition.y
+    if (Math.abs(dx) < 0.0001 && Math.abs(dy) < 0.0001) return NaN
+    return Math.atan2(dy, dx)
+  }
+
+  resolveAvailableRingAngle(preferredAngle, occupiedAngles, minGap) {
+    if (this.angleIsAvailable(preferredAngle, occupiedAngles, minGap)) return preferredAngle
+
+    for (let step = 1; step <= 18; step += 1) {
+      const offset = Math.ceil(step / 2) * minGap
+      const candidate = step % 2 === 1 ? preferredAngle + offset : preferredAngle - offset
+      if (this.angleIsAvailable(candidate, occupiedAngles, minGap)) return candidate
+    }
+
+    return preferredAngle
+  }
+
+  angleIsAvailable(candidateAngle, occupiedAngles, minGap) {
+    return occupiedAngles.every((angle) => this.circularAngleDistance(angle, candidateAngle) >= minGap)
+  }
+
+  circularAngleDistance(left, right) {
+    const fullCircle = Math.PI * 2
+    let delta = Math.abs(left - right) % fullCircle
+    if (delta > Math.PI) delta = fullCircle - delta
+    return delta
   }
 
   async parseGraphResponse(response) {

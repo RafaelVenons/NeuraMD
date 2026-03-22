@@ -282,6 +282,7 @@ RSpec.describe "Graph browser", type: :system do
     expect(hierarchy_positions["child"]["y"]).to be > hierarchy_positions["root"]["y"]
     expect((hierarchy_positions["sibling"]["x"] - hierarchy_positions["root"]["x"]).abs).to be > 0.01
     expect((hierarchy_positions["neutral"]["x"] - hierarchy_positions["root"]["x"]).abs).to be > 0.01
+    expect((hierarchy_positions["neutral"]["y"] - hierarchy_positions["root"]["y"]).abs).to be > 0.01
 
     drag_result = page.evaluate_script(<<~JS, child_note.id)
       (() => {
@@ -662,6 +663,70 @@ RSpec.describe "Graph browser", type: :system do
       "focusDepth" => 2
     )
     expect(page).not_to have_css(".nm-graph-tooltip")
+  end
+
+  it "keeps a newly created linked note within the focus ring range in the embedded graph" do
+    suffix = SecureRandom.hex(4)
+    current_note = create(:note, title: "Atual #{suffix}")
+    existing_neighbor = create(:note, title: "Vizinha #{suffix}")
+
+    [current_note, existing_neighbor].each do |note|
+      revision = create(:note_revision, note:, content_markdown: "Resumo de #{note.title}")
+      note.update_columns(head_revision_id: revision.id)
+    end
+
+    create(:note_link, src_note: current_note, dst_note: existing_neighbor, created_in_revision: current_note.head_revision, hier_role: "target_is_child")
+
+    visit note_path(current_note.slug)
+
+    expect(page).to have_css(".note-graph-embed .sigma-mouse", wait: 10)
+
+    new_note = create(:note, title: "Nova ligada #{suffix}")
+    new_revision = create(:note_revision, note: new_note, content_markdown: "Resumo de Nova ligada #{suffix}")
+    new_note.update_columns(head_revision_id: new_revision.id)
+    create(:note_link, src_note: current_note, dst_note: new_note, created_in_revision: current_note.head_revision, hier_role: "same_level")
+
+    page.execute_script(<<~JS)
+      (() => {
+        const controller = window.__graphDebug
+        controller._pendingGraphSnapshot = controller.captureGraphSnapshot()
+        controller.load()
+      })()
+    JS
+
+    expect(page).to have_css(".note-graph-embed .sigma-mouse", wait: 10)
+    Timeout.timeout(10) do
+      loop do
+        present = page.evaluate_script(<<~JS, new_note.id)
+          (() => {
+            const nodeId = arguments[0]
+            return window.__graphDebug.state.graph.hasNode(nodeId)
+          })()
+        JS
+        break if present
+
+        sleep 0.1
+      end
+    end
+
+    ring_state = page.evaluate_script(<<~JS, current_note.id, existing_neighbor.id, new_note.id)
+      (() => {
+        const [focusId, existingId, newId] = arguments
+        const graph = window.__graphDebug.state.graph
+        const focus = graph.getNodeAttributes(focusId)
+        const existing = graph.getNodeAttributes(existingId)
+        const created = graph.getNodeAttributes(newId)
+        const distance = (from, to) => Math.hypot(to.x - from.x, to.y - from.y)
+
+        return {
+          existingDistance: distance(focus, existing),
+          createdDistance: distance(focus, created)
+        }
+      })()
+    JS
+
+    expect(ring_state["createdDistance"]).to be > 0.02
+    expect(ring_state["createdDistance"]).to be < 0.1
   end
 
   it "navigates to /graph on double click over the embedded graph background" do

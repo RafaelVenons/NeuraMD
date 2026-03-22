@@ -165,11 +165,16 @@ function resolveRelativePlacement(role, direction) {
   }
 
   if (role === "same_level") return { side, verticalBand: "mid", distanceBand: "normal" }
-  return { side, verticalBand: "mid", distanceBand: "far" }
+  return { side: "free", verticalBand: "soft", distanceBand: "far", placementMode: "soft" }
 }
 
 function positionPlacementBucketOnRing(graph, bucket, focus, radius, intensity) {
   if (bucket.length === 0) return
+
+  if (bucket[0].placementMode === "soft") {
+    positionSoftPlacementBucketOnRing(graph, bucket, focus, radius)
+    return
+  }
 
   const [{ side, verticalBand, distanceBand }] = bucket
   const orderedBucket = [...bucket].sort((left, right) => {
@@ -187,6 +192,30 @@ function positionPlacementBucketOnRing(graph, bucket, focus, radius, intensity) 
   orderedBucket.forEach((entry, index) => {
     const centeredIndex = index - ((orderedBucket.length - 1) / 2)
     const angle = centerAngle + centeredIndex * arcStep
+    graph.mergeNodeAttributes(entry.nodeId, {
+      x: focus.x + Math.cos(angle) * bucketRadius,
+      y: focus.y + Math.sin(angle) * bucketRadius
+    })
+  })
+}
+
+function positionSoftPlacementBucketOnRing(graph, bucket, focus, radius) {
+  const bucketRadius = radius * 1.16
+  const minGap = Math.PI / 14
+  const orderedBucket = [...bucket]
+    .map((entry) => ({
+      ...entry,
+      currentAngle: normalizeAngle(angleFromFocus(graph.getNodeAttributes(entry.nodeId), focus))
+    }))
+    .sort((left, right) => left.currentAngle - right.currentAngle)
+
+  const spacedAngles = distributeAnglesWithMinimumGap(
+    orderedBucket.map((entry) => entry.currentAngle),
+    minGap
+  )
+
+  orderedBucket.forEach((entry, index) => {
+    const angle = spacedAngles[index]
     graph.mergeNodeAttributes(entry.nodeId, {
       x: focus.x + Math.cos(angle) * bucketRadius,
       y: focus.y + Math.sin(angle) * bucketRadius
