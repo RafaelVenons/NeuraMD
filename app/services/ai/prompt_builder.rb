@@ -37,6 +37,10 @@ module Ai
       Draft an initial markdown note that is structurally useful, factually cautious, and easy to expand.
       Use headings and bullets only when they improve the note.
       Preserve the language requested by the user context.
+      Never wrap the answer in ```markdown fences or any other code fence.
+      Never repeat the prompt, request metadata, or source-note instructions in the output.
+      If you keep wikilinks, preserve the exact formats [[Title|uuid]], [[Title|f:uuid]], [[Title|c:uuid]], and [[Title|b:uuid]].
+      Never invent, drop, or rewrite wikilink UUIDs.
       Do not explain your choices.
       Return only the markdown content.
     PROMPT

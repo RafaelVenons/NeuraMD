@@ -40,4 +40,14 @@ RSpec.describe Notes::PromiseFulfillmentService do
     expect(target_note.reload.head_revision.content_markdown).to eq("Conteudo manual")
     expect(request_record.reload.metadata["promise_delivery_skipped_reason"]).to eq("note_already_has_content")
   end
+
+  it "rejects invalid seed-note output before saving corrupted markdown into the promise note" do
+    request_record.update!(output_text: "[[Promessa IA|nao-e-uuid]]")
+
+    expect {
+      described_class.call(ai_request: request_record)
+    }.to raise_error(Ai::InvalidOutputError, /wikilink invalido/)
+
+    expect(target_note.reload.head_revision).to be_nil
+  end
 end

@@ -52,5 +52,15 @@ RSpec.describe Notes::DraftService do
       expect(note.outgoing_links.last.created_in_revision.revision_kind).to eq("draft")
       expect(result.graph_changed).to be(true)
     end
+
+    it "preserves ai requests attached to the previous draft when autosave replaces it" do
+      first_draft = described_class.call(note: note, content: "first draft").revision
+      request_record = create(:ai_request, note_revision: first_draft, capability: "seed_note", status: "queued")
+
+      result = described_class.call(note: note, content: "second draft")
+
+      expect(request_record.reload.note_revision_id).to eq(result.revision.id)
+      expect(note.note_revisions.where(revision_kind: :draft).count).to eq(1)
+    end
   end
 end

@@ -52,6 +52,7 @@ class AiController < ApplicationController
   def resolve_queue
     authorize @note, :update?
 
+    Notes::PromiseFulfillmentService.call(ai_request: @request) if accepts_seed_note?(@request)
     @request.mark_queue_hidden!
     render json: serialize_request(@request.reload)
   end
@@ -158,6 +159,10 @@ class AiController < ApplicationController
 
   def serialize_request(request)
     request.realtime_payload
+  end
+
+  def accepts_seed_note?(request)
+    request.capability == "seed_note" && request.succeeded?
   end
 
   def limit_param

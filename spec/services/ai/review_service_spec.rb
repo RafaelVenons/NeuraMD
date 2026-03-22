@@ -239,7 +239,7 @@ RSpec.describe Ai::ReviewService do
       expect(request.reload.status).to eq("succeeded")
     end
 
-    it "applies side effects for fulfilled promise seed requests" do
+    it "does not auto-apply side effects for fulfilled promise seed requests" do
       request = create(:ai_request, note_revision: note_revision, capability: "seed_note", provider: "ollama", input_text: "Texto", metadata: {"language" => "pt-BR", "promise_note_id" => create(:note, title: "Nova nota").id})
       provider = instance_double(
         Ai::OllamaProvider,
@@ -250,10 +250,51 @@ RSpec.describe Ai::ReviewService do
         )
       )
 
-      expect(Notes::PromiseFulfillmentService).to receive(:call).with(ai_request: kind_of(AiRequest))
       allow(Ai::ProviderRegistry).to receive(:build).and_return(provider)
 
       described_class.process_request!(request)
+
+      expect(request.reload.status).to eq("succeeded")
+    end
+
+    it "normalizes fenced markdown before persisting a succeeded seed note response" do
+      request = create(:ai_request, note_revision: note_revision, capability: "seed_note", provider: "ollama", input_text: "Texto", metadata: {"language" => "pt-BR", "promise_note_id" => create(:note, title: "Nova nota").id})
+      provider = instance_double(
+        Ai::OllamaProvider,
+        review: Ai::Result.new(
+          content: "```markdown\n# Nova nota\n\nCorpo inicial.\n```",
+          provider: "ollama",
+          model: "qwen2.5:1.5b"
+        )
+      )
+
+      allow(Ai::ProviderRegistry).to receive(:build).and_return(provider)
+
+      described_class.process_request!(request)
+
+      expect(request.reload.output_text).to eq("# Nova nota\n\nCorpo inicial.")
+    end
+
+    it "fails a seed note request with validation status when the provider breaks wikilink structure" do
+      request = create(:ai_request, note_revision: note_revision, capability: "seed_note", provider: "ollama", input_text: "Texto", metadata: {"language" => "pt-BR", "promise_note_id" => create(:note, title: "Nova nota").id})
+      provider = instance_double(
+        Ai::OllamaProvider,
+        review: Ai::Result.new(
+          content: "[[Nota|nao-e-uuid]]",
+          provider: "ollama",
+          model: "qwen2.5:1.5b"
+        )
+      )
+
+      allow(Ai::ProviderRegistry).to receive(:build).and_return(provider)
+
+      outcome = described_class.process_request!(request)
+      request.reload
+
+      expect(outcome).to include(status: :failed)
+      expect(request.status).to eq("failed")
+      expect(request.last_error_kind).to eq("validation")
+      expect(request.output_text).to be_nil
     end
 
     it "schedules retry for transient failures" do

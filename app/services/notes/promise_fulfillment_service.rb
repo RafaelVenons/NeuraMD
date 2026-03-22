@@ -20,8 +20,7 @@ module Notes
         return note
       end
 
-      content = @ai_request.output_text.to_s
-      return if content.blank?
+      content = Ai::SeedNoteOutputGuard.normalize!(content: @ai_request.output_text, input_text: @ai_request.input_text)
 
       author = User.find_by(id: metadata["requested_by_id"])
       result = Notes::CheckpointService.call(note:, content:, author:)

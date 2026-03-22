@@ -152,6 +152,42 @@ RSpec.describe "AI requests queue API", type: :request do
     expect(response.parsed_body["recent_history"]).to include(a_hash_including("id" => request_record.id))
   end
 
+  it "applies a succeeded seed_note request only when the queue item is resolved" do
+    source_note = create(:note, :with_head_revision)
+    promise_note = create(:note, title: "Promessa Aplicada", head_revision: nil)
+    request_record = create(
+      :ai_request,
+      note_revision: source_note.head_revision,
+      capability: "seed_note",
+      status: "succeeded",
+      provider: "ollama",
+      requested_provider: "ollama",
+      model: "qwen2.5:1.5b",
+      output_text: "# Promessa Aplicada\n\nConteudo vindo da IA.",
+      metadata: {
+        "language" => source_note.detected_language,
+        "requested_by_id" => user.id,
+        "promise_note_id" => promise_note.id,
+        "promise_note_title" => promise_note.title
+      }
+    )
+
+    expect(promise_note.reload.head_revision).to be_nil
+
+    patch resolve_ai_request_queue_path(request_record.id), as: :json
+
+    expect(response).to have_http_status(:ok)
+    expect(response.parsed_body).to include(
+      "id" => request_record.id,
+      "queue_hidden" => true
+    )
+
+    promise_note.reload
+    expect(promise_note.head_revision).to be_present
+    expect(promise_note.head_revision.content_markdown).to eq("# Promessa Aplicada\n\nConteudo vindo da IA.")
+    expect(request_record.reload.metadata["promise_checkpoint_revision_id"]).to eq(promise_note.head_revision.id)
+  end
+
   it "keeps an undone seed_note request hidden from future queue loads" do
     source_note = create(:note, :with_head_revision)
     promise_note = create(:note, title: "Promessa Persistida")

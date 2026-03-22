@@ -30,6 +30,7 @@ module Notes
         sync_result = Links::SyncService.call(src_note: @note, revision: draft, content: @content)
 
         if previous_draft_ids.any?
+          AiRequest.where(note_revision_id: previous_draft_ids).update_all(note_revision_id: draft.id, updated_at: Time.current)
           @note.outgoing_links.where(created_in_revision_id: previous_draft_ids).update_all(created_in_revision_id: draft.id)
           @note.note_revisions.where(id: previous_draft_ids).destroy_all
         end

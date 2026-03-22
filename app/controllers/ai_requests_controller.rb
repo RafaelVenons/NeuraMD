@@ -76,6 +76,7 @@ class AiRequestsController < ApplicationController
   def resolve_queue
     authorize @request
 
+    Notes::PromiseFulfillmentService.call(ai_request: @request) if accepts_seed_note?(@request)
     @request.mark_queue_hidden!
     render json: serialize_request(@request.reload)
   end
@@ -173,6 +174,10 @@ class AiRequestsController < ApplicationController
       .includes(note_revision: :note)
       .where(status: %w[queued running retrying failed succeeded])
       .recent_first
+  end
+
+  def accepts_seed_note?(request)
+    request.capability == "seed_note" && request.succeeded?
   end
 
   def recent_history_scope

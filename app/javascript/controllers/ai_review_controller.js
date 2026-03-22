@@ -503,7 +503,8 @@ export default class extends Controller {
     }
 
     if (this.pendingApplyMode === "seed_note_review") {
-      this._resolveQueueRequest(this.lastCompletedRequest?.id)
+      await this._persistQueueResolution(this.lastCompletedRequest?.id)
+      if (correctedText) editor.setValue(correctedText)
       this.lastCompletedRequest = null
       this._hideWorkspace()
       return
@@ -639,7 +640,7 @@ export default class extends Controller {
     this.translationMetaTarget.classList.add("hidden")
     if (this.hasDeclineButtonTarget) this.declineButtonTarget.textContent = "Recusar"
     this.acceptButtonTarget.textContent = "Aplicar"
-    this.correctedTextTarget.value = ""
+    this.correctedTextTarget.value = request.corrected || ""
     this.proposalDiffTarget.innerHTML = `
       <div class="space-y-3">
         <p class="text-sm font-semibold text-[var(--theme-text-primary)]">Nota criada com IA</p>
@@ -647,6 +648,7 @@ export default class extends Controller {
           Revise a nota criada no editor. Aplique para manter esta nota; recuse para apagar a nota criada, remover o link gerado e restaurar o wikilink original.
         </p>
         <p class="text-xs uppercase tracking-[0.18em] text-[var(--theme-text-faint)]">${this._escapeHtml(request.promise_note_title || request.note_title || "Nota criada")}</p>
+        <pre class="overflow-x-auto rounded-lg border border-[var(--theme-border)] bg-[var(--theme-bg-primary)] p-3 whitespace-pre-wrap text-sm leading-relaxed text-[var(--theme-text-primary)]">${this._escapeHtml(request.corrected || "")}</pre>
       </div>
     `
   }
@@ -1724,11 +1726,13 @@ export default class extends Controller {
       if (this._belongsToCurrentNote(data)) this._upsertHistoryRequest(data)
       this._resolveQueueRequest(requestId)
       if (this.historyDialogTarget?.open) this._renderHistory()
+      return data
     } catch (error) {
       this.resolvedQueueRequestIds.delete(requestIdString)
       this.dismissedQueueRequestIds.delete(requestIdString)
       this._renderQueue()
       window.alert(error.message || "Falha ao remover item da queue.")
+      return null
     }
   }
 

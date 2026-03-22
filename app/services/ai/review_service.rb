@@ -114,14 +114,15 @@ module Ai
           language: request.metadata["language"],
           target_language: request.metadata["target_language"]
         )
+        normalized_content = normalize_result_content(request, result.content)
 
         request.update!(
           status: "succeeded",
           provider: result.provider,
           model: result.model,
           request_hash: request_hash(result:, request:),
-          response_summary: result.content.to_s.truncate(240),
-          output_text: result.content,
+          response_summary: normalized_content.to_s.truncate(240),
+          output_text: normalized_content,
           tokens_in: result.tokens_in,
           tokens_out: result.tokens_out,
           last_error_at: nil,
@@ -297,6 +298,8 @@ module Ai
           "transient"
         when InvalidCapabilityError
           "validation"
+        when InvalidOutputError
+          "validation"
         else
           "permanent"
         end
@@ -307,9 +310,13 @@ module Ai
       end
 
       def apply_request_side_effect!(request)
-        return unless request.capability == "seed_note"
+        nil
+      end
 
-        Notes::PromiseFulfillmentService.call(ai_request: request)
+      def normalize_result_content(request, content)
+        return content unless request.capability == "seed_note"
+
+        SeedNoteOutputGuard.normalize!(content:, input_text: request.input_text)
       end
     end
   end

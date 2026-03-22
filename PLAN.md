@@ -974,6 +974,7 @@ Executar nesta ordem, porque cada etapa reduz ambiguidade da próxima e evita re
 - [ ] Criar `ai_request` associado à nota recém-criada e colocá-lo na fila visual
 - [ ] Expor ação de desfazer/rejeitar que remove a nota criada no banco quando a resposta da IA não for aprovada
 - [ ] Cobrir com specs de request/system para criação sem navegação, enqueue assíncrono, undo e limpeza de banco
+- [ ] Validar o fluxo crítico em Playwright com duas promises consecutivas, cobrindo `queued -> running -> succeeded`, ordem serial de processamento e atualização visível da queue no shell
 
 #### Etapa C — Reestruturar a UX operacional da IA
 - [ ] Separar estado de processamento do estado de resposta útil
@@ -986,6 +987,7 @@ Executar nesta ordem, porque cada etapa reduz ambiguidade da próxima e evita re
 - [ ] Implementar retry de erro por clique no balão e blindagem contra respostas tardias após cancelamento
 - [ ] Só abrir workspace de resposta quando existir conteúdo relevante para revisão/aplicação
 - [ ] Cobrir com specs de system para fila, cancelamento, polling e ausência de takeover do preview
+- [ ] Tratar Playwright como validação obrigatória dos fluxos de queue que dependem de editor, autosave, shell persistente e atualização visual em tempo real
 
 #### Etapa C.5 — Transformar `/notes` em shell persistente
 - [x] Extrair a casca estrutural do editor para permanecer montada entre trocas de nota
@@ -1477,6 +1479,8 @@ Fluxo obrigatório:
 ```
 
 Princípio: **a maioria dos testes deve ser unitária/integração** (rápida, barata). E2E cobre apenas os fluxos críticos que não podem ser validados sem browser.
+
+**Política para fluxos críticos de IA no editor:** tudo que combinar editor real, promise creation, shell persistente, autosave, queue visual e transição assíncrona de status deve ser validado por Playwright antes de ser considerado concluído. Request/system specs continuam obrigatórias para contrato e regressão local, mas não substituem a prova E2E do fluxo no browser.
 
 ### 16.3 Stack de Testes
 

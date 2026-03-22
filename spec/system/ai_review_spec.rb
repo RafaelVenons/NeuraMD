@@ -474,7 +474,7 @@ RSpec.describe "AI review", type: :system do
       expect(page).to have_text(/revisar/i)
       expect(page).to have_text(note.title)
       expect(page).to have_text("gpt-4o-mini")
-      find("article", text: note.title).click
+      find("[data-request-id='#{failed_request.id}'][data-queue-action='retry']").click
     end
 
     expect(failed_request.reload.status).to eq("queued")
@@ -570,6 +570,51 @@ RSpec.describe "AI review", type: :system do
 
     visit note_path(source_note.slug)
 
+    expect(page).to have_no_css("[data-request-id='#{request_record.id}']", wait: 5)
+  end
+
+  it "lets the user accept a created promise note from the queue before persisting the AI content" do
+    source_note = create(:note, :with_head_revision, title: "Nota Origem Aceite")
+    promise_note = create(:note, title: "Promessa Aceita", head_revision: nil)
+    Notes::DraftService.call(
+      note: source_note,
+      content: "Abrir [[Promessa Aceita|#{promise_note.id}]]",
+      author: user
+    )
+    request_record = create(
+      :ai_request,
+      note_revision: source_note.head_revision,
+      capability: "seed_note",
+      provider: "ollama",
+      requested_provider: "ollama",
+      model: "qwen2.5:1.5b",
+      status: "succeeded",
+      metadata: {
+        "language" => source_note.detected_language,
+        "requested_by_id" => user.id,
+        "promise_source_note_id" => source_note.id,
+        "promise_note_id" => promise_note.id,
+        "promise_note_title" => promise_note.title
+      },
+      output_text: "# Promessa Aceita\n\nConteudo criado.",
+      completed_at: Time.current
+    )
+
+    visit note_path(source_note.slug)
+
+    within("[data-ai-review-target='queueDock']") do
+      find("article", text: "Promessa Aceita").click
+    end
+
+    expect(page).to have_current_path(note_path(promise_note.slug), wait: 5)
+    expect(page).to have_text("Conteudo criado.", wait: 5)
+    expect(promise_note.reload.head_revision).to be_nil
+
+    click_button "Aplicar"
+
+    wait_until do
+      promise_note.reload.head_revision&.content_markdown == "# Promessa Aceita\n\nConteudo criado."
+    end
     expect(page).to have_no_css("[data-request-id='#{request_record.id}']", wait: 5)
   end
 

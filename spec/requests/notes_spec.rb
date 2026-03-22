@@ -75,7 +75,7 @@ RSpec.describe "Notes", type: :request do
 
     it "creates an AI-seeded note from a promise title" do
       note
-      provider = instance_double(Ai::OllamaProvider, name: "ollama", model: "qwen2.5:1.5b")
+      provider = instance_double(Ai::OllamaProvider, name: "ollama", model: "qwen2.5:1.5b", base_url: "http://example.test:11434")
       allow(Ai::ProviderRegistry).to receive(:enabled?).and_return(true)
       allow(Ai::ProviderRegistry).to receive(:resolve_selection).and_return(
         {
@@ -104,6 +104,8 @@ RSpec.describe "Notes", type: :request do
         "promise_note_title" => "Nova promessa",
         "promise_source_note_id" => note.id
       )
+      expect(request_record.input_text).to include("The title is the primary source of truth")
+      expect(request_record.input_text).to include("Current note content (optional context):")
       expect(response.parsed_body).to include(
         "note_id" => created.id,
         "request_id" => request_record.id,
@@ -111,6 +113,32 @@ RSpec.describe "Notes", type: :request do
         "created" => true,
         "seeded" => false
       )
+    end
+
+    it "anchors the AI request to the head revision when the source note also has a draft" do
+      note
+      draft_revision = create(:note_revision, note: note, revision_kind: :draft, content_markdown: "# Rascunho\n\nConteudo temporario")
+      provider = instance_double(Ai::OllamaProvider, name: "ollama", model: "qwen2.5:1.5b", base_url: "http://example.test:11434")
+      allow(Ai::ProviderRegistry).to receive(:enabled?).and_return(true)
+      allow(Ai::ProviderRegistry).to receive(:resolve_selection).and_return(
+        {
+          name: "ollama",
+          model: "qwen2.5:1.5b",
+          selection_strategy: "automatic",
+          selection_reason: "seed_note_short"
+        }
+      )
+      allow(Ai::ProviderRegistry).to receive(:build).and_return(provider)
+
+      post create_from_promise_note_path(note.slug),
+        params: { title: "Nova promessa com draft", mode: "ai" },
+        as: :json
+
+      expect(response).to have_http_status(:created)
+
+      request_record = AiRequest.recent_first.first
+      expect(request_record.note_revision_id).to eq(note.head_revision_id)
+      expect(request_record.note_revision_id).not_to eq(draft_revision.id)
     end
 
     it "reuses an existing active note with the same title instead of creating a duplicate" do

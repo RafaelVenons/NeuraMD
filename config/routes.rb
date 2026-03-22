@@ -54,4 +54,10 @@ Rails.application.routes.draw do
       get  :link_info
     end
   end
+
+  if Rails.env.test?
+    namespace :test_support do
+      post "ai_requests/:id/transition", to: "ai_requests#transition"
+    end
+  end
 end

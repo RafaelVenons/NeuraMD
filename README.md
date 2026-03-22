@@ -106,3 +106,27 @@ Veja [.env.example](/home/venom/projects/NeuraMD/.env.example):
 - `AI_WATCHER_HEALTH_TIMEOUT`
 - `AI_WATCHER_REQUEST_TIMEOUT`
 - `AI_WATCHER_TOOLTIP_JOBS`
+
+## Playwright E2E
+
+O projeto agora também tem uma camada mínima de E2E em browser real com Playwright para fluxos críticos do shell de `/notes` e da queue de IA.
+
+Comandos:
+
+```bash
+npm install
+npx playwright install chromium
+npm run e2e
+```
+
+Modo debug:
+
+```bash
+npm run e2e:headed
+npm run e2e:debug
+```
+
+Artefatos gerados:
+
+- `playwright-report/`: relatório HTML
+- `test-results/`: screenshots, vídeo e trace por teste com falha

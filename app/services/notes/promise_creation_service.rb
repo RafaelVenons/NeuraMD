@@ -65,22 +65,24 @@ module Notes
 
     def prompt_input
       [
-        "Create an initial markdown note for the title below.",
-        "Use the source note as contextual grounding when helpful.",
+        "Create an initial markdown note for the new title below.",
+        "The title is the primary source of truth for what this new note should cover.",
+        "Use the current note only as optional contextual grounding when it genuinely helps.",
         "Return only the markdown body.",
         "",
         "New note title: #{@title}",
-        "Source note title: #{@source_note.title}",
-        "Source note language: #{@source_note.detected_language}",
+        "Current note title: #{@source_note.title}",
+        "Current note language: #{@source_note.detected_language}",
         "",
-        "Source note content:",
+        "Current note content (optional context):",
         source_content.presence || "(empty)"
       ].join("\n")
     end
 
     def source_revision_for_request
-      @source_note.note_revisions.find_by(revision_kind: :draft) ||
-        @source_note.head_revision ||
+      # Queue items must survive editor autosave, which replaces draft revisions.
+      @source_note.head_revision ||
+        @source_note.note_revisions.find_by(revision_kind: :draft) ||
         @source_note.note_revisions.create!(
           content_markdown: @source_note.title,
           revision_kind: :draft,

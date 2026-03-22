@@ -32,6 +32,8 @@ RSpec.describe Ai::PromptBuilder do
       prompt = described_class.system_prompt(capability: "seed_note", language: "pt-BR")
 
       expect(prompt).to include("note-seeding assistant")
+      expect(prompt).to include("Never wrap the answer in ```markdown fences")
+      expect(prompt).to include("[[Title|uuid]]")
       expect(prompt).to include("Preferred language of the output: pt-BR.")
     end
 

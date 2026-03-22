@@ -161,6 +161,8 @@ tramp
 /coverage/
 /.byebug_history
 /spec/examples.txt
+/playwright-report/
+/test-results/
 
 # ============================================================
 # DOCKER
