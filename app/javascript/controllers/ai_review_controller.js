@@ -23,7 +23,11 @@ export default class extends Controller {
     "resultBox",
     "proposalDiff",
     "correctedText",
+    "proposalPanels",
+    "proposalRawPane",
+    "proposalPreviewPane",
     "historyDialog",
+    "historyButton",
     "historyFilter",
     "historyList",
     "historyEmpty",
@@ -76,6 +80,7 @@ export default class extends Controller {
     this.queueRequests = []
     this.promiseQueueWatchers = new Map()
     this.dismissedQueueRequestIds = new Set()
+    this.canceledQueueRequestIds = new Set()
     this.resolvedQueueRequestIds = new Set()
     this.draggedQueueRequestId = null
     this.draggedQueueElement = null
@@ -276,17 +281,24 @@ export default class extends Controller {
     this._hideWorkspace()
   }
 
-  async openHistory() {
-    this.historyDialogTarget.showModal()
-    this.historyFilter = "shell"
+  async openHistory(event) {
+    event?.preventDefault()
+    event?.stopPropagation()
+    if (this.historyDialogTarget.open) {
+      this.closeHistory()
+      return
+    }
+
+    this._positionHistoryDialog(event?.currentTarget || this.historyButtonTarget)
+    this.historyDialogTarget.show()
+    this.historyFilter = "all"
     this._syncHistoryFilters()
     await this.refreshQueue()
-    await this._loadNoteHistory()
     this._renderHistory()
   }
 
   closeHistory() {
-    this.historyDialogTarget.close()
+    if (this.historyDialogTarget.open) this.historyDialogTarget.close()
   }
 
   async cancelProcessing() {
@@ -295,37 +307,8 @@ export default class extends Controller {
   }
 
   async refreshHistory() {
-    if (this.historyFilter === "shell" && this.queueUrlValue) {
-      await this.refreshQueue()
-      this._renderHistory()
-      return
-    }
-
-    await this._loadNoteHistory()
+    await this.refreshQueue()
     this._renderHistory()
-  }
-
-  async _loadNoteHistory() {
-    this.historyStatusTarget.textContent = "Carregando execuções recentes..."
-
-    try {
-      const response = await fetch(this.historyUrlValue, {
-        headers: { Accept: "application/json" },
-        credentials: "same-origin"
-      })
-      const data = await response.json()
-
-      if (!response.ok) throw new Error(data.error || "Falha ao carregar o histórico de IA.")
-
-      this.historyRequests = data.requests || []
-      this._renderQueue()
-    } catch (error) {
-      this.historyRequests = []
-      this.historyListTarget.innerHTML = ""
-      this.historyEmptyTarget.classList.add("hidden")
-      this.historyStatusTarget.textContent = error.message || "Falha ao carregar o histórico de IA."
-      this._renderQueue()
-    }
   }
 
   async refreshQueue() {
@@ -344,7 +327,7 @@ export default class extends Controller {
       this._syncActiveQueueWatchers()
       this._restoreSeedNoteReviewFromQueueSnapshot()
       this._renderQueue()
-      if (this.historyDialogTarget?.open && this.historyFilter === "shell") this._renderHistory()
+      if (this.historyDialogTarget?.open) this._renderHistory()
     } catch (_) {
       this._renderQueue()
     }
@@ -648,7 +631,7 @@ export default class extends Controller {
 
   _showConfigNotice() {
     this._editorController()?.exitAiReviewFocusMode?.()
-    this._setQueueFooterClearance(false)
+    this._setQueueDockMode("default")
     this._clearProposalStage()
     this._showWorkspace()
     this._clearActiveTrigger()
@@ -659,7 +642,7 @@ export default class extends Controller {
 
   _showProcessing() {
     this._editorController()?.exitAiReviewFocusMode?.()
-    this._setQueueFooterClearance(false)
+    this._setQueueDockMode("default")
     this._clearProposalStage()
     const provider = this.pendingMenu?.providerName || this.aiProvider
     const model = this.pendingMenu?.modelName || this.aiModel
@@ -681,7 +664,7 @@ export default class extends Controller {
 
   _showProcessingFailure(message) {
     this._editorController()?.exitAiReviewFocusMode?.()
-    this._setQueueFooterClearance(false)
+    this._setQueueDockMode("default")
     this._clearProposalStage()
     this._showWorkspace()
     this.configNoticeTarget.classList.add("hidden")
@@ -697,7 +680,7 @@ export default class extends Controller {
 
   _showProposal(corrected) {
     this._editorController()?.exitAiReviewFocusMode?.()
-    this._setQueueFooterClearance(true)
+    this._setQueueDockMode("hidden")
     const editor = this._editor()
     const suggestionForPreview = this.pendingApplyMode === "translation_note"
       ? corrected
@@ -728,7 +711,7 @@ export default class extends Controller {
   _showSeedNoteReview(request) {
     this._clearProposalStage()
     this._editorController()?.enterAiReviewFocusMode?.()
-    this._setQueueFooterClearance(true)
+    this._setQueueDockMode("hidden")
     this._storePendingSeedNoteReview(request)
     this._showWorkspace()
     this.configNoticeTarget.classList.add("hidden")
@@ -741,10 +724,11 @@ export default class extends Controller {
     this.aiSuggestedText = request.corrected || ""
     this.correctedTextTarget.value = this.aiSuggestedText
     this.pendingOriginalText = this.aiSuggestedText
-    this.seedNotePreviewMode = true
+    this.seedNotePreviewMode = false
     this.proposalDiffTarget.setAttribute("contenteditable", "false")
     this.proposalDiffTarget.classList.add("ai-review-proposal--seed-note")
     this.proposalDiffTarget.dataset.placeholder = "Edite o texto da nota criada com IA..."
+    this._setSeedNoteSplitLayout(true)
     this._renderProposal()
   }
 
@@ -761,7 +745,7 @@ export default class extends Controller {
   _hideWorkspace() {
     const clearingSeedNoteReview = this.pendingApplyMode === "seed_note_review"
     this._editorController()?.exitAiReviewFocusMode?.()
-    this._setQueueFooterClearance(false)
+    this._setQueueDockMode("default")
     if (clearingSeedNoteReview) this._clearPendingSeedNoteReview()
     this.workspaceTarget.classList.add("hidden")
     this.workspaceTarget.classList.remove("flex")
@@ -780,6 +764,7 @@ export default class extends Controller {
     this.proposalDiffTarget.classList.remove("ai-review-proposal--seed-note")
     this.proposalDiffTarget.classList.remove("ai-review-proposal--seed-note-preview")
     delete this.proposalDiffTarget.dataset.placeholder
+    this._setSeedNoteSplitLayout(false)
     this._clearActiveTrigger()
   }
 
@@ -890,6 +875,7 @@ export default class extends Controller {
     }
 
     this.currentRequestId = null
+    this._markRequestCanceled(requestId)
 
     try {
       await fetch(this._queueCancelUrl(requestId), {
@@ -961,6 +947,7 @@ export default class extends Controller {
   _handleStreamRequestUpdate(event) {
     const request = event.detail
     if (!request?.id) return
+    if (this._shouldIgnoreLateRequestUpdate(request)) return
 
     this._upsertQueueRequest(request)
     this._upsertGlobalHistoryRequest(request)
@@ -1167,6 +1154,8 @@ export default class extends Controller {
   }
 
   _upsertHistoryRequest(request) {
+    if (this._shouldIgnoreLateRequestUpdate(request)) return
+
     const existingIndex = this.historyRequests.findIndex((item) => String(item.id) === String(request.id))
     if (existingIndex >= 0) this.historyRequests.splice(existingIndex, 1, request)
     else this.historyRequests.unshift(request)
@@ -1179,6 +1168,8 @@ export default class extends Controller {
   }
 
   _upsertGlobalHistoryRequest(request) {
+    if (this._shouldIgnoreLateRequestUpdate(request)) return
+
     const existingIndex = this.globalHistoryRequests.findIndex((item) => String(item.id) === String(request.id))
     if (existingIndex >= 0) this.globalHistoryRequests.splice(existingIndex, 1, request)
     else this.globalHistoryRequests.unshift(request)
@@ -1189,6 +1180,8 @@ export default class extends Controller {
   }
 
   _upsertQueueRequest(request) {
+    if (this._shouldIgnoreLateRequestUpdate(request)) return
+
     const existingIndex = this.queueRequests.findIndex((item) => String(item.id) === String(request.id))
     if (existingIndex >= 0) this.queueRequests.splice(existingIndex, 1, request)
     else this.queueRequests.unshift(request)
@@ -1212,6 +1205,7 @@ export default class extends Controller {
       if (!response.ok || data.error) throw new Error(data.error || "Falha ao reenfileirar request.")
 
       this.dismissedQueueRequestIds.delete(String(requestId))
+      this.canceledQueueRequestIds.delete(String(requestId))
       this.resolvedQueueRequestIds.delete(String(requestId))
       this._upsertQueueRequest(data)
       this._upsertGlobalHistoryRequest(data)
@@ -1253,7 +1247,7 @@ export default class extends Controller {
   _renderProposal() {
     const currentText = this.correctedTextTarget.value
     const selection = this._captureProposalSelection()
-    if (this.pendingApplyMode === "seed_note_review" && this.seedNotePreviewMode) {
+    if (this.pendingApplyMode === "seed_note_review") {
       this.proposalDiffTarget.classList.add("ai-review-proposal--seed-note-preview", "preview-prose")
       this.proposalDiffTarget.innerHTML = marked.parse(currentText || "")
       return
@@ -1297,6 +1291,15 @@ export default class extends Controller {
 
       return `<div class="ai-review-md-line ${variant.className}">${content}</div>`
     }).join("")
+  }
+
+  _setSeedNoteSplitLayout(enabled) {
+    if (!this.hasProposalPanelsTarget || !this.hasProposalRawPaneTarget || !this.hasProposalPreviewPaneTarget) return
+
+    this.proposalPanelsTarget.classList.toggle("ai-review-proposal-panels--seed-note", enabled)
+    this.proposalRawPaneTarget.classList.toggle("hidden", !enabled)
+    this.proposalPreviewPaneTarget.classList.toggle("flex-1", enabled)
+    this.proposalPreviewPaneTarget.classList.toggle("overflow-y-auto", enabled)
   }
 
   _splitAnnotatedLines(segments) {
@@ -1545,14 +1548,14 @@ export default class extends Controller {
   }
 
   _filteredHistoryRequests() {
+    const requests = this._mergeShellHistorySnapshot(this.globalHistoryRequests)
+
     switch (this.historyFilter) {
-      case "shell": {
-        return this._mergeShellHistorySnapshot(this.globalHistoryRequests)
-      }
-      case "active": return this.historyRequests.filter((request) => ["queued", "running", "retrying"].includes(request.status))
-      case "failed": return this.historyRequests.filter((request) => request.status === "failed")
-      case "succeeded": return this.historyRequests.filter((request) => request.status === "succeeded")
-      default: return this.historyRequests
+      case "queued": return requests.filter((request) => request.status === "queued")
+      case "active": return requests.filter((request) => ["running", "retrying"].includes(request.status))
+      case "failed": return requests.filter((request) => request.status === "failed")
+      case "succeeded": return requests.filter((request) => request.status === "succeeded")
+      default: return requests
     }
   }
 
@@ -1564,9 +1567,9 @@ export default class extends Controller {
 
   _historySummaryLabel(count) {
     return {
-      shell: `${count} execucoes recentes do shell`,
-      all: `${count} execucoes recentes`,
-      active: `${count} execucoes ativas`,
+      all: `${count} execucoes recentes do shell`,
+      queued: `${count} requests na fila`,
+      active: `${count} execucoes em processamento`,
       failed: `${count} falhas recentes`,
       succeeded: `${count} execucoes concluidas`
     }[this.historyFilter] || `${count} execucoes recentes`
@@ -1574,9 +1577,9 @@ export default class extends Controller {
 
   _emptyHistoryLabel() {
     return {
-      shell: "Nenhuma execução global recente no shell.",
-      all: "Nenhuma execução recente.",
-      active: "Nenhuma execução ativa.",
+      all: "Nenhuma execução recente no shell.",
+      queued: "Nenhuma request na fila.",
+      active: "Nenhuma execução em processamento.",
       failed: "Nenhuma falha recente.",
       succeeded: "Nenhuma execução concluída."
     }[this.historyFilter] || "Nenhuma execução recente."
@@ -2282,7 +2285,7 @@ export default class extends Controller {
     if (!request) return false
 
     if (this.pendingApplyMode === "seed_note_review" && String(this.lastCompletedRequest?.id) === String(request.id) && this._aiStageVisible()) {
-      this._setQueueFooterClearance(true)
+      this._setQueueDockMode("hidden")
       return true
     }
 
@@ -2364,12 +2367,46 @@ export default class extends Controller {
     }
   }
 
-  _setQueueFooterClearance(enabled) {
+  _setQueueDockMode(mode = "default") {
     if (!this.hasQueueDockTarget) return
-    this.queueDockSuppressed = enabled
-    this.queueDockTarget.classList.toggle("hidden", enabled)
-    if (enabled) this.queueDockTarget.innerHTML = ""
+    this.queueDockSuppressed = mode === "hidden"
+    this.queueDockTarget.classList.toggle("ai-review-queue--footer-clearance", mode === "clearance")
+    this.queueDockTarget.classList.toggle("hidden", mode === "hidden")
+    if (mode === "hidden") this.queueDockTarget.innerHTML = ""
     this._renderQueue()
+  }
+
+  _markRequestCanceled(requestId) {
+    const requestIdString = String(requestId)
+    this.canceledQueueRequestIds.add(requestIdString)
+    this._stopPromiseQueueWatcher(requestIdString)
+    this._replaceRequestState(this.queueRequests, requestIdString, {
+      status: "canceled",
+      queue_hidden: true
+    })
+    this._replaceRequestState(this.historyRequests, requestIdString, {
+      status: "canceled"
+    })
+    this._replaceRequestState(this.globalHistoryRequests, requestIdString, {
+      status: "canceled"
+    })
+    this._renderQueue()
+    if (this.historyDialogTarget?.open) this._renderHistory()
+  }
+
+  _shouldIgnoreLateRequestUpdate(request) {
+    if (!request?.id) return false
+    return this.canceledQueueRequestIds.has(String(request.id)) && request.status !== "canceled"
+  }
+
+  _replaceRequestState(collection, requestIdString, attributes) {
+    const index = collection.findIndex((item) => String(item.id) === requestIdString)
+    if (index < 0) return
+
+    collection.splice(index, 1, {
+      ...collection[index],
+      ...attributes
+    })
   }
 
   _ensurePreviewVisible() {
@@ -2455,9 +2492,11 @@ export default class extends Controller {
 
     if (data.undone) {
       this.dismissedQueueRequestIds.add(requestIdString)
-      this._restorePromiseLinkInEditor(data.promise_note_id, data.restored_content)
+      this.canceledQueueRequestIds.add(requestIdString)
+      await this._restorePromiseSourceAfterUndo(data)
     } else if (data.status === "canceled") {
       this.dismissedQueueRequestIds.add(requestIdString)
+      this.canceledQueueRequestIds.add(requestIdString)
     } else if (!wasDismissed) {
       this.dismissedQueueRequestIds.delete(requestIdString)
     }
@@ -2514,6 +2553,27 @@ export default class extends Controller {
 
     const reverted = current.replace(new RegExp(`\\[\\[([^\\]|]+)\\|(?:[a-z]+:)?${escapedNoteId}\\]\\]`, "gi"), "[[$1]]")
     if (reverted !== current) editor.setValue(reverted)
+  }
+
+  async _restorePromiseSourceAfterUndo(data) {
+    const sourceSlug = data?.promise_source_note_slug || data?.note_slug
+    const currentSlug = this._currentNoteSlug()
+
+    if (sourceSlug && currentSlug && sourceSlug === currentSlug) {
+      this._restorePromiseLinkInEditor(data.promise_note_id, data.restored_content)
+      return
+    }
+
+    if (sourceSlug) {
+      const path = `/notes/${sourceSlug}`
+      const shell = this.application.getControllerForElementAndIdentifier(this.element, "note-shell")
+      if (shell?.navigateTo) await shell.navigateTo(path)
+      else if (window.Turbo?.visit) window.Turbo.visit(path)
+      else window.location.assign(path)
+      return
+    }
+
+    if (currentSlug) this._restorePromiseLinkInEditor(data.promise_note_id, data.restored_content)
   }
 
   _showRequestMenu(trigger, capability, suggestions) {
@@ -2655,10 +2715,38 @@ export default class extends Controller {
   }
 
   _handleDocumentClick(event) {
-    if (!this.hasRequestMenuTarget || this.requestMenuTarget.classList.contains("hidden")) return
-    if (this.requestMenuTarget.contains(event.target)) return
-    if (event.target.closest("[data-action*='ai-review#open']")) return
-    this._hideRequestMenu()
+    if (this.hasRequestMenuTarget && !this.requestMenuTarget.classList.contains("hidden")) {
+      const insideRequestMenu = this.requestMenuTarget.contains(event.target) || event.target.closest("[data-action*='ai-review#open']")
+      if (!insideRequestMenu) this._hideRequestMenu()
+    }
+
+    if (this.historyDialogTarget?.open) {
+      const insideHistory = this.historyDialogTarget.contains(event.target)
+      const onHistoryButton = this.hasHistoryButtonTarget && this.historyButtonTarget.contains(event.target)
+      if (!insideHistory && !onHistoryButton) this.closeHistory()
+    }
+  }
+
+  _positionHistoryDialog(button) {
+    if (!button || !this.historyDialogTarget) return
+
+    const rect = button.getBoundingClientRect()
+    const viewportWidth = window.innerWidth
+    const width = Math.min(Math.round(viewportWidth * 0.92), 672)
+    const top = Math.min(rect.bottom + 8, window.innerHeight - 80)
+    const left = Math.min(
+      Math.max(12, rect.left),
+      Math.max(12, viewportWidth - width - 12)
+    )
+
+    this.historyDialogTarget.style.position = "fixed"
+    this.historyDialogTarget.style.inset = "auto"
+    this.historyDialogTarget.style.left = `${left}px`
+    this.historyDialogTarget.style.top = `${top}px`
+    this.historyDialogTarget.style.margin = "0"
+    const height = Math.max(240, window.innerHeight - top - 12)
+    this.historyDialogTarget.style.height = `${height}px`
+    this.historyDialogTarget.style.maxHeight = `${height}px`
   }
 
   _setActiveTrigger(button) {

@@ -157,6 +157,8 @@ class AiRequest < ApplicationRecord
       duration_human: duration_human,
       remote_long_job: remote_long_job?,
       remote_hint: remote_status_hint,
+      promise_source_note_id: metadata_payload["promise_source_note_id"],
+      promise_source_note_slug: metadata_payload["promise_source_note_slug"],
       promise_note_id: metadata_payload["promise_note_id"],
       promise_note_title: metadata_payload["promise_note_title"],
       promise_note_slug: promise_note&.slug,

@@ -98,6 +98,8 @@ class AiRequestsController < ApplicationController
       format.json do
         render json: serialize_request(request).merge(
           undone: cleanup_result.present?,
+          promise_source_note_id: request.metadata["promise_source_note_id"],
+          promise_source_note_slug: request.metadata["promise_source_note_slug"],
           promise_note_id: request.metadata["promise_note_id"],
           promise_note_deleted: cleanup_result&.note_deleted || false,
           restored_content: cleanup_result&.source_content,

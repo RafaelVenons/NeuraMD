@@ -212,42 +212,9 @@ RSpec.describe "AI review", type: :system do
   end
 
   def drag_queue_card_after(source_id, target_id)
-    page.execute_script(<<~JS, source_id, target_id)
-      const [sourceId, targetId] = arguments
-      const source = document.querySelector(`[data-request-id="${sourceId}"]`)
-      const target = document.querySelector(`[data-request-id="${targetId}"]`)
-      if (!source || !target) throw new Error("Queue card not found")
-
-      const dataTransfer = new DataTransfer()
-      const rect = target.getBoundingClientRect()
-      const clientY = rect.bottom - 2
-
-      source.dispatchEvent(new DragEvent("dragstart", {
-        bubbles: true,
-        cancelable: true,
-        dataTransfer
-      }))
-
-      target.dispatchEvent(new DragEvent("dragover", {
-        bubbles: true,
-        cancelable: true,
-        dataTransfer,
-        clientY
-      }))
-
-      target.dispatchEvent(new DragEvent("drop", {
-        bubbles: true,
-        cancelable: true,
-        dataTransfer,
-        clientY
-      }))
-
-      source.dispatchEvent(new DragEvent("dragend", {
-        bubbles: true,
-        cancelable: true,
-        dataTransfer
-      }))
-    JS
+    start_queue_drag(source_id)
+    drag_queue_over(target_id, position: :bottom)
+    finish_queue_drag(target_id, position: :bottom)
   end
 
   def start_queue_drag(source_id)
@@ -255,12 +222,33 @@ RSpec.describe "AI review", type: :system do
       const [sourceId] = arguments
       const source = document.querySelector(`[data-request-id="${sourceId}"]`)
       if (!source) throw new Error("Queue card not found")
+      const rect = source.getBoundingClientRect()
+      const pointerId = 1
+      const startX = rect.left + (rect.width / 2)
+      const startY = rect.top + 6
 
-      window.__nmQueueDragDataTransfer = new DataTransfer()
-      source.dispatchEvent(new DragEvent("dragstart", {
+      window.__nmQueuePointerDrag = { pointerId }
+
+      source.dispatchEvent(new PointerEvent("pointerdown", {
         bubbles: true,
         cancelable: true,
-        dataTransfer: window.__nmQueueDragDataTransfer
+        pointerId,
+        pointerType: "mouse",
+        button: 0,
+        buttons: 1,
+        clientX: startX,
+        clientY: startY
+      }))
+
+      window.dispatchEvent(new PointerEvent("pointermove", {
+        bubbles: true,
+        cancelable: true,
+        pointerId,
+        pointerType: "mouse",
+        button: 0,
+        buttons: 1,
+        clientX: startX,
+        clientY: startY + 12
       }))
     JS
   end
@@ -280,12 +268,18 @@ RSpec.describe "AI review", type: :system do
       const [targetId, clientY] = arguments
       const target = document.querySelector(`[data-request-id="${targetId}"]`)
       if (!target) throw new Error("Queue card not found")
-      const dataTransfer = window.__nmQueueDragDataTransfer || new DataTransfer()
+      const pointerId = window.__nmQueuePointerDrag?.pointerId || 1
+      const rect = target.getBoundingClientRect()
+      const clientX = rect.left + (rect.width / 2)
 
-      target.dispatchEvent(new DragEvent("dragover", {
+      window.dispatchEvent(new PointerEvent("pointermove", {
         bubbles: true,
         cancelable: true,
-        dataTransfer,
+        pointerId,
+        pointerType: "mouse",
+        button: 0,
+        buttons: 1,
+        clientX,
         clientY
       }))
     JS
@@ -304,27 +298,23 @@ RSpec.describe "AI review", type: :system do
 
     page.execute_script(<<~JS, target_id, client_y)
       const [targetId, clientY] = arguments
-      const source = document.querySelector("[data-request-id][style*='visibility: hidden'], [data-request-id].opacity-0")
       const target = document.querySelector(`[data-request-id="${targetId}"]`)
-      const dataTransfer = window.__nmQueueDragDataTransfer || new DataTransfer()
       if (!target) throw new Error("Queue card not found")
+      const pointerId = window.__nmQueuePointerDrag?.pointerId || 1
+      const rect = target.getBoundingClientRect()
+      const clientX = rect.left + (rect.width / 2)
 
-      target.dispatchEvent(new DragEvent("drop", {
+      window.dispatchEvent(new PointerEvent("pointerup", {
         bubbles: true,
         cancelable: true,
-        dataTransfer,
+        pointerId,
+        pointerType: "mouse",
+        button: 0,
+        buttons: 0,
+        clientX,
         clientY
       }))
-
-      if (source) {
-        source.dispatchEvent(new DragEvent("dragend", {
-          bubbles: true,
-          cancelable: true,
-          dataTransfer
-        }))
-      }
-
-      window.__nmQueueDragDataTransfer = null
+      window.__nmQueuePointerDrag = null
     JS
   end
 
@@ -510,8 +500,7 @@ RSpec.describe "AI review", type: :system do
     expect_ai_workspace(text: "Texto corrigido.")
     expect(page).to have_button("Recusar", wait: 5)
     expect(page).to have_button("Aplicar", wait: 5)
-    expect(page).to have_css("[data-ai-review-target='queueDock']:not(.hidden)", wait: 5)
-    expect(page).to have_css("[data-request-id='#{succeeded_request.id}']", wait: 5)
+    expect(page).to have_css("[data-ai-review-target='queueDock'].hidden", visible: :all, wait: 5)
 
     click_button "Recusar"
 
@@ -558,6 +547,8 @@ RSpec.describe "AI review", type: :system do
     expect(page).to have_button("Recusar", wait: 5)
     click_button "Recusar"
 
+    expect(page).to have_current_path(note_path(source_note.slug), wait: 5)
+
     expect(page).to have_no_css("[data-request-id='#{request_record.id}']", wait: 5)
     wait_until do
       promise_note_record = Note.find_by(id: promise_note.id)
@@ -567,6 +558,7 @@ RSpec.describe "AI review", type: :system do
       source_note.reload.note_revisions.find_by(revision_kind: :draft)&.content_markdown == "Abrir [[Meu novo camarada]]"
     end
     expect(restored_content).to eq(true)
+    expect(editor_text).to include("Abrir [[Meu novo camarada]]")
 
     visit note_path(source_note.slug)
 
@@ -694,15 +686,17 @@ RSpec.describe "AI review", type: :system do
     end
 
     expect(page).to have_current_path(note_path(promise_note.slug), wait: 5)
+    expect(page).to have_css("[data-ai-review-target='proposalRawPane']:not(.hidden)", wait: 5)
+    expect(page).to have_css("textarea[data-ai-review-target='correctedText']", visible: :visible, wait: 5)
     expect(page).to have_css("[data-ai-review-target='proposalDiff'].preview-prose h1", text: "Promessa UI Markdown", wait: 5)
     expect(page).to have_css("[data-ai-review-target='proposalDiff'].preview-prose li", text: "item 1", wait: 5)
   end
 
-  it "shows queue cards while the AI workspace is open" do
+  it "hides queue cards while the AI workspace is open" do
     choose_ai_option("Revisar gramática com IA")
 
     expect_ai_workspace(text: "Texto corrigido pela IA.")
-    expect(page).to have_css("[data-ai-review-target='queueDock']:not(.hidden)", wait: 5)
+    expect(page).to have_css("[data-ai-review-target='queueDock'].hidden", visible: :all, wait: 5)
   end
 
   it "allows dismissing a failed request from the queue with X" do
@@ -815,8 +809,8 @@ RSpec.describe "AI review", type: :system do
     drag_queue_over(running.id, position: :top)
 
     expect(page).to have_css("[data-queue-placeholder='true']", count: 1)
-    expect(page).to have_css("[data-request-id='#{queued.id}'][style*='visibility: hidden']", visible: :all)
-    expect(page).to have_css("[data-ai-review-target='queueDock'] article", count: 2, visible: :all)
+    expect(page).to have_css("[data-request-id='#{queued.id}'][style*='position: fixed']", visible: :all)
+    expect(page).to have_css("[data-ai-review-target='queueDock'] [data-queue-card='true']", count: 2, visible: :all)
 
     finish_queue_drag(running.id, position: :top)
 
@@ -1015,6 +1009,56 @@ RSpec.describe "AI review", type: :system do
     expect(request.reload.status).to eq("canceled")
   end
 
+  it "ignores a late succeeded update after canceling the in-flight request" do
+    request = nil
+    original_text = editor_text
+
+    allow(Ai::ReviewService).to receive(:enqueue) do |note:, note_revision:, capability:, text:, language:, **|
+      request = create(
+        :ai_request,
+        note_revision: note_revision,
+        capability: capability,
+        provider: "openai",
+        requested_provider: "openai",
+        model: "gpt-4o-mini",
+        status: "retrying",
+        attempts_count: 1,
+        max_attempts: 3,
+        input_text: text,
+        error_message: "openai indisponivel",
+        last_error_kind: "transient",
+        next_retry_at: 15.seconds.from_now,
+        metadata: {"language" => language}
+      )
+    end
+
+    choose_ai_option("Revisar gramática com IA")
+
+    expect(page).to have_text("Tentando novamente", wait: 5)
+    within("[data-ai-review-target='processingBox']") do
+      click_button "Cancelar"
+    end
+
+    expect(page).to have_no_text("Tentando novamente", wait: 5)
+    expect(request.reload.status).to eq("canceled")
+
+    request.update!(
+      status: "succeeded",
+      output_text: "Texto tardio da IA.",
+      completed_at: Time.current,
+      next_retry_at: nil,
+      error_message: nil,
+      last_error_kind: nil
+    )
+
+    dispatch_request_update(request)
+
+    expect(page).to have_no_css("[data-ai-review-target='workspace']:not(.hidden)", wait: 2)
+    expect(page).to have_no_text("Texto tardio da IA.")
+    expect(page).to have_no_css("[data-request-id='#{request.id}']", wait: 2)
+    expect(editor_text).to eq(original_text)
+  end
+
   it "shows manual edits highlighted in yellow after editing the proposal" do
     choose_ai_option("Reescrever com IA")
 
@@ -1025,6 +1069,8 @@ RSpec.describe "AI review", type: :system do
   end
 
   it "shows recent AI executions in the history dialog" do
+    other_note = create(:note, :with_head_revision, title: "Nota Global Historico")
+
       create(
         :ai_request,
         note_revision: head_revision,
@@ -1051,11 +1097,23 @@ RSpec.describe "AI review", type: :system do
       error_message: "Falha remota"
     )
 
-    find("button[title='Histórico de IA']").click
+    create(
+      :ai_request,
+      note_revision: other_note.head_revision,
+      capability: "translate",
+      provider: "openai",
+      requested_provider: "openai",
+      model: "gpt-4o-mini",
+      status: "succeeded",
+      completed_at: Time.current
+    )
 
+    find("button[title='Histórico de IA']").click
     expect(page).to have_css("dialog[open]", text: "Histórico de IA", wait: 5)
     expect(page).to have_text("Revisao gramatical", wait: 5)
     expect(page).to have_text("Reescrita", wait: 5)
+    expect(page).to have_text("Traducao", wait: 5)
+    expect(page).to have_text("Nota Global Historico", wait: 5)
     expect(page).to have_text("Concluida", wait: 5)
     expect(page).to have_text("Falhou", wait: 5)
     expect(page).to have_text("Falha remota", wait: 5)
@@ -1069,25 +1127,39 @@ RSpec.describe "AI review", type: :system do
     expect(page).to have_no_text("Falha remota", wait: 5)
   end
 
-  it "shows recent shell-wide AI activity in the history dialog" do
-    other_note = create(:note, :with_head_revision, title: "Nota Global")
+  it "filters queued items from the global AI history" do
+    other_note = create(:note, :with_head_revision, title: "Fila Global")
     create(
       :ai_request,
       note_revision: other_note.head_revision,
-      capability: "translate",
-      provider: "openai",
-      requested_provider: "openai",
-      model: "gpt-4o-mini",
-      status: "succeeded",
-      completed_at: Time.current
+      capability: "seed_note",
+      provider: "ollama",
+      requested_provider: "ollama",
+      model: "qwen2.5:1.5b",
+      status: "queued",
+      metadata: {
+        "language" => "pt-BR",
+        "promise_note_id" => create(:note, title: "Fila Global").id,
+        "promise_note_title" => "Fila Global"
+      }
     )
 
     find("button[title='Histórico de IA']").click
 
     expect(page).to have_css("dialog[open]", text: "Histórico de IA", wait: 5)
-    click_button "Shell"
-    expect(page).to have_text("Traducao", wait: 5)
-    expect(page).to have_text("Nota Global", wait: 5)
+    click_button "Na fila"
+    expect(page).to have_text("Fila Global", wait: 5)
+    expect(page).to have_text("Na fila", wait: 5)
+  end
+
+  it "closes the AI history window when clicking outside it" do
+    find("button[title='Histórico de IA']").click
+
+    expect(page).to have_css("dialog[open]", text: "Histórico de IA", wait: 5)
+
+    page.find("body").click(x: 5, y: 5)
+
+    expect(page).to have_no_css("dialog[open]", wait: 5)
   end
 
   it "opens a succeeded seed note from the shell history" do
@@ -1110,7 +1182,6 @@ RSpec.describe "AI review", type: :system do
     )
 
     find("button[title='Histórico de IA']").click
-    click_button "Shell"
     within("[data-ai-review-target='historyList']") do
       find("[data-request-id='#{request_record.id}']", text: "Historico Promessa").click
     end
@@ -1157,7 +1228,6 @@ RSpec.describe "AI review", type: :system do
     end
 
     find("button[title='Histórico de IA']").click
-    click_button "Shell"
     expect(page).to have_text("Fila Fallback", wait: 6)
     expect(page).to have_text("Concluida", wait: 6)
   end
