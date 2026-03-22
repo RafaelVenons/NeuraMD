@@ -1507,22 +1507,41 @@ export default class extends Controller {
   }
 
   _sortedQueueRequests() {
-    const supplemental = this.queueRequests
+    return this.queueRequests
       .filter((request) => this._queueEligible(request))
-      .filter((request) => !this._queueReorderable(request))
-      .sort((left, right) => new Date(right.created_at || 0) - new Date(left.created_at || 0))
-
-    const active = this.queueRequests
-      .filter((request) => this._queueEligible(request))
-      .filter((request) => this._queueReorderable(request))
       .sort((left, right) => {
-        const leftPos = Number(left.queue_position || 0)
-        const rightPos = Number(right.queue_position || 0)
-        if (leftPos !== rightPos) return rightPos - leftPos
+        const leftBucket = this._queueStatusBucket(left)
+        const rightBucket = this._queueStatusBucket(right)
+        if (leftBucket !== rightBucket) return leftBucket - rightBucket
+
+        if (leftBucket === 0) {
+          const leftPos = Number(left.queue_position || 0)
+          const rightPos = Number(right.queue_position || 0)
+          if (leftPos !== rightPos) return rightPos - leftPos
+        }
+
+        if (leftBucket === 1) {
+          const leftStarted = new Date(left.started_at || left.created_at || 0)
+          const rightStarted = new Date(right.started_at || right.created_at || 0)
+          if (leftStarted.getTime() !== rightStarted.getTime()) return rightStarted - leftStarted
+        }
+
+        if (leftBucket === 2 || leftBucket === 3) {
+          const leftCompleted = new Date(left.completed_at || left.created_at || 0)
+          const rightCompleted = new Date(right.completed_at || right.created_at || 0)
+          if (leftCompleted.getTime() !== rightCompleted.getTime()) return rightCompleted - leftCompleted
+        }
+
         return new Date(right.created_at || 0) - new Date(left.created_at || 0)
       })
+  }
 
-    return [...supplemental, ...active]
+  _queueStatusBucket(request) {
+    if (["queued", "retrying"].includes(request.status)) return 0
+    if (request.status === "running") return 1
+    if (request.status === "failed") return 2
+    if (request.status === "succeeded") return 3
+    return 4
   }
 
   _queueCard(request) {
