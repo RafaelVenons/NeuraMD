@@ -1424,6 +1424,10 @@
     margin: 0 auto;
     caret-color: var(--theme-accent-hover);
   }
+  .editor-pane--full-width #codemirror-host .cm-content {
+    max-width: none;
+    margin: 0;
+  }
   #codemirror-host .cm-line {
     color: var(--theme-text-secondary);
   }

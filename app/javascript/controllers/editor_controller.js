@@ -73,13 +73,18 @@ export default class extends Controller {
 
     if (this._previewVisible) {
       pane.classList.remove("hidden")
+      this.previewResizeHandleTarget.classList.remove("hidden")
       this.previewToggleBtnTarget.classList.add("toolbar-btn--active")
       this._applyPreviewWidth(this._previewWidthRatio || 0.5)
     } else {
       pane.classList.add("hidden")
+      pane.style.flex = ""
+      this.previewResizeHandleTarget.classList.add("hidden")
       this.previewToggleBtnTarget.classList.remove("toolbar-btn--active")
-      this.editorPaneTarget.style.flex = "1 1 auto"
+      this.editorPaneTarget.style.flex = "1 1 100%"
     }
+
+    this._syncEditorWidthMode()
   }
 
   showPreview() {
@@ -87,8 +92,10 @@ export default class extends Controller {
 
     this._previewVisible = true
     this.previewPaneTarget.classList.remove("hidden")
+    this.previewResizeHandleTarget.classList.remove("hidden")
     this.previewToggleBtnTarget.classList.add("toolbar-btn--active")
     this._applyPreviewWidth(this._previewWidthRatio || 0.5)
+    this._syncEditorWidthMode()
   }
 
   enterAiReviewFocusMode() {
@@ -307,9 +314,12 @@ export default class extends Controller {
     if (stored.previewVisible === false) {
       this._previewVisible = false
       this.previewPaneTarget.classList.add("hidden")
+      this.previewPaneTarget.style.flex = ""
+      this.previewResizeHandleTarget.classList.add("hidden")
       this.previewToggleBtnTarget.classList.remove("toolbar-btn--active")
-      this.editorPaneTarget.style.flex = "1 1 auto"
+      this.editorPaneTarget.style.flex = "1 1 100%"
     } else {
+      this.previewResizeHandleTarget.classList.remove("hidden")
       this.previewToggleBtnTarget.classList.add("toolbar-btn--active")
       this._applyPreviewWidth(this._previewWidthRatio)
     }
@@ -317,6 +327,7 @@ export default class extends Controller {
     this.contextModeTarget.value = stored.contextMode || "graph"
     this._applyContextHeight(this._contextHeight)
     this._applyContextMode(this.contextModeTarget.value)
+    this._syncEditorWidthMode()
   }
 
   _applyPreviewWidth(ratio) {
@@ -325,6 +336,11 @@ export default class extends Controller {
     this._previewWidthRatio = bounded
     this.previewPaneTarget.style.flex = `0 0 ${bounded * 100}%`
     this.editorPaneTarget.style.flex = "1 1 auto"
+    this._syncEditorWidthMode()
+  }
+
+  _syncEditorWidthMode() {
+    this.editorPaneTarget.classList.toggle("editor-pane--full-width", !this._previewVisible && !this._aiReviewFocusMode)
   }
 
   _applyContextHeight(height) {
