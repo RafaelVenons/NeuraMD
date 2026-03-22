@@ -651,6 +651,19 @@ export default class extends Controller {
     }
 
     const node = this.state.graph.getNodeAttributes(nodeId)
+    const isFocusedPinned =
+      nodeId === this.state.ui.focusedNodeId &&
+      nodeId === this.state.ui.pinnedTooltipNodeId
+
+    if (isFocusedPinned) {
+      this.tooltipLayerTarget.innerHTML = `
+        <div class="nm-graph__tooltip-anchor is-docked is-bottom-left">
+          ${renderTooltip(node, this.state)}
+        </div>
+      `
+      return
+    }
+
     const projected = this.state.renderer.graphToViewport({
       x: node.x,
       y: node.y
@@ -680,6 +693,7 @@ export default class extends Controller {
 
   focusNote(noteId) {
     if (!noteId || !this.state.graph?.hasNode(noteId)) return
+    const focusChanged = this.state.ui.focusedNodeId !== noteId
 
     this.initialFocusedNodeIdValue = noteId
     this.state.ui.focusedNodeId = noteId
@@ -688,7 +702,7 @@ export default class extends Controller {
     if (this.hasFocusDepthTarget) this.focusDepthTarget.value = "2"
     this.renderSidebar()
     if (this.embeddedModeValue) {
-      this.applyDisplayState({ relayout: false, animateFocus: false })
+      this.applyDisplayState({ relayout: focusChanged, animateFocus: false })
       this._focusEmbeddedCamera(noteId)
       return
     }
