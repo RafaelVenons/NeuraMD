@@ -39,7 +39,7 @@ Rails.application.routes.draw do
       post :ai_review, to: "ai#review"
       get  :ai_requests, to: "ai#index"
       patch "ai_requests/reorder", to: "ai#reorder", as: :reorder_ai_requests
-      get  "ai_requests/:request_id", to: "ai#show", as: :ai_request
+      get "ai_requests/:request_id", to: "ai#show", as: :ai_request
       patch "ai_requests/:request_id/resolve_queue", to: "ai#resolve_queue", as: :resolve_ai_request_queue
       post "ai_requests/:request_id/retry", to: "ai#retry", as: :retry_ai_request
       delete "ai_requests/:request_id", to: "ai#destroy"
