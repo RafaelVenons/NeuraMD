@@ -247,11 +247,6 @@
     </button>
   </div>
 
-  <aside data-ai-review-target="queueDock"
-         data-action="dragover->ai-review#handleQueueDockDragOver drop->ai-review#handleQueueDockDrop"
-         class="fixed bottom-0 right-4 z-50 hidden flex max-h-[70vh] flex-col items-end gap-2 overflow-y-auto pb-4 pr-1 pt-2">
-  </aside>
-
   <%# ── Main editor area ──────────────────────────────────── %>
   <div class="flex flex-1 min-h-0"
        data-editor-target="mainArea">
@@ -429,7 +424,7 @@ AI_ENABLED_PROVIDERS=ollama</pre>
               <div data-ai-review-target="proposalDiff"
                    contenteditable="true"
                    spellcheck="false"
-                   data-action="input->ai-review#proposalEditorChanged blur->ai-review#proposalEditorChanged"
+                   data-action="pointerdown->ai-review#activateSeedNoteEditing input->ai-review#proposalEditorChanged blur->ai-review#proposalEditorChanged"
                    class="min-h-full whitespace-pre-wrap font-mono text-sm leading-relaxed text-[var(--theme-text-primary)] outline-none"></div>
             </div>
           </div>
@@ -516,6 +511,11 @@ AI_ENABLED_PROVIDERS=ollama</pre>
             <%= render "notes/backlinks_content", note: @note %>
           </section>
         </section>
+
+        <aside data-ai-review-target="queueDock"
+               data-action="dragover->ai-review#handleQueueDockDragOver drop->ai-review#handleQueueDockDrop"
+               class="fixed bottom-0 right-4 z-50 hidden flex max-h-[70vh] flex-col items-end gap-2 overflow-y-auto pb-4 pr-1 pt-2">
+        </aside>
       </div>
     </div>
   </div>

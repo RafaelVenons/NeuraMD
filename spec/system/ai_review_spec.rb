@@ -161,7 +161,7 @@ RSpec.describe "AI review", type: :system do
     page.execute_script(<<~JS, text)
       (() => {
         const element = document.querySelector("[data-ai-review-target='proposalDiff']")
-        element.innerText = arguments[0]
+        element.textContent = arguments[0]
         element.dispatchEvent(new Event("input", { bubbles: true }))
       })()
     JS
@@ -616,6 +616,86 @@ RSpec.describe "AI review", type: :system do
       promise_note.reload.head_revision&.content_markdown == "# Promessa Aceita\n\nConteudo criado."
     end
     expect(page).to have_no_css("[data-request-id='#{request_record.id}']", wait: 5)
+  end
+
+  it "preserves markdown markers when accepting a created promise note from the queue" do
+    source_note = create(:note, :with_head_revision, title: "Nota Origem Markdown")
+    promise_note = create(:note, title: "Promessa Markdown", head_revision: nil)
+    Notes::DraftService.call(
+      note: source_note,
+      content: "Abrir [[Promessa Markdown|#{promise_note.id}]]",
+      author: user
+    )
+    request_record = create(
+      :ai_request,
+      note_revision: source_note.head_revision,
+      capability: "seed_note",
+      provider: "ollama",
+      requested_provider: "ollama",
+      model: "qwen2.5:1.5b",
+      status: "succeeded",
+      metadata: {
+        "language" => source_note.detected_language,
+        "requested_by_id" => user.id,
+        "promise_source_note_id" => source_note.id,
+        "promise_note_id" => promise_note.id,
+        "promise_note_title" => promise_note.title
+      },
+      output_text: "# Promessa Markdown\n\n- item 1\n- item 2\n\n**negrito**",
+      completed_at: Time.current
+    )
+
+    visit note_path(source_note.slug)
+
+    within("[data-ai-review-target='queueDock']") do
+      find("article", text: "Promessa Markdown").click
+    end
+
+    expect(page).to have_current_path(note_path(promise_note.slug), wait: 5)
+    click_button "Aplicar"
+
+    wait_until do
+      promise_note.reload.head_revision&.content_markdown == "# Promessa Markdown\n\n- item 1\n- item 2\n\n**negrito**"
+    end
+    expect(page).to have_no_css("[data-request-id='#{request_record.id}']", wait: 5)
+  end
+
+  it "shows markdown semantics in the seed note review UI" do
+    source_note = create(:note, :with_head_revision, title: "Nota Origem UI Markdown")
+    promise_note = create(:note, title: "Promessa UI Markdown", head_revision: nil)
+    Notes::DraftService.call(
+      note: source_note,
+      content: "Abrir [[Promessa UI Markdown|#{promise_note.id}]]",
+      author: user
+    )
+    create(
+      :ai_request,
+      note_revision: source_note.head_revision,
+      capability: "seed_note",
+      provider: "ollama",
+      requested_provider: "ollama",
+      model: "qwen2.5:1.5b",
+      status: "succeeded",
+      metadata: {
+        "language" => source_note.detected_language,
+        "requested_by_id" => user.id,
+        "promise_source_note_id" => source_note.id,
+        "promise_note_id" => promise_note.id,
+        "promise_note_title" => promise_note.title
+      },
+      output_text: "# Promessa UI Markdown\n\n- item 1",
+      completed_at: Time.current
+    )
+
+    visit note_path(source_note.slug)
+
+    within("[data-ai-review-target='queueDock']") do
+      find("article", text: "Promessa UI Markdown").click
+    end
+
+    expect(page).to have_current_path(note_path(promise_note.slug), wait: 5)
+    expect(page).to have_css("[data-ai-review-target='proposalDiff'].preview-prose h1", text: "Promessa UI Markdown", wait: 5)
+    expect(page).to have_css("[data-ai-review-target='proposalDiff'].preview-prose li", text: "item 1", wait: 5)
   end
 
   it "shows queue cards while the AI workspace is open" do

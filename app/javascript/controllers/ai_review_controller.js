@@ -1,5 +1,9 @@
 import { Controller } from "@hotwired/stimulus"
+import { marked } from "marked"
 import { computeWordDiff } from "lib/diff_utils"
+import { emojiExtension, superscriptExtension, subscriptExtension, highlightExtension, wikilinkExtension } from "lib/marked_extensions"
+
+const PENDING_SEED_NOTE_REVIEW_STORAGE_KEY = "nm:pending-seed-note-review"
 
 export default class extends Controller {
   static targets = [
@@ -79,6 +83,8 @@ export default class extends Controller {
     this.queueRenderDeferred = false
     this.pendingQueuePointerDrag = null
     this.queuePointerDragActive = false
+    this.queueDockSuppressed = false
+    this.seedNotePreviewMode = false
     this.historyFilter = "all"
     this.realtimeConnected = false
     this.streamObserver = null
@@ -97,7 +103,10 @@ export default class extends Controller {
     document.addEventListener("click", this._boundDocumentClick)
     window.addEventListener("pointermove", this._boundQueuePointerMove)
     window.addEventListener("pointerup", this._boundQueuePointerUp)
+    marked.use({ extensions: [wikilinkExtension, emojiExtension, superscriptExtension, subscriptExtension, highlightExtension] })
+    marked.setOptions({ gfm: true, breaks: false })
     this._observeStreamSource()
+    this._restorePendingSeedNoteReview()
     this.checkAvailability()
     this.refreshQueue()
     this.refreshHistory()
@@ -142,6 +151,7 @@ export default class extends Controller {
     this.languageOptionsValue = ai.language_options || this.languageOptionsValue
     this.languageLabelsValue = ai.language_labels || this.languageLabelsValue
 
+    this._restorePendingSeedNoteReview(urls.show || window.location.pathname)
     if (this.historyDialogTarget?.open) this.refreshHistory()
     this._syncQueuePolling()
   }
@@ -332,6 +342,7 @@ export default class extends Controller {
       this.queueRequests = this._mergeQueueSnapshot(data.requests || [])
       this.globalHistoryRequests = this._mergeShellHistorySnapshot(data.recent_history || [])
       this._syncActiveQueueWatchers()
+      this._restoreSeedNoteReviewFromQueueSnapshot()
       this._renderQueue()
       if (this.historyDialogTarget?.open && this.historyFilter === "shell") this._renderHistory()
     } catch (_) {
@@ -570,6 +581,7 @@ export default class extends Controller {
     if (this.pendingApplyMode === "seed_note_review") {
       await this._persistQueueResolution(this.lastCompletedRequest?.id)
       if (correctedText) editor.setValue(correctedText)
+      this._clearPendingSeedNoteReview()
       this.lastCompletedRequest = null
       this._hideWorkspace()
       return
@@ -601,6 +613,16 @@ export default class extends Controller {
     if (!this.hasProposalDiffTarget || !this.hasCorrectedTextTarget) return
     this.correctedTextTarget.value = this._proposalEditorText()
     this._renderProposal()
+  }
+
+  activateSeedNoteEditing(event) {
+    if (this.pendingApplyMode !== "seed_note_review" || !this.seedNotePreviewMode) return
+
+    event.preventDefault()
+    this.seedNotePreviewMode = false
+    this.proposalDiffTarget.setAttribute("contenteditable", "true")
+    this._renderProposal()
+    this._placeProposalCaretAtEnd()
   }
 
   async checkAvailability() {
@@ -675,7 +697,7 @@ export default class extends Controller {
 
   _showProposal(corrected) {
     this._editorController()?.exitAiReviewFocusMode?.()
-    this._setQueueFooterClearance(false)
+    this._setQueueFooterClearance(true)
     const editor = this._editor()
     const suggestionForPreview = this.pendingApplyMode === "translation_note"
       ? corrected
@@ -707,6 +729,7 @@ export default class extends Controller {
     this._clearProposalStage()
     this._editorController()?.enterAiReviewFocusMode?.()
     this._setQueueFooterClearance(true)
+    this._storePendingSeedNoteReview(request)
     this._showWorkspace()
     this.configNoticeTarget.classList.add("hidden")
     this.processingBoxTarget.classList.add("hidden")
@@ -718,6 +741,8 @@ export default class extends Controller {
     this.aiSuggestedText = request.corrected || ""
     this.correctedTextTarget.value = this.aiSuggestedText
     this.pendingOriginalText = this.aiSuggestedText
+    this.seedNotePreviewMode = true
+    this.proposalDiffTarget.setAttribute("contenteditable", "false")
     this.proposalDiffTarget.classList.add("ai-review-proposal--seed-note")
     this.proposalDiffTarget.dataset.placeholder = "Edite o texto da nota criada com IA..."
     this._renderProposal()
@@ -734,8 +759,10 @@ export default class extends Controller {
   }
 
   _hideWorkspace() {
+    const clearingSeedNoteReview = this.pendingApplyMode === "seed_note_review"
     this._editorController()?.exitAiReviewFocusMode?.()
     this._setQueueFooterClearance(false)
+    if (clearingSeedNoteReview) this._clearPendingSeedNoteReview()
     this.workspaceTarget.classList.add("hidden")
     this.workspaceTarget.classList.remove("flex")
     this.previewShellTarget.classList.remove("hidden")
@@ -746,8 +773,12 @@ export default class extends Controller {
     if (this.hasDeclineButtonTarget) this.declineButtonTarget.textContent = "Fechar"
     this._hideRequestMenu()
     this.pendingMenu = null
+    this.pendingApplyMode = "document"
     this.aiSuggestedText = ""
+    this.seedNotePreviewMode = false
+    this.proposalDiffTarget.setAttribute("contenteditable", "true")
     this.proposalDiffTarget.classList.remove("ai-review-proposal--seed-note")
+    this.proposalDiffTarget.classList.remove("ai-review-proposal--seed-note-preview")
     delete this.proposalDiffTarget.dataset.placeholder
     this._clearActiveTrigger()
   }
@@ -1222,6 +1253,13 @@ export default class extends Controller {
   _renderProposal() {
     const currentText = this.correctedTextTarget.value
     const selection = this._captureProposalSelection()
+    if (this.pendingApplyMode === "seed_note_review" && this.seedNotePreviewMode) {
+      this.proposalDiffTarget.classList.add("ai-review-proposal--seed-note-preview", "preview-prose")
+      this.proposalDiffTarget.innerHTML = marked.parse(currentText || "")
+      return
+    }
+
+    this.proposalDiffTarget.classList.remove("ai-review-proposal--seed-note-preview", "preview-prose")
     const currentAnnotated = this.pendingApplyMode === "seed_note_review"
       ? this._annotateSeedNoteSuggestion(this.aiSuggestedText, currentText)
       : this._annotateCurrentSuggestion(
@@ -1230,17 +1268,108 @@ export default class extends Controller {
           currentText
         )
 
-    this.proposalDiffTarget.innerHTML = currentAnnotated.map((item) => {
-      const escaped = this._escapeHtml(item.value)
-      if (item.kind === "ai") return `<span class="rounded bg-emerald-400/15 px-0.5 text-emerald-200">${escaped}</span>`
-      if (item.kind === "manual") return `<span class="rounded bg-amber-300/25 px-0.5 text-amber-200">${escaped}</span>`
-      return `<span>${escaped}</span>`
-    }).join("")
+    this.proposalDiffTarget.innerHTML = this.pendingApplyMode === "seed_note_review"
+      ? this._renderSeedNoteProposal(currentAnnotated)
+      : currentAnnotated.map((item) => {
+          const escaped = this._escapeHtml(item.value)
+          if (item.kind === "ai") return `<span class="rounded bg-emerald-400/15 px-0.5 text-emerald-200">${escaped}</span>`
+          if (item.kind === "manual") return `<span class="rounded bg-amber-300/25 px-0.5 text-amber-200">${escaped}</span>`
+          return `<span>${escaped}</span>`
+        }).join("")
     this._restoreProposalSelection(selection)
   }
 
+  _renderSeedNoteProposal(segments) {
+    const lines = this._splitAnnotatedLines(segments)
+    if (lines.length === 0) return ""
+
+    return lines.map((line) => {
+      const variant = this._seedNoteLineVariant(line)
+      const content = line.segments.length === 0
+        ? "<br>"
+        : line.segments.map((segment) => {
+            const escaped = this._escapeHtml(segment.value)
+            if (segment.kind === "manual") {
+              return `<span class="rounded bg-amber-300/25 px-0.5 text-amber-200">${escaped}</span>`
+            }
+            return `<span>${escaped}</span>`
+          }).join("")
+
+      return `<div class="ai-review-md-line ${variant.className}">${content}</div>`
+    }).join("")
+  }
+
+  _splitAnnotatedLines(segments) {
+    const lines = []
+    let currentLine = []
+
+    segments.forEach((segment) => {
+      const parts = String(segment.value || "").split("\n")
+      parts.forEach((part, index) => {
+        if (part) currentLine.push({ ...segment, value: part })
+        if (index < parts.length - 1) {
+          lines.push({ segments: currentLine, text: currentLine.map((item) => item.value).join("") })
+          currentLine = []
+        }
+      })
+    })
+
+    lines.push({ segments: currentLine, text: currentLine.map((item) => item.value).join("") })
+    return lines
+  }
+
+  _seedNoteLineVariant(line) {
+    const text = (line?.text || "").trimEnd()
+    if (!text.trim()) return { className: "ai-review-md-line--blank" }
+
+    const heading = text.match(/^(#{1,6})\s+/)
+    if (heading) return { className: `ai-review-md-line--h${heading[1].length}` }
+    if (/^\s*[-*+]\s+/.test(text)) return { className: "ai-review-md-line--ul" }
+    if (/^\s*\d+\.\s+/.test(text)) return { className: "ai-review-md-line--ol" }
+    if (/^>\s+/.test(text)) return { className: "ai-review-md-line--quote" }
+    if (/^```/.test(text)) return { className: "ai-review-md-line--codefence" }
+    if (/^ {4,}|\t/.test(line?.text || "")) return { className: "ai-review-md-line--code" }
+    return { className: "ai-review-md-line--paragraph" }
+  }
+
   _proposalEditorText() {
-    return this.proposalDiffTarget.innerText.replace(/\u00a0/g, " ")
+    return this._serializeProposalNode(this.proposalDiffTarget)
+      .replace(/\u00a0/g, " ")
+      .replace(/\r\n?/g, "\n")
+  }
+
+  _serializeProposalNode(node) {
+    if (!node) return ""
+    if (node.nodeType === Node.TEXT_NODE) return node.textContent || ""
+    if (node.nodeType !== Node.ELEMENT_NODE) return ""
+    if (node.tagName === "BR") return "\n"
+
+    const blockTags = new Set([
+      "DIV",
+      "P",
+      "LI",
+      "UL",
+      "OL",
+      "PRE",
+      "BLOCKQUOTE",
+      "H1",
+      "H2",
+      "H3",
+      "H4",
+      "H5",
+      "H6"
+    ])
+
+    let output = ""
+    node.childNodes.forEach((child) => {
+      output += this._serializeProposalNode(child)
+    })
+
+    if (node !== this.proposalDiffTarget && blockTags.has(node.tagName) && !output.endsWith("\n")) {
+      output += "\n"
+    }
+
+    return output
   }
 
   _annotateAiSuggestion(originalText, aiSuggestedText) {
@@ -1343,6 +1472,22 @@ export default class extends Controller {
     selection.removeAllRanges()
     selection.addRange(range)
     selection.extend(focus.node, focus.offset)
+  }
+
+  _placeProposalCaretAtEnd() {
+    if (!this.hasProposalDiffTarget) return
+    const selection = window.getSelection()
+    if (!selection) return
+
+    const range = document.createRange()
+    const focus = this._nodeForTextOffset(this._proposalEditorText().length)
+    if (!focus) return
+
+    range.setStart(focus.node, focus.offset)
+    range.collapse(true)
+    selection.removeAllRanges()
+    selection.addRange(range)
+    this.proposalDiffTarget.focus()
   }
 
   _textOffsetForNode(targetNode, targetOffset) {
@@ -1487,6 +1632,12 @@ export default class extends Controller {
       .filter((request) => !this.resolvedQueueRequestIds.has(String(request.id)))
 
     if (requests.length === 0) {
+      this.queueDockTarget.innerHTML = ""
+      this.queueDockTarget.classList.add("hidden")
+      return
+    }
+
+    if (this.queueDockSuppressed || this._activeSeedNoteReviewRequest()) {
       this.queueDockTarget.innerHTML = ""
       this.queueDockTarget.classList.add("hidden")
       return
@@ -1797,6 +1948,7 @@ export default class extends Controller {
     if (!this.lastCompletedRequest?.id) return
 
     if (this.pendingApplyMode === "seed_note_review" || this.lastCompletedRequest.capability === "seed_note") {
+      this._clearPendingSeedNoteReview()
       await this._destroyRequest(this.lastCompletedRequest.id)
       this.lastCompletedRequest = null
       return
@@ -2107,9 +2259,117 @@ export default class extends Controller {
     return this.application.getControllerForElementAndIdentifier(this.element, "editor")
   }
 
+  _currentNoteSlug() {
+    return window.location.pathname.match(/^\/notes\/([^/?#]+)/)?.[1] || null
+  }
+
+  _activeSeedNoteReviewRequest() {
+    const currentSlug = this._currentNoteSlug()
+    if (!currentSlug) return null
+
+    return this.queueRequests.find((request) =>
+      request.capability === "seed_note" &&
+      request.status === "succeeded" &&
+      request.promise_note_slug === currentSlug &&
+      !request.queue_hidden &&
+      !this.resolvedQueueRequestIds.has(String(request.id)) &&
+      !this.dismissedQueueRequestIds.has(String(request.id))
+    ) || null
+  }
+
+  _restoreSeedNoteReviewFromQueueSnapshot() {
+    const request = this._activeSeedNoteReviewRequest()
+    if (!request) return false
+
+    if (this.pendingApplyMode === "seed_note_review" && String(this.lastCompletedRequest?.id) === String(request.id) && this._aiStageVisible()) {
+      this._setQueueFooterClearance(true)
+      return true
+    }
+
+    this.pendingApplyMode = "seed_note_review"
+    this.pendingOriginalText = request.corrected || ""
+    this.lastCompletedRequest = {
+      id: request.id,
+      capability: request.capability || "seed_note",
+      provider: request.provider || "",
+      model: request.model || "",
+      targetLanguage: request.target_language || this.selectedTargetLanguage()
+    }
+    this._showSeedNoteReview(request)
+    return true
+  }
+
+  _pendingSeedNoteReviewStorage() {
+    try {
+      return window.sessionStorage
+    } catch (_) {
+      return null
+    }
+  }
+
+  _storePendingSeedNoteReview(request) {
+    if (!request?.id || !request?.promise_note_slug) return
+
+    const storage = this._pendingSeedNoteReviewStorage()
+    if (!storage) return
+
+    storage.setItem(PENDING_SEED_NOTE_REVIEW_STORAGE_KEY, JSON.stringify({
+      notePath: `/notes/${request.promise_note_slug}`,
+      request: {
+        id: request.id,
+        capability: request.capability || "seed_note",
+        provider: request.provider || "",
+        model: request.model || "",
+        target_language: request.target_language || null,
+        corrected: request.corrected || "",
+        promise_note_slug: request.promise_note_slug,
+        promise_note_title: request.promise_note_title || request.note_title || this.noteTitleValue || "Nota",
+        status: request.status || "succeeded"
+      }
+    }))
+  }
+
+  _clearPendingSeedNoteReview() {
+    const storage = this._pendingSeedNoteReviewStorage()
+    storage?.removeItem(PENDING_SEED_NOTE_REVIEW_STORAGE_KEY)
+  }
+
+  _restorePendingSeedNoteReview(notePath = window.location.pathname) {
+    const storage = this._pendingSeedNoteReviewStorage()
+    if (!storage) return false
+
+    try {
+      const payload = JSON.parse(storage.getItem(PENDING_SEED_NOTE_REVIEW_STORAGE_KEY) || "null")
+      const request = payload?.request
+      if (!payload?.notePath || payload.notePath !== notePath || !request?.id || !request?.promise_note_slug) return false
+
+      if (this.pendingApplyMode === "seed_note_review" && String(this.lastCompletedRequest?.id) === String(request.id) && this._aiStageVisible()) {
+        return true
+      }
+
+      this.pendingApplyMode = "seed_note_review"
+      this.pendingOriginalText = request.corrected || ""
+      this.lastCompletedRequest = {
+        id: request.id,
+        capability: request.capability || "seed_note",
+        provider: request.provider || "",
+        model: request.model || "",
+        targetLanguage: request.target_language || this.selectedTargetLanguage()
+      }
+      this._showSeedNoteReview(request)
+      return true
+    } catch (_) {
+      this._clearPendingSeedNoteReview()
+      return false
+    }
+  }
+
   _setQueueFooterClearance(enabled) {
     if (!this.hasQueueDockTarget) return
-    this.queueDockTarget.classList.toggle("ai-review-queue--footer-clearance", enabled)
+    this.queueDockSuppressed = enabled
+    this.queueDockTarget.classList.toggle("hidden", enabled)
+    if (enabled) this.queueDockTarget.innerHTML = ""
+    this._renderQueue()
   }
 
   _ensurePreviewVisible() {

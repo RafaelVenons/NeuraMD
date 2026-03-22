@@ -59,8 +59,6 @@ async function expectCard(page, title, status, label) {
 async function expectSeedNoteReviewWorkspace(page, title, bodyText) {
   await expect(page.getByRole("button", { name: "Aplicar" })).toBeVisible()
   await expect(page.getByRole("button", { name: "Recusar" })).toBeVisible()
-  await expect(page.locator("[data-ai-review-target='proposalDiff']")).toContainText("Nota criada com IA")
-  await expect(page.locator("[data-ai-review-target='proposalDiff']")).toContainText(title)
   await expect(page.locator("[data-ai-review-target='proposalDiff']")).toContainText(bodyText)
 }
 
@@ -146,6 +144,20 @@ test.describe("AI queue promise sequencing", () => {
     await queueCard(page, promiseTitle).click()
     await expect(page).toHaveURL(new RegExp(`/notes/promessa-queue-a-${token}|/notes/promessa-queue-b-${token}`))
     await expectSeedNoteReviewWorkspace(page, promiseTitle, bodyText)
+    await expect(page.locator("[data-ai-review-target='queueDock']")).toBeHidden()
+
+    const buttonReachable = await page.evaluate(() => {
+      const acceptButton = document.querySelector("[data-ai-review-target='acceptButton']")
+      if (!acceptButton) return null
+
+      const rect = acceptButton.getBoundingClientRect()
+      const centerX = rect.left + (rect.width / 2)
+      const centerY = rect.top + (rect.height / 2)
+      const topElement = document.elementFromPoint(centerX, centerY)
+      return topElement === acceptButton || acceptButton.contains(topElement)
+    })
+
+    expect(buttonReachable).toBe(true)
   })
 
   test("keeps queue and shell history for AI promise creation from an empty source note after reload", async ({ page, request }) => {

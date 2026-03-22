@@ -1773,10 +1773,87 @@
     min-height: calc(100vh - 15rem);
     max-width: 78ch;
     margin: 0 auto;
+    font-family: var(--font-sans);
+  }
+  .ai-review-proposal--seed-note-preview {
+    min-height: calc(100vh - 15rem);
+    cursor: text;
+    padding: 0;
+  }
+  .ai-review-proposal--seed-note-preview::before {
+    content: "Clique para editar em Markdown";
+    display: block;
+    margin-bottom: 1rem;
+    color: var(--theme-text-faint);
+    font-size: 0.75rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
   }
   .ai-review-proposal--seed-note:empty::before {
     content: attr(data-placeholder);
     color: var(--theme-text-faint);
+  }
+  .ai-review-md-line {
+    color: var(--theme-text-secondary);
+    line-height: 1.75;
+    white-space: pre-wrap;
+  }
+  .ai-review-md-line + .ai-review-md-line {
+    margin-top: 0.35rem;
+  }
+  .ai-review-md-line--blank {
+    min-height: 1.1rem;
+    margin-top: 0.6rem;
+  }
+  .ai-review-md-line--paragraph {
+    margin-top: 0.2rem;
+  }
+  .ai-review-md-line--h1,
+  .ai-review-md-line--h2,
+  .ai-review-md-line--h3,
+  .ai-review-md-line--h4,
+  .ai-review-md-line--h5,
+  .ai-review-md-line--h6 {
+    color: var(--theme-text-primary);
+    font-weight: 700;
+    line-height: 1.3;
+    margin-top: 1.2rem;
+  }
+  .ai-review-md-line--h1 {
+    font-size: 1.9rem;
+    border-bottom: 1px solid var(--theme-border);
+    padding-bottom: 0.2rem;
+  }
+  .ai-review-md-line--h2 {
+    font-size: 1.55rem;
+    border-bottom: 1px solid var(--theme-border);
+    padding-bottom: 0.15rem;
+  }
+  .ai-review-md-line--h3 { font-size: 1.3rem; }
+  .ai-review-md-line--h4 { font-size: 1.15rem; }
+  .ai-review-md-line--h5 { font-size: 1rem; }
+  .ai-review-md-line--h6 { font-size: 0.92rem; color: var(--theme-text-muted); }
+  .ai-review-md-line--ul,
+  .ai-review-md-line--ol {
+    padding-left: 1.25rem;
+  }
+  .ai-review-md-line--quote {
+    border-left: 3px solid var(--theme-accent);
+    color: var(--theme-text-muted);
+    padding-left: 0.9rem;
+    font-style: italic;
+  }
+  .ai-review-md-line--code,
+  .ai-review-md-line--codefence {
+    font-family: var(--font-mono);
+    background: color-mix(in srgb, var(--theme-code-bg) 88%, transparent);
+    border: 1px solid color-mix(in srgb, var(--theme-border) 75%, transparent);
+    border-radius: 8px;
+    padding: 0.45rem 0.7rem;
+    line-height: 1.6;
+  }
+  .ai-review-md-line--codefence {
+    color: var(--theme-text-muted);
   }
 
   /* ── Offline banner ── */
