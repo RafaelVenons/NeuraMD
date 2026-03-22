@@ -198,4 +198,37 @@ test.describe("AI queue promise sequencing", () => {
     await expect(page.locator("[data-ai-review-target='historyList']")).toContainText(promiseTitle)
     await expect(page.locator("[data-ai-review-target='historyList']")).toContainText("Concluida")
   })
+
+  test("keeps the queue dock floating while the preview pane scrolls", async ({ page }) => {
+    const token = `${Date.now()}`
+    const scenario = runRailsScript("script/e2e/bootstrap_ai_queue_sequence.rb", { E2E_TOKEN: token })
+    const [promiseTitle] = scenario.promise_titles
+
+    await signIn(page, scenario.credentials)
+    await page.goto(scenario.note_path)
+    await expect(page.locator(".cm-editor")).toBeVisible()
+
+    await forceFallbackPolling(page)
+    await enqueuePromise(page, promiseTitle)
+    await refreshQueue(page)
+    await expectCard(page, promiseTitle, "queued", "Criar")
+
+    const queueDock = page.locator("[data-ai-review-target='queueDock']")
+    const previewPane = page.locator("#preview-pane")
+
+    const before = await queueDock.boundingBox()
+    expect(before).toBeTruthy()
+
+    await page.evaluate(() => {
+      const preview = document.querySelector("#preview-pane")
+      if (!preview) return
+      preview.scrollTop = 600
+      preview.dispatchEvent(new Event("scroll", { bubbles: true }))
+    })
+
+    const after = await queueDock.boundingBox()
+    expect(after).toBeTruthy()
+    expect(Math.abs(after.y - before.y)).toBeLessThanOrEqual(2)
+    await expect(previewPane).toBeVisible()
+  })
 })

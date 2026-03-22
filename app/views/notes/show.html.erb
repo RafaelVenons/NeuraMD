@@ -247,6 +247,11 @@
     </button>
   </div>
 
+  <aside data-ai-review-target="queueDock"
+         data-action="dragover->ai-review#handleQueueDockDragOver drop->ai-review#handleQueueDockDrop"
+         class="fixed bottom-0 right-4 z-50 hidden flex max-h-[70vh] flex-col items-end gap-2 overflow-y-auto pb-4 pr-1 pt-2">
+  </aside>
+
   <%# ── Main editor area ──────────────────────────────────── %>
   <div class="flex flex-1 min-h-0"
        data-editor-target="mainArea">
@@ -512,10 +517,6 @@ AI_ENABLED_PROVIDERS=ollama</pre>
           </section>
         </section>
 
-        <aside data-ai-review-target="queueDock"
-               data-action="dragover->ai-review#handleQueueDockDragOver drop->ai-review#handleQueueDockDrop"
-               class="fixed bottom-0 right-4 z-50 hidden flex max-h-[70vh] flex-col items-end gap-2 overflow-y-auto pb-4 pr-1 pt-2">
-        </aside>
       </div>
     </div>
   </div>
