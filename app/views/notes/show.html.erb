@@ -249,7 +249,7 @@
 
   <aside data-ai-review-target="queueDock"
          data-action="dragover->ai-review#handleQueueDockDragOver drop->ai-review#handleQueueDockDrop"
-         class="fixed bottom-24 right-4 z-50 hidden flex max-h-[70vh] flex-col items-end gap-2 overflow-y-auto pr-1">
+         class="fixed bottom-0 right-4 z-50 hidden flex max-h-[70vh] flex-col items-end gap-2 overflow-y-auto pb-4 pr-1 pt-2">
   </aside>
 
   <%# ── Main editor area ──────────────────────────────────── %>
@@ -469,17 +469,6 @@ AI_ENABLED_PROVIDERS=ollama</pre>
       </section>
 
       <div data-ai-review-target="previewShell" class="flex flex-1 min-h-0 flex-col">
-        <div class="preview-layout-toolbar">
-          <label class="preview-layout-toolbar__field">
-            <span>Rodape</span>
-            <select data-editor-target="contextMode" data-action="change->editor#updateContextMode">
-              <option value="graph">Grafo</option>
-              <option value="backlinks">Backlinks</option>
-              <option value="hidden">Oculto</option>
-            </select>
-          </label>
-        </div>
-
         <div class="preview-prose flex-1"
              data-editor-target="previewContent"
              data-preview-target="output">
@@ -492,6 +481,17 @@ AI_ENABLED_PROVIDERS=ollama</pre>
 
         <section class="note-context-panel"
                  data-editor-target="contextPanel">
+          <div class="preview-layout-toolbar">
+            <label class="preview-layout-toolbar__field">
+              <span>Rodape</span>
+              <select data-editor-target="contextMode" data-action="change->editor#updateContextMode">
+                <option value="graph">Grafo</option>
+                <option value="backlinks">Backlinks</option>
+                <option value="hidden">Oculto</option>
+              </select>
+            </label>
+          </div>
+
           <div class="note-graph-panel"
                data-editor-target="graphPanel">
             <div class="note-graph-embed"

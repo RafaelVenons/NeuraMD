@@ -1491,10 +1491,11 @@
   }
   .preview-layout-toolbar {
     display: flex;
-    justify-content: flex-end;
-    padding: 8px 12px;
+    justify-content: flex-start;
+    align-items: center;
+    padding: 10px 14px;
     border-bottom: 1px solid var(--toolbar-border);
-    background: color-mix(in srgb, var(--preview-bg) 90%, black);
+    background: color-mix(in srgb, var(--preview-bg) 92%, black);
     flex-shrink: 0;
   }
   .preview-layout-toolbar__field {
@@ -1537,6 +1538,11 @@
     flex: 0 0 360px;
     min-height: 140px;
     overflow: auto;
+    background: color-mix(in srgb, var(--preview-bg) 96%, black);
+  }
+  .note-context-panel--collapsed {
+    min-height: 0;
+    overflow: visible;
   }
 
   /* ── Preview prose ── */
@@ -1784,7 +1790,6 @@
     flex: 1 1 auto;
     padding-top: 1rem;
     padding-bottom: 0.5rem;
-    border-top: 1px solid var(--theme-border);
     padding-inline: 1.5rem;
     overflow: auto;
   }
@@ -1810,7 +1815,6 @@
 
   .note-graph-panel {
     flex: 1 1 auto;
-    border-top: 1px solid var(--theme-border);
   }
   .note-graph-embed {
     position: relative;

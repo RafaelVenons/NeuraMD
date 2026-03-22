@@ -280,6 +280,11 @@ export default class extends Controller {
   _applyContextHeight(height) {
     const bounded = Math.min(Math.max(height, 140), window.innerHeight * 0.72)
     this._contextHeight = bounded
+    if (this.contextModeTarget.value === "hidden") {
+      this.contextPanelTarget.style.flex = "0 0 auto"
+      return
+    }
+
     this.contextPanelTarget.style.flex = `0 0 ${bounded}px`
   }
 
@@ -287,10 +292,13 @@ export default class extends Controller {
     const isHidden = mode === "hidden"
     const showBacklinks = mode === "backlinks"
 
-    this.contextPanelTarget.classList.toggle("hidden", isHidden)
+    this.contextPanelTarget.classList.toggle("note-context-panel--collapsed", isHidden)
     this.contextResizeHandleTarget.classList.toggle("hidden", isHidden)
     this.graphPanelTarget.classList.toggle("hidden", showBacklinks || isHidden)
     this.backlinksPanelTarget.classList.toggle("hidden", !showBacklinks || isHidden)
+
+    if (isHidden) this.contextPanelTarget.style.flex = "0 0 auto"
+    else this._applyContextHeight(this._contextHeight)
   }
 
   _handlePointerMove(event) {
