@@ -71,11 +71,6 @@ Isso permite usar retorno direto no `return-type: "json"` sem parser intermediá
 }
 ```
 
-Arquivos prontos no repositório:
-
-- [airch.config.jsonc](/home/venom/projects/NeuraMD/script/waybar/airch.config.jsonc)
-- [airch.style.css](/home/venom/projects/NeuraMD/script/waybar/airch.style.css)
-
 O watcher emite as classes:
 
 - `idle`
