@@ -961,33 +961,34 @@ spec/
 Executar nesta ordem, porque cada etapa reduz ambiguidade da próxima e evita retrabalho entre editor, backend e UX de IA:
 
 #### Etapa A — Normalizar o contrato de links ativos
-- [ ] Definir o contrato de links ativos usando apenas `|uuid`, `|f:uuid`, `|c:uuid` e `|b:uuid`, sem introduzir `h:` como role persistido
-- [ ] Ajustar parser/extractor para reconhecer apenas `f:`, `c:`, `b:` além de `|uuid`
-- [ ] Ajustar `Links::SyncService` para considerar apenas o conteúdo latest da nota src como fonte de verdade
-- [ ] Ajustar busca/grafo para dar peso apenas a links ativos no latest, com semântica real apenas para `f:`, `b:` e `c:`
-- [ ] Cobrir com specs de service/request para active links, links legados e remoção ao sair do latest
+- [x] Definir o contrato de links ativos usando apenas `|uuid`, `|f:uuid`, `|c:uuid` e `|b:uuid`, sem introduzir `h:` como role persistido
+- [x] Ajustar parser/extractor para reconhecer apenas `f:`, `c:`, `b:` além de `|uuid`
+- [x] Ajustar `Links::SyncService` para considerar apenas o conteúdo latest da nota src como fonte de verdade
+- [x] Ajustar busca/grafo para dar peso apenas a links ativos no latest, com semântica real apenas para `f:`, `b:` e `c:`
+- [x] Cobrir com specs de service/request para active links, links legados e remoção ao sair do latest
 
 #### Etapa B — Fechar o fluxo de promessa com IA no backend
-- [ ] Ao escolher "gerar com IA", criar imediatamente a nota destino no backend, ainda vazia ou em estado preparado para hidratação assíncrona
-- [ ] Inserir no editor atual o wiki-link já resolvido com UUID real
-- [ ] Não navegar para a nota criada; a criação é backend-only nesse momento
-- [ ] Criar `ai_request` associado à nota recém-criada e colocá-lo na fila visual
-- [ ] Expor ação de desfazer/rejeitar que remove a nota criada no banco quando a resposta da IA não for aprovada
-- [ ] Cobrir com specs de request/system para criação sem navegação, enqueue assíncrono, undo e limpeza de banco
-- [ ] Validar o fluxo crítico em Playwright com duas promises consecutivas, cobrindo `queued -> running -> succeeded`, ordem serial de processamento e atualização visível da queue no shell
+- [x] Ao escolher "gerar com IA", criar imediatamente a nota destino no backend, ainda vazia ou em estado preparado para hidratação assíncrona
+- [x] Inserir no editor atual o wiki-link já resolvido com UUID real
+- [x] Não navegar para a nota criada; a criação é backend-only nesse momento
+- [x] Criar `ai_request` associado à nota recém-criada e colocá-lo na fila visual
+- [x] Expor ação de desfazer/rejeitar que remove a nota criada no banco quando a resposta da IA não for aprovada
+- [x] Cobrir com specs de request/system para criação sem navegação, enqueue assíncrono, undo e limpeza de banco
+- [x] Validar o fluxo crítico em Playwright com duas promises consecutivas, cobrindo `queued -> running -> succeeded`, ordem serial de processamento e atualização visível da queue no shell
 
 #### Etapa C — Reestruturar a UX operacional da IA
-- [ ] Separar estado de processamento do estado de resposta útil
-- [ ] Durante processamento, mostrar apenas balões flutuantes/queue cards, sem ocupar o preview
-- [ ] Permitir múltiplas requests simultâneas e cancelamento individual
-- [ ] Estruturar cada card da fila com três linhas: serviço, título da nota e modelo
-- [ ] Garantir fila vertical com frente da fila embaixo e scroll próprio no container
-- [ ] Implementar drag and drop com placeholder verdadeiro, sem duplicação visual do item arrastado
-- [ ] Mapear cor de borda por estado (`queued`, `processing`, `success`, `error`) e centralizar label curto por `serviceType + status`
-- [ ] Implementar retry de erro por clique no balão e blindagem contra respostas tardias após cancelamento
-- [ ] Só abrir workspace de resposta quando existir conteúdo relevante para revisão/aplicação
-- [ ] Cobrir com specs de system para fila, cancelamento, polling e ausência de takeover do preview
-- [ ] Tratar Playwright como validação obrigatória dos fluxos de queue que dependem de editor, autosave, shell persistente e atualização visual em tempo real
+- [x] Separar estado de processamento do estado de resposta útil
+- [x] Durante processamento, mostrar apenas balões flutuantes/queue cards, sem ocupar o preview
+- [x] Permitir múltiplas requests simultâneas e cancelamento individual
+- [x] Estruturar cada card da fila com três linhas: serviço, título da nota e modelo
+- [x] Garantir fila vertical com frente da fila embaixo e scroll próprio no container
+- [x] Implementar drag and drop com placeholder verdadeiro, sem duplicação visual do item arrastado
+- [x] Mapear cor de borda por estado (`queued`, `processing`, `success`, `error`) e centralizar label curto por `serviceType + status`
+- [x] Implementar blindagem explícita contra respostas tardias após cancelamento
+- [x] Implementar retry de erro por clique no balão
+- [x] Só abrir workspace de resposta quando existir conteúdo relevante para revisão/aplicação
+- [x] Cobrir com specs de system para fila, cancelamento, polling e ausência de takeover do preview
+- [x] Tratar Playwright como validação obrigatória dos fluxos de queue que dependem de editor, autosave, shell persistente e atualização visual em tempo real
 
 #### Etapa C.5 — Transformar `/notes` em shell persistente
 - [x] Extrair a casca estrutural do editor para permanecer montada entre trocas de nota
@@ -1021,31 +1022,31 @@ Executar nesta ordem, porque cada etapa reduz ambiguidade da próxima e evita re
   - ou também resultados aplicáveis/reabertos
 
 #### Etapa D — Endurecer preservação estrutural de wikilinks
-- [ ] Incluir nos prompts instruções explícitas para preservar a estrutura `[[texto|uuid]]`, `[[texto|f:uuid]]`, `[[texto|c:uuid]]` e `[[texto|b:uuid]]`
-- [ ] Implementar validação/pós-processamento para rejeitar ou corrigir respostas que corrompam wikilinks
-- [ ] Garantir que a IA possa alterar texto visível, mas nunca destruir o UUID nem os prefixos `f:`, `c:` e `b:` quando existirem
-- [ ] Cobrir com specs de service e system para revisão, melhoria de Markdown e tradução
+- [x] Incluir nos prompts instruções explícitas para preservar a estrutura `[[texto|uuid]]`, `[[texto|f:uuid]]`, `[[texto|c:uuid]]` e `[[texto|b:uuid]]`
+- [x] Implementar validação/pós-processamento para rejeitar ou corrigir respostas que corrompam wikilinks
+- [x] Garantir que a IA possa alterar texto visível, mas nunca destruir o UUID nem os prefixos `f:`, `c:` e `b:` quando existirem
+- [x] Cobrir com specs de service e system para revisão, melhoria de Markdown e tradução
 
 #### Etapa E — Reduzir e estabilizar a toolbar de IA
-- [ ] Limitar a toolbar a três ações: melhorar Markdown, revisão gramatical e tradução
-- [ ] Remover ou esconder entradas redundantes de sugestão/rewrite fora desse recorte
-- [ ] Garantir que cada ação abra o fluxo correto sem conflitar com a fila de jobs
-- [ ] Cobrir com system specs da toolbar mínima
+- [x] Limitar a toolbar a três ações: melhorar Markdown, revisão gramatical e tradução
+- [x] Remover ou esconder entradas redundantes de sugestão/rewrite fora desse recorte
+- [x] Garantir que cada ação abra o fluxo correto sem conflitar com a fila de jobs
+- [x] Cobrir com system specs da toolbar mínima
 
 #### Etapa F — Concluir tradução assistida com nota associada
-- [ ] Implementar UI com escolha independente de língua alvo e modelo
-- [ ] Criar/atualizar nota traduzida associada à original
-- [ ] Atualizar título da nota traduzida conforme a língua alvo
-- [ ] Inserir no conteúdo traduzido a associação `Traduzida de [[Titulo original|b:uuid]]`
-- [ ] Ajustar links relevantes da nota traduzida preservando UUIDs e sem quebrar a relação com a original
-- [ ] Não criar backlink sintético na nota original nem `brother` recíproco sem que o link exista no corpo latest da nota dst
-- [ ] Cobrir com specs de request/service/system para criação, associação e preservação estrutural
+- [x] Implementar UI com escolha independente de língua alvo e modelo
+- [x] Criar/atualizar nota traduzida associada à original
+- [x] Atualizar título da nota traduzida conforme a língua alvo
+- [x] Inserir no conteúdo traduzido a associação `Traduzida de [[Titulo original|b:uuid]]`
+- [x] Ajustar links relevantes da nota traduzida preservando UUIDs e sem quebrar a relação com a original
+- [x] Não criar backlink sintético na nota original nem `brother` recíproco sem que o link exista no corpo latest da nota dst
+- [x] Cobrir com specs de request/service/system para criação, associação e preservação estrutural
 
 #### Etapa G — Reconciliar grafo, busca e operações de descarte
-- [ ] Garantir que notas criadas por promessa com IA só entrem no grafo conforme seu latest válido
-- [ ] Garantir que o desfazer da promessa com IA remova nota, link e requests associados de forma consistente
-- [ ] Revisar impactos em pesquisa, backlinks e filtros do grafo
-- [ ] Rodar suíte de regressão focada em links, IA e tradução
+- [x] Garantir que notas criadas por promessa com IA só entrem no grafo conforme seu latest válido
+- [x] Garantir que o desfazer da promessa com IA remova nota, link e requests associados de forma consistente
+- [x] Revisar impactos em pesquisa, backlinks e filtros do grafo
+- [x] Rodar suíte de regressão focada em links, IA e tradução
 
 **Critério de sequência:** não avançar para a etapa seguinte sem ter teste reproduzindo o comportamento e sem validar que a etapa anterior não reabriu regressão em links, preview ou fila de IA.
 
