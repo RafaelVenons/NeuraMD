@@ -30,17 +30,16 @@ module Notes
       raise ArgumentError, "Conteúdo traduzido vazio." if @content.blank?
       raise ArgumentError, "Idioma alvo inválido." if @target_language.blank?
 
-      existing_note = translated_note_from_request
-      return existing_note if existing_note.present?
-
       ActiveRecord::Base.transaction do
-        translated_note = Note.create!(
+        translated_note = translated_note_from_request || build_translated_note!
+
+        translated_note.update!(
           title: resolved_title,
           note_kind: @source_note.note_kind,
           detected_language: @target_language
         )
 
-        revision = Notes::CheckpointService.call(
+        checkpoint = Notes::CheckpointService.call(
           note: translated_note,
           content: content_with_source_link,
           author: @author
@@ -48,7 +47,7 @@ module Notes
 
         metadata = @ai_request.metadata.merge(
           "translated_note_id" => translated_note.id,
-          "translated_note_revision_id" => revision.id,
+          "translated_note_revision_id" => checkpoint.revision.id,
           "translation_applied_at" => Time.current.iso8601,
           "translation_applied_by_id" => @author&.id
         )
@@ -67,18 +66,39 @@ module Notes
       Note.active.find_by(id: note_id)
     end
 
+    def build_translated_note!
+      Note.create!(
+        title: resolved_title,
+        note_kind: @source_note.note_kind,
+        detected_language: @target_language
+      )
+    end
+
     def resolved_title
       return @title if @title.present?
+      return translated_heading_title if translated_heading_title.present?
 
-      "#{@source_note.title} (#{language_label(@target_language)})"
+      @source_note.title
     end
 
     def content_with_source_link
-      footer = "\n\nTraduzida de [[#{@source_note.title}|b:#{@source_note.id}]]"
+      footer = "\n\n#{source_footer_label} [[#{@source_note.title}|b:#{@source_note.id}]]"
       body = @content.rstrip
       return body if body.include?(footer.strip)
 
       "#{body}#{footer}"
+    end
+
+    def translated_heading_title
+      @content.match(/^\s*#\s+(.+)$/)&.captures&.first&.to_s&.strip
+    end
+
+    def source_footer_label
+      english_target? ? "Translated from" : "Traduzida de"
+    end
+
+    def english_target?
+      @target_language.downcase.start_with?("en")
     end
 
     def language_label(language)

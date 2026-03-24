@@ -134,6 +134,85 @@ RSpec.describe Ai::ReviewService do
       expect(request.completed_at).to be_present
     end
 
+    it "preserves existing wikilink payloads during grammar review" do
+      uuid = SecureRandom.uuid
+      request = create(:ai_request, note_revision: note_revision, provider: "openai", capability: "grammar_review", input_text: "[[Pai|f:#{uuid}]] com erro.")
+      provider = instance_double(
+        Ai::OpenaiCompatibleProvider,
+        review: Ai::Result.new(
+          content: "[[Pai corrigido|f:#{uuid}]] com correcoes.",
+          provider: "openai",
+          model: "gpt-4o-mini"
+        )
+      )
+
+      allow(Ai::ProviderRegistry).to receive(:build).and_return(provider)
+
+      described_class.process_request!(request)
+
+      expect(request.reload.output_text).to eq("[[Pai corrigido|f:#{uuid}]] com correcoes.")
+    end
+
+    it "restores missing wikilink payloads during rewrite when the AI returns a bare wikilink" do
+      uuid = SecureRandom.uuid
+      request = create(:ai_request, note_revision: note_revision, provider: "openai", capability: "rewrite", input_text: "Bloco [[Referencia|b:#{uuid}]] para reescrever.")
+      provider = instance_double(
+        Ai::OpenaiCompatibleProvider,
+        review: Ai::Result.new(
+          content: "Bloco refinado com [[Referencia polida]] para leitura.",
+          provider: "openai",
+          model: "gpt-4o-mini"
+        )
+      )
+
+      allow(Ai::ProviderRegistry).to receive(:build).and_return(provider)
+
+      described_class.process_request!(request)
+
+      expect(request.reload.output_text).to eq("Bloco refinado com [[Referencia polida|b:#{uuid}]] para leitura.")
+    end
+
+    it "keeps the translation result and appends the original wikilink when the provider drops a payload" do
+      uuid = SecureRandom.uuid
+      request = create(:ai_request, note_revision: note_revision, provider: "openai", capability: "translate", input_text: "[[Resumo|b:#{uuid}]]", metadata: {"language" => "pt-BR", "target_language" => "en-US"})
+      provider = instance_double(
+        Ai::OpenaiCompatibleProvider,
+        review: Ai::Result.new(
+          content: "Summary without link",
+          provider: "openai",
+          model: "gpt-4o-mini"
+        )
+      )
+
+      allow(Ai::ProviderRegistry).to receive(:build).and_return(provider)
+
+      outcome = described_class.process_request!(request)
+      request.reload
+
+      expect(outcome).to eq(:succeeded)
+      expect(request.status).to eq("succeeded")
+      expect(request.last_error_kind).to be_nil
+      expect(request.output_text).to eq("Summary without link [[Resumo|b:#{uuid}]]")
+    end
+
+    it "removes outer markdown fences from non-seed responses before persisting" do
+      request = create(:ai_request, note_revision: note_revision, provider: "openai", capability: "rewrite", input_text: "Texto base.")
+      provider = instance_double(
+        Ai::OpenaiCompatibleProvider,
+        review: Ai::Result.new(
+          content: "```markdown\nTexto refinado.\n```",
+          provider: "openai",
+          model: "gpt-4o-mini"
+        )
+      )
+
+      allow(Ai::ProviderRegistry).to receive(:build).and_return(provider)
+
+      described_class.process_request!(request)
+
+      expect(request.reload.output_text).to eq("Texto refinado.")
+    end
+
     it "defers serialized host execution when a higher-priority queued request exists" do
       prioritized = create(
         :ai_request,
@@ -275,7 +354,7 @@ RSpec.describe Ai::ReviewService do
       expect(request.reload.output_text).to eq("# Nova nota\n\nCorpo inicial.")
     end
 
-    it "fails a seed note request with validation status when the provider breaks wikilink structure" do
+    it "keeps a seed note request succeeded after sanitizing an invalid wikilink payload" do
       request = create(:ai_request, note_revision: note_revision, capability: "seed_note", provider: "ollama", input_text: "Texto", metadata: {"language" => "pt-BR", "promise_note_id" => create(:note, title: "Nova nota").id})
       provider = instance_double(
         Ai::OllamaProvider,
@@ -291,10 +370,10 @@ RSpec.describe Ai::ReviewService do
       outcome = described_class.process_request!(request)
       request.reload
 
-      expect(outcome).to include(status: :failed)
-      expect(request.status).to eq("failed")
-      expect(request.last_error_kind).to eq("validation")
-      expect(request.output_text).to be_nil
+      expect(outcome).to eq(:succeeded)
+      expect(request.status).to eq("succeeded")
+      expect(request.last_error_kind).to be_nil
+      expect(request.output_text).to eq("[[Nota]]")
     end
 
     it "schedules retry for transient failures" do

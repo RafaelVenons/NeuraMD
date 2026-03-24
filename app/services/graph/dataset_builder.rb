@@ -51,6 +51,7 @@ module Graph
 
     def load_notes
       scope
+        .merge(Note.with_latest_content)
         .includes(:head_revision, :tags)
         .order(updated_at: :desc)
         .to_a

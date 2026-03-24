@@ -18,10 +18,11 @@ class Note < ApplicationRecord
   before_validation :generate_slug, on: :create
 
   scope :active, -> { where(deleted_at: nil) }
+  scope :with_latest_content, -> { active.where.not(head_revision_id: nil) }
   scope :deleted, -> { where.not(deleted_at: nil) }
   scope :search_by_title, ->(query, exclude_id: nil) {
     normalized = query.to_s.strip
-    relation = active
+    relation = with_latest_content
     relation = relation.where.not(id: exclude_id) if exclude_id.present?
     next relation.order(:title).limit(10) if normalized.blank?
 

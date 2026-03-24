@@ -34,16 +34,16 @@ RSpec.describe Ai::SeedNoteOutputGuard do
       }.to raise_error(Ai::InvalidOutputError, /instruc/i)
     end
 
-    it "rejects invalid wikilink payloads" do
-      expect {
-        described_class.normalize!(content: "[[Nota|nao-e-uuid]]", input_text: "prompt bruto")
-      }.to raise_error(Ai::InvalidOutputError, /wikilink invalido/)
+    it "downgrades invalid wikilink payloads instead of rejecting the seed note" do
+      result = described_class.normalize!(content: "[[Nota|nao-e-uuid]]", input_text: "prompt bruto")
+
+      expect(result).to eq("[[Nota]]")
     end
 
-    it "rejects unbalanced wikilink brackets" do
-      expect {
-        described_class.normalize!(content: "[[Nota|123", input_text: "prompt bruto")
-      }.to raise_error(Ai::InvalidOutputError, /colchetes desbalanceados/)
+    it "keeps unbalanced wikilink brackets instead of rejecting the seed note" do
+      result = described_class.normalize!(content: "[[Nota|123", input_text: "prompt bruto")
+
+      expect(result).to eq("[[Nota|123")
     end
 
     it "accepts valid wikilinks with supported roles" do

@@ -57,7 +57,7 @@ RSpec.describe "AI", type: :request do
   describe "POST /notes/:slug/ai_review" do
     let(:headers) { {"Content-Type" => "application/json", "Accept" => "application/json"} }
     let(:document_markdown) { note.head_revision.content_markdown }
-    let(:provider) { instance_double(Ai::OpenaiCompatibleProvider, name: "openai", model: "gpt-4o-mini") }
+    let(:provider) { instance_double(Ai::OpenaiCompatibleProvider, name: "openai", model: "gpt-4o-mini", base_url: "https://example.test/v1") }
 
     it "enqueues grammar review and persists the queued request" do
       allow(Ai::ProviderRegistry).to receive(:resolve_selection).and_return(
@@ -333,6 +333,43 @@ RSpec.describe "AI", type: :request do
         params: {
           content: "# Clinical Summary\n\nTranslated body.",
           target_language: "en-US"
+        },
+        as: :json
+
+      expect(response).to have_http_status(:created)
+      expect(response.parsed_body).to include(
+        "note_id" => translated_note.id,
+        "note_slug" => translated_note.slug
+      )
+    end
+
+    it "updates the existing translated note for the same request" do
+      request_record = create(
+        :ai_request,
+        note_revision: note.head_revision,
+        capability: "translate",
+        status: "succeeded",
+        provider: "ollama",
+        requested_provider: "ollama",
+        model: "qwen2:1.5b",
+        metadata: {"language" => "pt-BR", "target_language" => "en-US"}
+      )
+      translated_note = create(:note, :with_head_revision, detected_language: "en-US")
+
+      expect(Notes::TranslationNoteService).to receive(:call).with(
+        source_note: note,
+        ai_request: request_record,
+        content: "# Clinical Summary\n\nUpdated body.",
+        target_language: "en-US",
+        title: "Clinical Summary (Reviewed)",
+        author: user
+      ).and_return(translated_note)
+
+      post ai_request_translated_note_note_path(note.slug, request_record.id),
+        params: {
+          content: "# Clinical Summary\n\nUpdated body.",
+          target_language: "en-US",
+          title: "Clinical Summary (Reviewed)"
         },
         as: :json
 

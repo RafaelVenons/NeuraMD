@@ -26,12 +26,6 @@ module Ai
           else
             selection(select_model("OLLAMA_ROUTE_GRAMMAR_LONG_MODEL", ["qwen2.5:1.5b", "qwen2.5:3b", "llama3.2:3b"], configured_model:, available_models:), reason: "grammar_long")
           end
-        when "suggest"
-          if text_length <= threshold("OLLAMA_ROUTE_SUGGEST_SHORT_MAX_CHARS", 900)
-            selection(select_model("OLLAMA_ROUTE_SUGGEST_SHORT_MODEL", ["qwen2:1.5b", "qwen2.5:1.5b", "llama3.2:1b"], configured_model:, available_models:), reason: "suggest_short")
-          else
-            selection(select_model("OLLAMA_ROUTE_SUGGEST_LONG_MODEL", ["qwen2.5:3b", "qwen2.5:1.5b", "llama3.2:3b"], configured_model:, available_models:), reason: "suggest_long")
-          end
         when "rewrite"
           if text_length <= threshold("OLLAMA_ROUTE_REWRITE_SHORT_MAX_CHARS", 900)
             selection(select_model("OLLAMA_ROUTE_REWRITE_SHORT_MODEL", ["qwen2.5:1.5b", "qwen2:1.5b", "llama3.2:1b"], configured_model:, available_models:), reason: "rewrite_short")

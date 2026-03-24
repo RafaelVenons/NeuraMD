@@ -6,14 +6,9 @@ RSpec.describe Ai::PromptBuilder do
       prompt = described_class.system_prompt(capability: "grammar_review", language: "pt-BR")
 
       expect(prompt).to include("grammar and spelling corrector")
+      expect(prompt).to include("[[Title|uuid]]")
       expect(prompt).to include("Preferred language of the output: pt-BR.")
-    end
-
-    it "builds the suggest prompt" do
-      prompt = described_class.system_prompt(capability: "suggest", language: nil)
-
-      expect(prompt).to include("editorial assistant")
-      expect(prompt).to include("Improve clarity, flow, and readability")
+      expect(prompt).to include("Return the full answer only in pt-BR.")
     end
 
     it "builds the translate prompt with source and target languages" do
@@ -24,8 +19,10 @@ RSpec.describe Ai::PromptBuilder do
       )
 
       expect(prompt).to include("translation assistant")
+      expect(prompt).to include("You may rewrite only the visible text before the pipe.")
       expect(prompt).to include("Source language: pt-BR.")
       expect(prompt).to include("Target language: en-US.")
+      expect(prompt).to include("Return the full answer only in en-US.")
     end
 
     it "builds the seed note prompt" do
@@ -35,6 +32,7 @@ RSpec.describe Ai::PromptBuilder do
       expect(prompt).to include("Never wrap the answer in ```markdown fences")
       expect(prompt).to include("[[Title|uuid]]")
       expect(prompt).to include("Preferred language of the output: pt-BR.")
+      expect(prompt).to include("Return the full answer only in pt-BR.")
     end
 
     it "rejects unsupported capabilities" do

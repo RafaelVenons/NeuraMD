@@ -79,6 +79,7 @@ module Search
 
     def joined_scope
       @joined_scope ||= scope
+        .merge(Note.with_latest_content)
         .joins("LEFT JOIN note_revisions search_revisions ON search_revisions.id = notes.head_revision_id")
         .includes(:head_revision)
     end

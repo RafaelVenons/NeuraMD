@@ -190,9 +190,9 @@ RSpec.describe "Notes", type: :request do
 
   describe "GET /notes/search" do
     let(:suffix) { SecureRandom.hex(4) }
-    let!(:exactish) { create(:note, title: "Cardio Geral #{suffix}") }
-    let!(:fuzzy) { create(:note, title: "Cardiologia Avancada #{suffix}") }
-    let!(:other) { create(:note, title: "Neurologia") }
+    let!(:exactish) { create(:note, :with_head_revision, title: "Cardio Geral #{suffix}") }
+    let!(:fuzzy) { create(:note, :with_head_revision, title: "Cardiologia Avancada #{suffix}") }
+    let!(:other) { create(:note, :with_head_revision, title: "Neurologia") }
 
     it "returns title matches ordered by relevance" do
       get search_notes_path, params: { q: "cardio" }
@@ -224,6 +224,28 @@ RSpec.describe "Notes", type: :request do
       expect(payload["results"].first["title"]).to eq("Neurologia")
       expect(payload["results"].first["snippet"]).to include("arritmia")
       expect(payload["meta"]["limit"]).to eq(5)
+    end
+
+    it "omits notes without latest content from title search and finder results" do
+      visible = create(:note, title: "Cardio visivel")
+      visible_revision = create(:note_revision, note: visible, content_markdown: "Conteudo de cardio visivel")
+      visible.update_columns(head_revision_id: visible_revision.id)
+
+      hidden = create(:note, title: "Cardio oculto", head_revision: nil)
+
+      get search_notes_path, params: { q: "cardio" }
+
+      expect(response).to have_http_status(:ok)
+      titles = response.parsed_body.map { |item| item["title"] }
+      expect(titles).to include("Cardio visivel")
+      expect(titles).not_to include("Cardio oculto")
+
+      get search_notes_path, params: { q: "cardio", mode: "finder", limit: 5 }
+
+      expect(response).to have_http_status(:ok)
+      finder_titles = response.parsed_body["results"].map { |item| item["title"] }
+      expect(finder_titles).to include("Cardio visivel")
+      expect(finder_titles).not_to include("Cardio oculto")
     end
 
     it "strips wikilink UUIDs from finder snippets" do

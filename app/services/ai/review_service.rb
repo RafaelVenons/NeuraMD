@@ -6,7 +6,7 @@ require_relative "provider_registry"
 
 module Ai
   class ReviewService
-    CAPABILITIES = %w[suggest rewrite grammar_review translate seed_note].freeze
+    CAPABILITIES = %w[rewrite grammar_review translate seed_note].freeze
     MAX_ATTEMPTS = 3
 
     class << self
@@ -109,7 +109,7 @@ module Ai
 
         provider = ProviderRegistry.build(request.requested_provider, model_name: request.metadata["requested_model"])
         result = provider.review(
-          capability: request.capability,
+          capability: normalized_capability(request.capability),
           text: request.input_text,
           language: request.metadata["language"],
           target_language: request.metadata["target_language"]
@@ -187,11 +187,8 @@ module Ai
       def with_execution_slot_lock(request)
         ApplicationRecord.transaction(requires_new: true) do
           advisory_key = advisory_lock_key_for(request)
-          ApplicationRecord.connection.exec_query(
-            "SELECT pg_advisory_xact_lock($1)",
-            "AI execution slot lock",
-            [[nil, advisory_key]]
-          )
+          sql = ApplicationRecord.send(:sanitize_sql_array, ["SELECT pg_advisory_xact_lock(?)", advisory_key])
+          ApplicationRecord.connection.select_value(sql, "AI execution slot lock")
           yield
         end
       end
@@ -289,11 +286,15 @@ module Ai
       end
 
       def request_hash(result:, request:)
-        Digest::SHA256.hexdigest([result.provider, result.model, request.capability, request.input_text].join(":"))
+        Digest::SHA256.hexdigest([result.provider, result.model, normalized_capability(request.capability), request.input_text].join(":"))
       end
 
       def prompt_summary(capability, text)
         "#{capability}: #{text.to_s.truncate(240)}"
+      end
+
+      def normalized_capability(capability)
+        capability.to_s == "suggest" ? "rewrite" : capability.to_s
       end
 
       def classify_error(error)
@@ -318,9 +319,16 @@ module Ai
       end
 
       def normalize_result_content(request, content)
-        return content unless request.capability == "seed_note"
+        normalized_capability = normalized_capability(request.capability)
+        return SeedNoteOutputGuard.normalize!(content:, input_text: request.input_text) if normalized_capability == "seed_note"
 
-        SeedNoteOutputGuard.normalize!(content:, input_text: request.input_text)
+        normalized = OutputSanitizer.normalize(content)
+
+        if %w[rewrite grammar_review translate].include?(normalized_capability)
+          return WikilinkOutputGuard.normalize!(content: normalized, source_text: request.input_text)
+        end
+
+        normalized
       end
     end
   end

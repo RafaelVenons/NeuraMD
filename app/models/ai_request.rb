@@ -1,5 +1,5 @@
 class AiRequest < ApplicationRecord
-  CAPABILITIES = %w[suggest rewrite grammar_review translate tts seed_note].freeze
+  CAPABILITIES = %w[rewrite grammar_review translate tts seed_note].freeze
   STATUSES = %w[queued running retrying succeeded failed canceled].freeze
   ERROR_KINDS = %w[transient permanent validation].freeze
 
@@ -130,6 +130,7 @@ class AiRequest < ApplicationRecord
 
   def realtime_payload
     promise_note = promise_note_record
+    translated_note = translated_note_record
 
     {
       id: id,
@@ -162,6 +163,9 @@ class AiRequest < ApplicationRecord
       promise_note_id: metadata_payload["promise_note_id"],
       promise_note_title: metadata_payload["promise_note_title"],
       promise_note_slug: promise_note&.slug,
+      translated_note_id: metadata_payload["translated_note_id"],
+      translated_note_title: translated_note&.title,
+      translated_note_slug: translated_note&.slug,
       queue_hidden: queue_hidden?
     }
   end
@@ -196,6 +200,13 @@ class AiRequest < ApplicationRecord
     return nil if promise_note_id.blank?
 
     Note.active.find_by(id: promise_note_id)
+  end
+
+  def translated_note_record
+    translated_note_id = metadata_payload["translated_note_id"]
+    return nil if translated_note_id.blank?
+
+    Note.active.find_by(id: translated_note_id)
   end
 
   class << self

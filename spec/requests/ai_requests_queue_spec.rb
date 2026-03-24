@@ -8,6 +8,7 @@ RSpec.describe "AI requests queue API", type: :request do
   it "returns the global queue as json" do
     note = create(:note, :with_head_revision)
     other_note = create(:note, :with_head_revision, title: "Nota Global")
+    translated_note = create(:note, :with_head_revision, title: "Nota Global Traduzida", detected_language: "en-US")
     request_record = create(
       :ai_request,
       note_revision: note.head_revision,
@@ -25,7 +26,10 @@ RSpec.describe "AI requests queue API", type: :request do
       requested_provider: "openai",
       model: "gpt-4o-mini",
       status: "succeeded",
-      completed_at: Time.current
+      completed_at: Time.current,
+      metadata: {
+        "translated_note_id" => translated_note.id
+      }
     )
 
     get ai_requests_dashboard_path(format: :json)
@@ -45,6 +49,7 @@ RSpec.describe "AI requests queue API", type: :request do
         "id" => completed_request.id,
         "note_slug" => other_note.slug,
         "note_title" => "Nota Global",
+        "translated_note_slug" => translated_note.slug,
         "status" => "succeeded"
       )
     )

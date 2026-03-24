@@ -51,7 +51,7 @@ RSpec.describe "AI providers" do
         }
       )
 
-      result = provider.review(capability: "suggest", text: "Texto.", language: nil)
+      result = provider.review(capability: "rewrite", text: "Texto.", language: "pt-BR")
 
       expect(result.content).to eq("Texto corrigido.")
     end

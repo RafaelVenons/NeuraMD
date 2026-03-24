@@ -83,4 +83,25 @@ RSpec.describe AiRequest, type: :model do
       remote_hint: "Job remoto longo no AIrch. Pode fechar e voltar depois."
     )
   end
+
+  it "includes translated note navigation in the realtime payload when available" do
+    source_note = create(:note, :with_head_revision)
+    translated_note = create(:note, :with_head_revision, title: "Translated")
+    request = create(
+      :ai_request,
+      note_revision: source_note.head_revision,
+      capability: "translate",
+      metadata: {
+        "language" => "pt-BR",
+        "target_language" => "en-US",
+        "translated_note_id" => translated_note.id
+      }
+    )
+
+    expect(request.realtime_payload).to include(
+      translated_note_id: translated_note.id,
+      translated_note_title: "Translated",
+      translated_note_slug: translated_note.slug
+    )
+  end
 end

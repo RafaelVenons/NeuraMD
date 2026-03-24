@@ -144,6 +144,26 @@ RSpec.describe "Graphs", type: :request do
       expect(response.parsed_body["links"]).to eq([])
     end
 
+    it "omits promise-created notes without latest content and their links from the graph dataset" do
+      source = create(:note, title: "Origem promessa")
+      source_revision = create(:note_revision, note: source, content_markdown: "Abrir promessa")
+      source.update_columns(head_revision_id: source_revision.id)
+
+      promise_note = create(:note, title: "Promessa vazia", head_revision: nil)
+      create(:note_link, src_note: source, dst_note: promise_note, created_in_revision: source_revision, active: true)
+
+      get api_graph_path, headers: { "ACCEPT" => "application/json" }
+
+      expect(response).to have_http_status(:ok)
+
+      note_ids = response.parsed_body["notes"].map { |item| item["id"] }
+      link_pairs = response.parsed_body["links"].map { |item| [item["src_note_id"], item["dst_note_id"]] }
+
+      expect(note_ids).to include(source.id)
+      expect(note_ids).not_to include(promise_note.id)
+      expect(link_pairs).not_to include([source.id, promise_note.id])
+    end
+
     it "keeps the graph available when a note revision cannot be decrypted" do
       broken_note = create(:note, title: "Quebrada")
       broken_revision = create(:note_revision, note: broken_note, content_markdown: "Criar [[Promessa quebrada]]")
