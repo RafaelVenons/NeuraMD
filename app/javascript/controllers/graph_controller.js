@@ -1117,6 +1117,7 @@ export default class extends Controller {
     this.state.ui.pinnedTooltipNodeId = nodeId
     this.state.ui.focusDepth = 2
     if (this.hasFocusDepthTarget) this.focusDepthTarget.value = "2"
+    this.state.layout.manualPositions.clear()
     this.prioritizeFocusedNodeTags(nodeId)
     this.renderSidebar()
     this.applyDisplayState({ relayout: true, animateFocus: true })

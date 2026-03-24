@@ -2,6 +2,7 @@ import graphologyLayout from "graphology-layout"
 import forceAtlas2 from "graphology-layout-forceatlas2"
 import noverlap from "graphology-layout-noverlap"
 import { resolveNodeDepth } from "graph/graph_focus"
+import { relaxForces, isLayoutDegenerate } from "graph/graph_force_relax"
 
 export function applyLayout(graph, state, options = {}) {
   if (!graph || graph.order === 0) return
@@ -38,6 +39,12 @@ export function applyLayout(graph, state, options = {}) {
   arrangeFocusDepthRings(graph, state)
   constrainViewportExtent(graph)
   applyManualPositions(graph, state)
+
+  if (isLayoutDegenerate(graph)) {
+    relaxForces(graph, { iterations: 80, temperature: 0.18 })
+    constrainViewportExtent(graph)
+  }
+
   return captureNodePositions(graph)
 }
 
@@ -87,23 +94,128 @@ function arrangeFocusDepthRings(graph, state) {
     depthRadii.set(depth, ringSpacing * depth)
   }
 
-  const bucketMap = new Map()
-  depthOnePlacements.forEach((placement) => {
-    const bucketKey = `${placement.depth}:${placement.side}:${placement.verticalBand}:${placement.distanceBand}`
-    const bucket = bucketMap.get(bucketKey) || []
-    if (!bucket.some((entry) => entry.nodeId === placement.nodeId)) bucket.push(placement)
-    bucketMap.set(bucketKey, bucket)
+  const ringOneRadius = depthRadii.get(1) || ringSpacing
+  const depthOneNodeIdSet = new Set(anchoredNodeIds)
+
+  // --- Barycentric ordering for depth-1 ring (minimizes edge crossings) ---
+  const barycentricEntries = computeBarycentricOrder(graph, state, focusedNodeId, anchoredNodeIds, focus, maxDepth)
+  const minGap = anchoredNodeIds.length > 1
+    ? Math.min(Math.PI * 2 / anchoredNodeIds.length, Math.PI / 8)
+    : 0
+  const spacedAngles = distributeAnglesWithMinimumGap(
+    barycentricEntries.map((entry) => entry.angle),
+    minGap
+  )
+
+  barycentricEntries.forEach((entry, index) => {
+    graph.mergeNodeAttributes(entry.nodeId, {
+      x: focus.x + Math.cos(spacedAngles[index]) * ringOneRadius,
+      y: focus.y + Math.sin(spacedAngles[index]) * ringOneRadius
+    })
   })
 
-  bucketMap.forEach((bucket) => {
-    const radius = depthRadii.get(1) || ringSpacing
-    positionPlacementBucketOnRing(graph, bucket, focus, radius, intensity)
-  })
-  enforceRingAngularSpacing(graph, focus, anchoredNodeIds, depthRadii.get(1) || ringSpacing, Math.PI / 18)
-
+  // --- Arrange outer depth rings (depth 2+) ---
   for (let depth = 2; depth <= maxDepth; depth += 1) {
     arrangeOuterDepthRing(graph, state, focus, focusedNodeId, depth, depthRadii.get(depth), ringSpacing)
   }
+
+  // --- Exclusion zone: push depth-2+ nodes outside ring-1 buffer ---
+  const exclusionRadius = ringOneRadius * 1.35
+  enforceExclusionZone(graph, state, focus, focusedNodeId, depthOneNodeIdSet, exclusionRadius)
+}
+
+/**
+ * Barycentric ordering: for each depth-1 node, compute the angle where its
+ * depth-2 connections pull it, then sort by that angle. This naturally minimizes
+ * edge crossings between the ring and outer nodes.
+ *
+ * Falls back to hierarchy-based angles for nodes with no depth-2 connections.
+ */
+function computeBarycentricOrder(graph, state, focusedNodeId, depthOneNodeIds, focus, maxDepth) {
+  const depth2NodeIds = maxDepth >= 2
+    ? new Set([...(state.indexes.neighborDepthCache.get(focusedNodeId)?.[2] || new Set())]
+        .filter((id) => graph.hasNode(id) && resolveNodeDepth(id, focusedNodeId, state.indexes, 2) === 2))
+    : new Set()
+
+  const entries = depthOneNodeIds.map((nodeId) => {
+    const pullAngles = []
+
+    // Collect angles from depth-2 neighbors of this depth-1 node
+    for (const edgeId of state.indexes.outEdgesByNodeId.get(nodeId) || []) {
+      const targetId = graph.target(edgeId)
+      if (depth2NodeIds.has(targetId)) {
+        pullAngles.push(angleFromFocus(graph.getNodeAttributes(targetId), focus))
+      }
+    }
+    for (const edgeId of state.indexes.inEdgesByNodeId.get(nodeId) || []) {
+      const sourceId = graph.source(edgeId)
+      if (depth2NodeIds.has(sourceId)) {
+        pullAngles.push(angleFromFocus(graph.getNodeAttributes(sourceId), focus))
+      }
+    }
+
+    let angle
+    if (pullAngles.length > 0) {
+      angle = averageAngles(pullAngles)
+    } else {
+      // Fallback: use hierarchy-based placement angle
+      angle = resolveHierarchyAngle(graph, state, nodeId, focusedNodeId, focus)
+    }
+
+    return { nodeId, angle: normalizeAngle(angle) }
+  })
+
+  entries.sort((a, b) => a.angle - b.angle)
+  return entries
+}
+
+/**
+ * Resolve a hierarchy-based angle for a depth-1 node (fallback when no depth-2 pull).
+ */
+function resolveHierarchyAngle(graph, state, nodeId, focusedNodeId, focus) {
+  for (const edgeId of state.indexes.outEdgesByNodeId.get(focusedNodeId) || []) {
+    if (graph.target(edgeId) === nodeId) {
+      const placement = resolveRelativePlacement(graph.getEdgeAttribute(edgeId, "hierRole") || null, "outbound")
+      return angleForBand(placement.side, placement.verticalBand)
+    }
+  }
+  for (const edgeId of state.indexes.inEdgesByNodeId.get(focusedNodeId) || []) {
+    if (graph.source(edgeId) === nodeId) {
+      const placement = resolveRelativePlacement(graph.getEdgeAttribute(edgeId, "hierRole") || null, "inbound")
+      return angleForBand(placement.side, placement.verticalBand)
+    }
+  }
+  return angleFromFocus(graph.getNodeAttributes(nodeId), focus)
+}
+
+/**
+ * Enforce exclusion zone: push any depth-2+ node that's inside the ring-1 buffer
+ * radially outward so the ring region stays clean.
+ */
+function enforceExclusionZone(graph, state, focus, focusedNodeId, depthOneNodeIdSet, exclusionRadius) {
+  graph.forEachNode((nodeId, attrs) => {
+    if (nodeId === focusedNodeId || depthOneNodeIdSet.has(nodeId)) return
+
+    const dx = attrs.x - focus.x
+    const dy = attrs.y - focus.y
+    const dist = Math.sqrt(dx * dx + dy * dy)
+
+    if (dist < exclusionRadius && dist > 0.0001) {
+      const pushRadius = exclusionRadius * 1.1
+      const angle = Math.atan2(dy, dx)
+      graph.mergeNodeAttributes(nodeId, {
+        x: focus.x + Math.cos(angle) * pushRadius,
+        y: focus.y + Math.sin(angle) * pushRadius
+      })
+    } else if (dist <= 0.0001) {
+      // Overlapping with focus — push to a random angle outside exclusion
+      const angle = Math.PI * 0.25
+      graph.mergeNodeAttributes(nodeId, {
+        x: focus.x + Math.cos(angle) * exclusionRadius * 1.2,
+        y: focus.y + Math.sin(angle) * exclusionRadius * 1.2
+      })
+    }
+  })
 }
 
 function resolveBaseHierarchyDistance(graph, focus, nodeIds) {
@@ -166,61 +278,6 @@ function resolveRelativePlacement(role, direction) {
 
   if (role === "same_level") return { side, verticalBand: "mid", distanceBand: "normal" }
   return { side: "free", verticalBand: "soft", distanceBand: "far", placementMode: "soft" }
-}
-
-function positionPlacementBucketOnRing(graph, bucket, focus, radius, intensity) {
-  if (bucket.length === 0) return
-
-  if (bucket[0].placementMode === "soft") {
-    positionSoftPlacementBucketOnRing(graph, bucket, focus, radius)
-    return
-  }
-
-  const [{ side, verticalBand, distanceBand }] = bucket
-  const orderedBucket = [...bucket].sort((left, right) => {
-    const leftNode = graph.getNodeAttributes(left.nodeId)
-    const rightNode = graph.getNodeAttributes(right.nodeId)
-    return leftNode.y - rightNode.y
-  })
-
-  const centerAngle = angleForBand(side, verticalBand)
-  const arcStep = orderedBucket.length > 1
-    ? interpolate(Math.PI / 16, Math.PI / 12, intensity)
-    : 0
-  const bucketRadius = distanceBand === "far" ? radius * 1.26 : radius
-
-  orderedBucket.forEach((entry, index) => {
-    const centeredIndex = index - ((orderedBucket.length - 1) / 2)
-    const angle = centerAngle + centeredIndex * arcStep
-    graph.mergeNodeAttributes(entry.nodeId, {
-      x: focus.x + Math.cos(angle) * bucketRadius,
-      y: focus.y + Math.sin(angle) * bucketRadius
-    })
-  })
-}
-
-function positionSoftPlacementBucketOnRing(graph, bucket, focus, radius) {
-  const bucketRadius = radius * 1.16
-  const minGap = Math.PI / 14
-  const orderedBucket = [...bucket]
-    .map((entry) => ({
-      ...entry,
-      currentAngle: normalizeAngle(angleFromFocus(graph.getNodeAttributes(entry.nodeId), focus))
-    }))
-    .sort((left, right) => left.currentAngle - right.currentAngle)
-
-  const spacedAngles = distributeAnglesWithMinimumGap(
-    orderedBucket.map((entry) => entry.currentAngle),
-    minGap
-  )
-
-  orderedBucket.forEach((entry, index) => {
-    const angle = spacedAngles[index]
-    graph.mergeNodeAttributes(entry.nodeId, {
-      x: focus.x + Math.cos(angle) * bucketRadius,
-      y: focus.y + Math.sin(angle) * bucketRadius
-    })
-  })
 }
 
 function angleForBand(side, verticalBand) {

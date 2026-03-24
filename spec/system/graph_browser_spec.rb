@@ -759,4 +759,144 @@ RSpec.describe "Graph browser", type: :system do
     expect(page).to have_current_path(graph_path, wait: 10)
     expect(page).to have_css("[data-controller='graph']", wait: 10)
   end
+
+  it "recovers from a node dragged extremely far away via force relaxation on focus" do
+    notes = Array.new(5) do |index|
+      note = create(:note, title: "Force #{index + 1}")
+      revision = create(:note_revision, note:, content_markdown: "Content #{index + 1}")
+      note.update_columns(head_revision_id: revision.id)
+      note
+    end
+
+    create(:note_link, src_note: notes[0], dst_note: notes[1], created_in_revision: notes[0].head_revision, hier_role: "target_is_parent")
+    create(:note_link, src_note: notes[0], dst_note: notes[2], created_in_revision: notes[0].head_revision, hier_role: "target_is_child")
+    create(:note_link, src_note: notes[1], dst_note: notes[3], created_in_revision: notes[1].head_revision, hier_role: "same_level")
+    create(:note_link, src_note: notes[2], dst_note: notes[4], created_in_revision: notes[2].head_revision, hier_role: nil)
+
+    visit graph_path
+    expect(page).to have_css(".sigma-mouse", wait: 10)
+    expect(page).to have_text("5 notas · 4 links", wait: 10)
+
+    # Capture initial positions and verify nodes are spread out
+    initial_state = page.evaluate_script(<<~JS, notes.map(&:id))
+      (() => {
+        const ids = arguments[0]
+        const graph = window.__graphDebug.state.graph
+        const positions = ids.map((id) => {
+          const n = graph.getNodeAttributes(id)
+          return { id, x: n.x, y: n.y }
+        })
+        return positions
+      })()
+    JS
+
+    # Verify initial layout has reasonable spread (no overlaps)
+    initial_min_dist = compute_min_pairwise_distance(initial_state)
+    expect(initial_min_dist).to be > 0.001, "Initial layout should have spread-out nodes"
+
+    # Drag a node extremely far (1000x the graph extent)
+    page.execute_script(<<~JS, notes[1].id)
+      (() => {
+        const nodeId = arguments[0]
+        const controller = window.__graphDebug
+        const graph = controller.state.graph
+        const attrs = graph.getNodeAttributes(nodeId)
+
+        const extremeX = attrs.x + 100
+        const extremeY = attrs.y + 100
+        graph.mergeNodeAttributes(nodeId, { x: extremeX, y: extremeY })
+        controller.state.layout.manualPositions.set(nodeId, { x: extremeX, y: extremeY })
+        if (controller.state.layout.basePositions?.has(nodeId)) {
+          controller.state.layout.basePositions.set(nodeId, { x: extremeX, y: extremeY })
+        }
+        controller.state.renderer.refresh()
+      })()
+    JS
+
+    sleep 0.3
+
+    # Trigger relayout so constrainViewportExtent collapses the non-extreme nodes
+    page.execute_script(<<~JS)
+      window.__graphDebug.applyDisplayState({ relayout: true, animateFocus: false })
+    JS
+
+    sleep 1.0
+
+    # Verify the graph is now degenerate — non-extreme nodes overlap after scaling
+    degenerate_state = page.evaluate_script(<<~JS, notes.map(&:id))
+      (() => {
+        const ids = arguments[0]
+        const graph = window.__graphDebug.state.graph
+        return ids.map((id) => {
+          const n = graph.getNodeAttributes(id)
+          return { id, x: n.x, y: n.y }
+        })
+      })()
+    JS
+
+    degenerate_min_dist = compute_min_pairwise_distance(degenerate_state)
+    expect(degenerate_min_dist).to be < initial_min_dist,
+      "After extreme drag + relayout, nodes should collapse (min: #{degenerate_min_dist} vs initial: #{initial_min_dist})"
+
+    # Enter focus mode — should trigger force relaxation and clear manual positions
+    page.execute_script(<<~JS, notes[0].id)
+      window.__graphDebug.enterFocusMode(arguments[0])
+    JS
+
+    sleep 1.5
+
+    # Verify recovery: nodes should be spread out, no overlaps
+    recovered_state = page.evaluate_script(<<~JS, notes.map(&:id))
+      (() => {
+        const ids = arguments[0]
+        const graph = window.__graphDebug.state.graph
+        const positions = ids.map((id) => {
+          const n = graph.getNodeAttributes(id)
+          return { id, x: n.x, y: n.y }
+        })
+        return positions
+      })()
+    JS
+
+    recovered_min_dist = compute_min_pairwise_distance(recovered_state)
+    expect(recovered_min_dist).to be > 0.001,
+      "After focus mode, force relaxation should spread nodes apart (min dist: #{recovered_min_dist})"
+
+    # Verify edge lengths are reasonable (not extremely long or short)
+    edge_stats = page.evaluate_script(<<~JS, notes.map(&:id))
+      (() => {
+        const graph = window.__graphDebug.state.graph
+        const lengths = []
+        graph.forEachEdge((_, _attrs, src, dst) => {
+          const s = graph.getNodeAttributes(src)
+          const d = graph.getNodeAttributes(dst)
+          lengths.push(Math.hypot(d.x - s.x, d.y - s.y))
+        })
+        lengths.sort((a, b) => a - b)
+        return {
+          min: lengths[0],
+          max: lengths[lengths.length - 1],
+          ratio: lengths.length > 1 ? lengths[lengths.length - 1] / Math.max(lengths[0], 0.0001) : 1
+        }
+      })()
+    JS
+
+    expect(edge_stats["min"]).to be > 0.0005,
+      "Shortest edge should have meaningful length"
+    expect(edge_stats["ratio"]).to be < 50,
+      "Edge length ratio (max/min) should be bounded, got #{edge_stats['ratio']}"
+  end
+
+  private
+
+  def compute_min_pairwise_distance(positions)
+    min_dist = Float::INFINITY
+    positions.each_with_index do |a, i|
+      positions[(i + 1)..].each do |b|
+        dist = Math.sqrt((a["x"] - b["x"])**2 + (a["y"] - b["y"])**2)
+        min_dist = dist if dist < min_dist
+      end
+    end
+    min_dist
+  end
 end
