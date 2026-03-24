@@ -1,13 +1,6 @@
 const { test, expect } = require("@playwright/test")
 const { runRailsScript } = require("./helpers/rails")
-
-async function signIn(page, credentials) {
-  await page.goto("/users/sign_in")
-  await page.getByLabel("E-mail").fill(credentials.email)
-  await page.getByLabel("Senha").fill(credentials.password)
-  await page.getByRole("button", { name: "Entrar" }).click()
-  await expect(page).toHaveURL(/\/graph/)
-}
+const { signIn } = require("./helpers/session")
 
 test.describe("AI queue shell", () => {
   test("shows queue and shell history consistently for seeded promise states", async ({ page }, testInfo) => {

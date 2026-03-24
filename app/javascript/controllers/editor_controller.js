@@ -600,10 +600,10 @@ export default class extends Controller {
   }
 
   _handleDocumentClick(event) {
-    if (!this._revisionsOpen || !this.hasRevisionsMenuTarget || !this.hasRevisionsButtonTarget) return
-    if (this.revisionsMenuTarget.contains(event.target)) return
-    if (this.revisionsButtonTarget.contains(event.target)) return
-    this._closeRevisions()
+    if (this._revisionsOpen && this.hasRevisionsMenuTarget && this.hasRevisionsButtonTarget) {
+      const insideRevisions = this.revisionsMenuTarget.contains(event.target) || this.revisionsButtonTarget.contains(event.target)
+      if (!insideRevisions) this._closeRevisions()
+    }
   }
 
   _closeRevisions() {

@@ -1,13 +1,6 @@
 const { test, expect } = require("@playwright/test")
 const { runRailsScript } = require("./helpers/rails")
-
-async function signIn(page, credentials) {
-  await page.goto("/users/sign_in")
-  await page.getByLabel("E-mail").fill(credentials.email)
-  await page.getByLabel("Senha").fill(credentials.password)
-  await page.getByRole("button", { name: "Entrar" }).click()
-  await expect(page).toHaveURL(/\/graph/)
-}
+const { signIn } = require("./helpers/session")
 
 async function forceFallbackPolling(page) {
   await page.evaluate(() => {
@@ -194,9 +187,66 @@ test.describe("AI queue promise sequencing", () => {
     await expectCard(page, promiseTitle, "succeeded", "Criado")
 
     await page.getByRole("button", { name: "Histórico de IA" }).click()
-    await page.getByRole("button", { name: "Shell" }).click()
     await expect(page.locator("[data-ai-review-target='historyList']")).toContainText(promiseTitle)
     await expect(page.locator("[data-ai-review-target='historyList']")).toContainText("Concluida")
+  })
+
+  test("shows the global AI history below the toolbar button, supports global filters, closes on outside click, and keeps scrolling", async ({ page }) => {
+    const token = `${Date.now()}`
+    const scenario = runRailsScript("script/e2e/bootstrap_ai_queue_sequence.rb", {
+      E2E_TOKEN: token,
+      HISTORY_FIXTURES: "1"
+    })
+    const labels = scenario.history_fixture_labels
+
+    await signIn(page, scenario.credentials)
+    await page.goto(scenario.note_path)
+    await expect(page.locator(".cm-editor")).toBeVisible()
+    await forceFallbackPolling(page)
+
+    const historyButton = page.getByRole("button", { name: "Histórico de IA" })
+    await historyButton.click()
+
+    const historyDialog = page.locator("[data-ai-review-target='historyDialog']")
+    await expect(historyDialog).toBeVisible()
+
+    await expect(historyDialog).toContainText(labels.queued_title)
+    await expect(historyDialog).toContainText(labels.running_title)
+    await expect(historyDialog).toContainText(labels.failed_title)
+    await expect(historyDialog).toContainText("Traducao")
+
+    await page.getByRole("button", { name: "Na fila" }).click()
+    await expect(historyDialog).toContainText(labels.queued_title)
+    await expect(historyDialog).not.toContainText(labels.failed_title)
+
+    await page.getByRole("button", { name: "Ativas" }).click()
+    await expect(historyDialog).toContainText(labels.running_title)
+    await expect(historyDialog).not.toContainText(labels.queued_title)
+
+    await page.getByRole("button", { name: "Falhas" }).click()
+    await expect(historyDialog).toContainText(labels.failed_title)
+    await expect(historyDialog).not.toContainText(labels.running_title)
+
+    await page.getByRole("button", { name: "Concluídas" }).click()
+    await expect(historyDialog).toContainText(labels.succeeded_title)
+
+    const scrollBefore = await historyDialog.evaluate((node) => {
+      const content = node.querySelector(".min-h-0.flex-1.overflow-y-auto, .overflow-y-auto")
+      return content ? content.scrollTop : -1
+    })
+    await historyDialog.evaluate((node) => {
+      const content = node.querySelector(".min-h-0.flex-1.overflow-y-auto, .overflow-y-auto")
+      if (content) content.scrollTop = 400
+    })
+    const scrollAfter = await historyDialog.evaluate((node) => {
+      const content = node.querySelector(".min-h-0.flex-1.overflow-y-auto, .overflow-y-auto")
+      return content ? content.scrollTop : -1
+    })
+    expect(scrollBefore).toBeGreaterThanOrEqual(0)
+    expect(scrollAfter).toBeGreaterThan(scrollBefore)
+
+    await page.mouse.click(8, 8)
+    await expect(historyDialog).toBeHidden()
   })
 
   test("keeps the queue dock floating while the preview pane scrolls", async ({ page }) => {

@@ -71,11 +71,6 @@
       <%= @note.detected_language || "auto" %>
     </span>
 
-    <span class="nm-ai-transport nm-ai-transport--fallback"
-          data-ai-review-target="transportBadge">
-      Fallback polling
-    </span>
-
     <%# Format buttons %>
     <div class="flex items-center gap-0.5 flex-shrink-0">
       <button title="Negrito (Ctrl+B)"
@@ -133,16 +128,7 @@
       </svg>
     </button>
 
-    <button title="Sugestão com IA"
-            class="toolbar-btn"
-            data-action="click->ai-review#openSuggest">
-      <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-        <path d="M12 3l1.9 4.6L18.5 9l-4.6 1.4L12 15l-1.9-4.6L5.5 9l4.6-1.4L12 3z"/>
-        <path d="M19 15l.95 2.05L22 18l-2.05.95L19 21l-.95-2.05L16 18l2.05-.95L19 15z"/>
-      </svg>
-    </button>
-
-    <button title="Reescrever com IA"
+    <button title="Melhorar Markdown com IA"
             class="toolbar-btn"
             data-action="click->ai-review#openRewrite">
       <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -174,6 +160,7 @@
 
     <button title="Histórico de IA"
             class="toolbar-btn"
+            data-ai-review-target="historyButton"
             data-action="click->ai-review#openHistory">
       <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
         <path d="M3 12a9 9 0 1 0 3-6.7"/>
@@ -420,17 +407,25 @@ AI_ENABLED_PROVIDERS=ollama</pre>
           <div class="border-b border-[var(--theme-border)] bg-[var(--theme-bg-secondary)] px-5 py-3">
             <p class="text-[11px] uppercase tracking-[0.18em] text-[var(--theme-text-faint)]">Sugerido</p>
           </div>
-          <div class="flex-1 min-h-0 overflow-y-auto">
-            <textarea data-ai-review-target="correctedText"
-                      class="hidden"
-                      spellcheck="false"
-                      data-action="input->ai-review#proposalChanged change->ai-review#proposalChanged"></textarea>
-            <div class="bg-[var(--theme-bg-primary)] px-5 py-4">
+          <div data-ai-review-target="proposalPanels"
+               class="flex-1 min-h-0 overflow-hidden">
+            <div data-ai-review-target="proposalRawPane"
+                 class="hidden min-h-0 min-w-0 border-r border-[var(--theme-border)] bg-[var(--theme-bg-primary)]">
+              <div class="border-b border-[var(--theme-border)] bg-[var(--theme-bg-secondary)] px-5 py-3">
+                <p class="text-[11px] uppercase tracking-[0.18em] text-[var(--theme-text-faint)]">Markdown</p>
+              </div>
+              <textarea data-ai-review-target="correctedText"
+                        class="ai-review-seed-note-editor h-full w-full resize-none border-0 bg-[var(--theme-bg-primary)] px-5 py-4 font-mono text-sm leading-relaxed text-[var(--theme-text-primary)] outline-none"
+                        spellcheck="false"
+                        data-action="input->ai-review#proposalChanged change->ai-review#proposalChanged"></textarea>
+            </div>
+            <div data-ai-review-target="proposalPreviewPane"
+                 class="min-h-0 min-w-0 overflow-y-auto bg-[var(--theme-bg-primary)] px-5 py-4">
               <div data-ai-review-target="proposalDiff"
                    contenteditable="true"
                    spellcheck="false"
                    data-action="pointerdown->ai-review#activateSeedNoteEditing input->ai-review#proposalEditorChanged blur->ai-review#proposalEditorChanged"
-                   class="min-h-full whitespace-pre-wrap font-mono text-sm leading-relaxed text-[var(--theme-text-primary)] outline-none"></div>
+                   class="h-full min-h-full overflow-y-auto whitespace-pre-wrap font-mono text-sm leading-relaxed text-[var(--theme-text-primary)] outline-none"></div>
             </div>
           </div>
 
@@ -592,9 +587,9 @@ AI_ENABLED_PROVIDERS=ollama</pre>
 
   <dialog
     data-ai-review-target="historyDialog"
-    class="w-[92vw] max-w-3xl max-h-[75vh] p-0 rounded-lg shadow-xl bg-[var(--theme-bg-primary)] text-[var(--theme-text-primary)] backdrop:bg-black/50 border border-[var(--theme-border)]"
+    class="w-[min(92vw,42rem)] max-h-[75vh] overflow-hidden p-0 rounded-lg shadow-xl bg-[var(--theme-bg-primary)] text-[var(--theme-text-primary)] border border-[var(--theme-border)]"
   >
-    <div class="flex flex-col h-full">
+    <div class="flex h-full min-h-0 flex-col">
       <div class="flex items-center justify-between px-6 py-4 border-b border-[var(--theme-border)]">
         <div>
           <h2 class="text-lg font-semibold">Histórico de IA</h2>
@@ -611,21 +606,21 @@ AI_ENABLED_PROVIDERS=ollama</pre>
         </div>
       </div>
 
-      <div class="p-6 overflow-y-auto">
+      <div class="min-h-0 flex-1 overflow-y-auto p-6">
         <div class="mb-4 flex flex-wrap gap-2">
-          <button type="button"
-                  class="ai-history-filter"
-                  data-ai-review-target="historyFilter"
-                  data-filter-value="shell"
-                  data-action="click->ai-review#selectHistoryFilter">
-            Shell
-          </button>
           <button type="button"
                   class="ai-history-filter is-active"
                   data-ai-review-target="historyFilter"
                   data-filter-value="all"
                   data-action="click->ai-review#selectHistoryFilter">
             Todas
+          </button>
+          <button type="button"
+                  class="ai-history-filter"
+                  data-ai-review-target="historyFilter"
+                  data-filter-value="queued"
+                  data-action="click->ai-review#selectHistoryFilter">
+            Na fila
           </button>
           <button type="button"
                   class="ai-history-filter"
@@ -650,7 +645,7 @@ AI_ENABLED_PROVIDERS=ollama</pre>
           </button>
         </div>
         <p class="hidden text-sm text-[var(--theme-text-muted)]" data-ai-review-target="historyEmpty">
-          Nenhuma execução de IA registrada para esta nota.
+          Nenhuma execução de IA registrada no shell.
         </p>
         <div class="space-y-3" data-ai-review-target="historyList"></div>
       </div>

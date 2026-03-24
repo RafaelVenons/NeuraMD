@@ -1465,7 +1465,7 @@
     text-decoration-thickness: 1px;
   }
   .ai-review-queue--footer-clearance {
-    bottom: 5.5rem;
+    bottom: 9rem;
   }
 
   /* ── Typewriter mode: keep cursor vertically centered ── */
@@ -1774,24 +1774,23 @@
     text-decoration: line-through;
   }
   .ai-review-proposal--seed-note {
-    min-height: calc(100vh - 15rem);
-    max-width: 78ch;
-    margin: 0 auto;
+    min-height: 100%;
+    max-width: none;
+    margin: 0;
     font-family: var(--font-sans);
   }
-  .ai-review-proposal--seed-note-preview {
-    min-height: calc(100vh - 15rem);
-    cursor: text;
-    padding: 0;
+  .ai-review-proposal-panels--seed-note {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    min-height: 100%;
   }
-  .ai-review-proposal--seed-note-preview::before {
-    content: "Clique para editar em Markdown";
-    display: block;
-    margin-bottom: 1rem;
-    color: var(--theme-text-faint);
-    font-size: 0.75rem;
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
+  .ai-review-seed-note-editor {
+    min-height: 100%;
+  }
+  .ai-review-proposal--seed-note-preview {
+    min-height: 100%;
+    cursor: default;
+    padding: 0;
   }
   .ai-review-proposal--seed-note:empty::before {
     content: attr(data-placeholder);
@@ -1858,6 +1857,11 @@
   }
   .ai-review-md-line--codefence {
     color: var(--theme-text-muted);
+  }
+  @media (max-width: 960px) {
+    .ai-review-proposal-panels--seed-note {
+      grid-template-columns: minmax(0, 1fr);
+    }
   }
 
   /* ── Offline banner ── */

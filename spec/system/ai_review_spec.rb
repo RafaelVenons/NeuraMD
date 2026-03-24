@@ -319,8 +319,6 @@ RSpec.describe "AI review", type: :system do
   end
 
   it "processes the entire document when there is no selection" do
-    expect(page).to have_text(/TEMPO REAL|FALLBACK POLLING/i, wait: 5)
-
     choose_ai_option("Revisar gramática com IA")
 
     expect_ai_workspace(text: "Texto corrigido pela IA.")
@@ -441,6 +439,66 @@ RSpec.describe "AI review", type: :system do
 
     revision = wait_for_latest_checkpoint(note)
     expect(revision.ai_generated).to be(true)
+  end
+
+  it "preserves wikilink payloads when applying a grammar review suggestion" do
+    uuid = SecureRandom.uuid
+    note.head_revision.update!(content_markdown: "Texto com [[Pai|f:#{uuid}]] e erro.")
+
+    allow(Ai::ReviewService).to receive(:enqueue).and_return(
+      create(
+        :ai_request,
+        note_revision: note.head_revision,
+        capability: "grammar_review",
+        provider: "openai",
+        requested_provider: "openai",
+        model: "gpt-4o-mini",
+        status: "succeeded",
+        input_text: note.head_revision.content_markdown,
+        output_text: "Texto corrigido com [[Pai traduzido|f:#{uuid}]] e ajuste.",
+        metadata: {"language" => note.detected_language},
+        completed_at: Time.current
+      )
+    )
+
+    visit note_path(note.slug)
+
+    choose_ai_option("Revisar gramática com IA")
+    expect_ai_workspace(text: "[[Pai traduzido|f:#{uuid}]]")
+
+    click_button "Aplicar"
+
+    expect(editor_text).to include("[[Pai traduzido|f:#{uuid}]]")
+  end
+
+  it "preserves wikilink payloads when applying a rewrite suggestion" do
+    uuid = SecureRandom.uuid
+    note.head_revision.update!(content_markdown: "Bloco [[Referencia|b:#{uuid}]] para reescrever.")
+
+    allow(Ai::ReviewService).to receive(:enqueue).and_return(
+      create(
+        :ai_request,
+        note_revision: note.head_revision,
+        capability: "rewrite",
+        provider: "openai",
+        requested_provider: "openai",
+        model: "gpt-4o-mini",
+        status: "succeeded",
+        input_text: note.head_revision.content_markdown,
+        output_text: "Bloco refinado com [[Referencia polida|b:#{uuid}]] para leitura.",
+        metadata: {"language" => note.detected_language},
+        completed_at: Time.current
+      )
+    )
+
+    visit note_path(note.slug)
+
+    choose_ai_option("Melhorar Markdown com IA")
+    expect_ai_workspace(text: "[[Referencia polida|b:#{uuid}]]")
+
+    click_button "Aplicar"
+
+    expect(editor_text).to include("[[Referencia polida|b:#{uuid}]]")
   end
 
   it "renders queue cards with service, note title and model, and retries failed requests" do
@@ -865,12 +923,14 @@ RSpec.describe "AI review", type: :system do
 
     choose_ai_option("Revisar gramática com IA")
 
-    expect(page).to have_text("Job remoto longo no AIrch. Pode fechar e voltar depois.", wait: 5)
+    expect(page).to have_no_css("[data-ai-review-target='workspace']:not(.hidden)", wait: 2)
     expect(page).to have_text("qwen2:1.5b")
-    expect(page).to have_text(/2min/, wait: 5)
   end
 
   it "creates a translated sibling note when accepting a translation result" do
+    uuid = SecureRandom.uuid
+    source_content = "# Resumo\n\nVeja [[Pai|f:#{uuid}]]."
+    note.head_revision.update!(content_markdown: source_content)
     translated_request = create(
       :ai_request,
       note_revision: note.head_revision,
@@ -879,8 +939,8 @@ RSpec.describe "AI review", type: :system do
       requested_provider: "ollama",
       model: "qwen2:1.5b",
       status: "succeeded",
-      input_text: note.head_revision.content_markdown,
-      output_text: "# Clinical Summary\n\nTranslated content.",
+      input_text: source_content,
+      output_text: "# Clinical Summary\n\nTranslated [[Father|f:#{uuid}]] content.",
       metadata: {"language" => "pt-BR", "target_language" => "en-US"},
       completed_at: Time.current
     )
@@ -908,13 +968,23 @@ RSpec.describe "AI review", type: :system do
     expect(Notes::TranslationNoteService).to receive(:call).with(
       source_note: note,
       ai_request: translated_request,
-      content: "# Clinical Summary\n\nTranslated content.",
+      content: "# Clinical Summary\n\nTranslated [[Father|f:#{uuid}]] content.",
       target_language: "en-US",
       title: "Clinical Summary (Polished)",
       author: user
     ).and_return(translated_note)
 
-    choose_ai_option("Traduzir com IA", /English.*Automatico.*Ollama/)
+    find("button[title='Traduzir com IA']").click
+    expect(page).to have_css("[data-ai-review-target='requestMenu']:not(.hidden)", wait: 5)
+    page.execute_script(<<~JS)
+      const languageSelect = document.querySelector("[data-ai-review-translate-language]")
+      const modelSelect = document.querySelector("[data-ai-review-translate-model]")
+      languageSelect.value = "en-US"
+      languageSelect.dispatchEvent(new Event("change", { bubbles: true }))
+      modelSelect.selectedIndex = Array.from(modelSelect.options).findIndex((option) => option.textContent.includes("Automatico · Ollama"))
+      modelSelect.dispatchEvent(new Event("change", { bubbles: true }))
+    JS
+    click_button "Traduzir"
 
     expect_ai_workspace(text: "Clinical Summary")
     expect(page).to have_field("Titulo da nova nota", with: "Clinical Summary")
@@ -928,12 +998,14 @@ RSpec.describe "AI review", type: :system do
     ENV["AI_ENABLED"] = "false"
     visit note_path(note.slug)
 
-    find("button[title='Reescrever com IA']").click
+    find("button[title='Melhorar Markdown com IA']").click
 
     expect_ai_workspace(text: "IA não configurada")
   end
 
-  it "shows retry feedback while the request is waiting for the next attempt" do
+  it "keeps the preview visible while a request is waiting for retry" do
+    request = nil
+
     allow(Ai::ReviewService).to receive(:enqueue) do |note:, note_revision:, capability:, text:, language:, **|
       request = create(
         :ai_request,
@@ -969,14 +1041,13 @@ RSpec.describe "AI review", type: :system do
 
     choose_ai_option("Revisar gramática com IA")
 
-    expect(page).to have_text("Tentando novamente", wait: 5)
-    expect(page).to have_text("Tentativa 1 de 3", wait: 5)
-    expect(page).to have_text("openai indisponivel", wait: 5)
+    expect(page).to have_no_css("[data-ai-review-target='workspace']:not(.hidden)", wait: 2)
+    expect(page).to have_css("[data-request-id='#{request.id}']", wait: 5)
     expect_ai_workspace(text: "Texto corrigido pela IA.", wait: 8)
     expect(page).to have_css(".cm-ai-diff-deleted", minimum: 1, wait: 8)
   end
 
-  it "cancels the in-flight request from the inline processing panel" do
+  it "cancels the in-flight request from the queue card" do
     request = nil
 
     allow(Ai::ReviewService).to receive(:enqueue) do |note:, note_revision:, capability:, text:, language:, **|
@@ -1000,13 +1071,11 @@ RSpec.describe "AI review", type: :system do
 
     choose_ai_option("Revisar gramática com IA")
 
-    expect(page).to have_text("Tentando novamente", wait: 5)
-    within("[data-ai-review-target='processingBox']") do
-      click_button "Cancelar"
-    end
+    expect(page).to have_css("[data-request-id='#{request.id}']", wait: 5)
+    find("[data-request-id='#{request.id}'][data-queue-action='cancel']", wait: 5).click
 
-    expect(page).to have_no_text("Tentando novamente", wait: 5)
-    expect(request.reload.status).to eq("canceled")
+    expect(page).to have_no_css("[data-request-id='#{request.id}']", wait: 5)
+    wait_until { request.reload.status == "canceled" }
   end
 
   it "ignores a late succeeded update after canceling the in-flight request" do
@@ -1034,13 +1103,11 @@ RSpec.describe "AI review", type: :system do
 
     choose_ai_option("Revisar gramática com IA")
 
-    expect(page).to have_text("Tentando novamente", wait: 5)
-    within("[data-ai-review-target='processingBox']") do
-      click_button "Cancelar"
-    end
+    expect(page).to have_css("[data-request-id='#{request.id}']", wait: 5)
+    find("[data-request-id='#{request.id}'][data-queue-action='cancel']", wait: 5).click
 
-    expect(page).to have_no_text("Tentando novamente", wait: 5)
-    expect(request.reload.status).to eq("canceled")
+    expect(page).to have_no_css("[data-request-id='#{request.id}']", wait: 5)
+    wait_until { request.reload.status == "canceled" }
 
     request.update!(
       status: "succeeded",
@@ -1060,12 +1127,95 @@ RSpec.describe "AI review", type: :system do
   end
 
   it "shows manual edits highlighted in yellow after editing the proposal" do
-    choose_ai_option("Reescrever com IA")
+    choose_ai_option("Melhorar Markdown com IA")
 
     expect_ai_workspace(text: "Texto corrigido pela IA.")
     replace_ai_suggested_text("Texto corrigido manualmente pela IA.")
 
     expect(page).to have_css("[data-ai-review-target='proposalDiff']", text: "manualmente", wait: 5)
+  end
+
+  it "keeps only the three core AI actions in the toolbar" do
+    expect(page).to have_button("Melhorar Markdown com IA")
+    expect(page).to have_button("Revisar gramática com IA")
+    expect(page).to have_button("Traduzir com IA")
+    expect(page).to have_no_button("Sugestão com IA")
+    expect(page).to have_no_button("Reescrever com IA")
+  end
+
+  it "lets the user choose translation language and model independently" do
+    captured_enqueue = nil
+
+    allow(Ai::ReviewService).to receive(:status).and_return(
+      {
+        enabled: true,
+        provider: "ollama",
+        model: "qwen2:1.5b",
+        available_providers: ["ollama", "openai"],
+        provider_options: [
+          {
+            name: "ollama",
+            label: "Ollama",
+            default_model: "qwen2:1.5b",
+            models: ["qwen2:1.5b", "qwen2.5:3b"],
+            selected: true,
+            selected_model: "qwen2:1.5b"
+          },
+          {
+            name: "openai",
+            label: "OpenAI",
+            default_model: "gpt-4o-mini",
+            models: ["gpt-4o-mini"],
+            selected: false,
+            selected_model: "gpt-4o-mini"
+          }
+        ]
+      }
+    )
+
+    allow(Ai::ReviewService).to receive(:enqueue).and_wrap_original do |_original, **args|
+      captured_enqueue = args
+      create(
+        :ai_request,
+        note_revision: note.head_revision,
+        capability: "translate",
+        provider: "openai",
+        requested_provider: "openai",
+        model: "gpt-4o-mini",
+        status: "succeeded",
+        input_text: note.head_revision.content_markdown,
+        output_text: "# Resumen\n\nContenido traducido.",
+        metadata: {"language" => note.detected_language, "target_language" => "es"},
+        completed_at: Time.current
+      )
+    end
+
+    visit note_path(note.slug)
+
+    find("button[title='Traduzir com IA']").click
+    expect(page).to have_css("[data-ai-review-target='requestMenu']:not(.hidden)", wait: 5)
+    expect(page).to have_css("[data-ai-review-translate-language]", wait: 5)
+    expect(page).to have_css("[data-ai-review-translate-model]", wait: 5)
+    expect(page).to have_select("Modelo", with_options: ["Automatico · Ollama", "Ollama · qwen2:1.5b", "Ollama · qwen2.5:3b", "Automatico · OpenAI", "OpenAI · gpt-4o-mini"])
+    expect(page).to have_no_select("Modelo", with_options: ["Portugues · Automatico · Ollama"])
+
+    page.execute_script(<<~JS)
+      const languageSelect = document.querySelector("[data-ai-review-translate-language]")
+      const modelSelect = document.querySelector("[data-ai-review-translate-model]")
+      languageSelect.value = "es"
+      languageSelect.dispatchEvent(new Event("change", { bubbles: true }))
+      modelSelect.selectedIndex = Array.from(modelSelect.options).findIndex((option) => option.textContent.includes("OpenAI · gpt-4o-mini"))
+      modelSelect.dispatchEvent(new Event("change", { bubbles: true }))
+    JS
+    click_button "Traduzir"
+
+    expect(captured_enqueue).to include(
+      capability: "translate",
+      target_language: "es",
+      model_name: "gpt-4o-mini",
+      provider_name: "openai"
+    )
+    expect_ai_workspace(text: "Resumen")
   end
 
   it "shows recent AI executions in the history dialog" do
@@ -1111,7 +1261,7 @@ RSpec.describe "AI review", type: :system do
     find("button[title='Histórico de IA']").click
     expect(page).to have_css("dialog[open]", text: "Histórico de IA", wait: 5)
     expect(page).to have_text("Revisao gramatical", wait: 5)
-    expect(page).to have_text("Reescrita", wait: 5)
+    expect(page).to have_text("Melhoria de Markdown", wait: 5)
     expect(page).to have_text("Traducao", wait: 5)
     expect(page).to have_text("Nota Global Historico", wait: 5)
     expect(page).to have_text("Concluida", wait: 5)
@@ -1119,12 +1269,16 @@ RSpec.describe "AI review", type: :system do
     expect(page).to have_text("Falha remota", wait: 5)
 
     click_button "Falhas"
-    expect(page).to have_text("Falha remota", wait: 5)
-    expect(page).to have_no_text("Revisao gramatical", wait: 5)
+    within("dialog[open]") do
+      expect(page).to have_text("Falha remota", wait: 5)
+      expect(page).to have_no_text("Revisao gramatical", wait: 5)
+    end
 
     click_button "Concluídas"
-    expect(page).to have_text("Revisao gramatical", wait: 5)
-    expect(page).to have_no_text("Falha remota", wait: 5)
+    within("dialog[open]") do
+      expect(page).to have_text("Revisao gramatical", wait: 5)
+      expect(page).to have_no_text("Falha remota", wait: 5)
+    end
   end
 
   it "filters queued items from the global AI history" do
@@ -1189,6 +1343,87 @@ RSpec.describe "AI review", type: :system do
     expect(page).to have_current_path(note_path(promise_note.slug), wait: 5)
     expect(page).to have_button("Recusar", wait: 5)
     expect(page).to have_button("Aplicar", wait: 5)
+  end
+
+  it "opens a succeeded rewrite on the source note instead of the currently open note" do
+    other_note = create(:note, :with_head_revision, title: "Nota Origem Review")
+    other_note.head_revision.update!(content_markdown: "Texto original da outra nota.")
+    request_record = create(
+      :ai_request,
+      note_revision: other_note.head_revision,
+      capability: "rewrite",
+      provider: "openai",
+      requested_provider: "openai",
+      model: "gpt-4o-mini",
+      status: "succeeded",
+      completed_at: Time.current,
+      input_text: "Texto original da outra nota.",
+      output_text: "Texto revisado da outra nota."
+    )
+
+    find("button[title='Histórico de IA']").click
+    within("[data-ai-review-target='historyList']") do
+      find("[data-request-id='#{request_record.id}']", text: "Nota Origem Review").click
+    end
+
+    expect(page).to have_current_path(note_path(other_note.slug), wait: 5)
+    expect_ai_workspace(text: "Texto revisado da outra nota.", wait: 5)
+  end
+
+  it "opens a succeeded grammar review on the source note instead of the currently open note" do
+    other_note = create(:note, :with_head_revision, title: "Nota Origem Gramatica")
+    other_note.head_revision.update!(content_markdown: "Texto original com erro da outra nota.")
+    request_record = create(
+      :ai_request,
+      note_revision: other_note.head_revision,
+      capability: "grammar_review",
+      provider: "openai",
+      requested_provider: "openai",
+      model: "gpt-4o-mini",
+      status: "succeeded",
+      completed_at: Time.current,
+      input_text: "Texto original com erro da outra nota.",
+      output_text: "Texto original corrigido da outra nota."
+    )
+
+    find("button[title='Histórico de IA']").click
+    within("[data-ai-review-target='historyList']") do
+      find("[data-request-id='#{request_record.id}']", text: "Nota Origem Gramatica").click
+    end
+
+    expect(page).to have_current_path(note_path(other_note.slug), wait: 5)
+    expect_ai_workspace(text: "Texto original corrigido da outra nota.", wait: 5)
+  end
+
+  it "opens a succeeded translation on the translated note when it already exists" do
+    other_note = create(:note, :with_head_revision, title: "Nota Origem Traducao")
+    translated_note = create(:note, :with_head_revision, title: "Translated Existing", detected_language: "en-US")
+    request_record = create(
+      :ai_request,
+      note_revision: other_note.head_revision,
+      capability: "translate",
+      provider: "openai",
+      requested_provider: "openai",
+      model: "gpt-4o-mini",
+      status: "succeeded",
+      completed_at: Time.current,
+      input_text: "# Nota Origem Traducao\n\nTexto base.",
+      output_text: "# Translated Existing\n\nTranslated text.",
+      metadata: {
+        "language" => "pt-BR",
+        "target_language" => "en-US",
+        "translated_note_id" => translated_note.id
+      }
+    )
+
+    find("button[title='Histórico de IA']").click
+    within("[data-ai-review-target='historyList']") do
+      find("[data-request-id='#{request_record.id}']", text: "Nota Origem Traducao").click
+    end
+
+    expect(page).to have_current_path(note_path(translated_note.slug), wait: 5)
+    expect(page).to have_field(type: "text", with: "Translated Existing", wait: 5)
+    expect(page).to have_no_css("[data-ai-review-target='workspace']:not(.hidden)", wait: 2)
   end
 
   it "refreshes queue and shell history via fallback polling when realtime is unavailable" do

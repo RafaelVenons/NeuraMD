@@ -4,6 +4,7 @@ import { computeWordDiff } from "lib/diff_utils"
 import { emojiExtension, superscriptExtension, subscriptExtension, highlightExtension, wikilinkExtension } from "lib/marked_extensions"
 
 const PENDING_SEED_NOTE_REVIEW_STORAGE_KEY = "nm:pending-seed-note-review"
+const PENDING_COMPLETED_REQUEST_REVIEW_STORAGE_KEY = "nm:pending-completed-request-review"
 
 export default class extends Controller {
   static targets = [
@@ -34,7 +35,6 @@ export default class extends Controller {
     "historyStatus",
     "acceptButton",
     "declineButton",
-    "transportBadge",
     "translationMeta",
     "translationSummary",
     "translationTitle"
@@ -112,6 +112,7 @@ export default class extends Controller {
     marked.setOptions({ gfm: true, breaks: false })
     this._observeStreamSource()
     this._restorePendingSeedNoteReview()
+    this._restorePendingCompletedRequestReview()
     this.checkAvailability()
     this.refreshQueue()
     this.refreshHistory()
@@ -157,16 +158,13 @@ export default class extends Controller {
     this.languageLabelsValue = ai.language_labels || this.languageLabelsValue
 
     this._restorePendingSeedNoteReview(urls.show || window.location.pathname)
+    this._restorePendingCompletedRequestReview(urls.show || window.location.pathname)
     if (this.historyDialogTarget?.open) this.refreshHistory()
     this._syncQueuePolling()
   }
 
   openGrammar(event) {
     this.openMenu("grammar_review", event)
-  }
-
-  openSuggest(event) {
-    this.openMenu("suggest", event)
   }
 
   openRewrite(event) {
@@ -219,6 +217,34 @@ export default class extends Controller {
   async runSelectedOption(event) {
     if (!this.pendingMenu) return
 
+    await this._runPendingRequest({
+      providerName: event.currentTarget.dataset.provider || this.aiProvider,
+      modelName: event.currentTarget.dataset.model,
+      strategy: event.currentTarget.dataset.strategy,
+      targetLanguage: event.currentTarget.dataset.targetLanguage || this.pendingMenu.targetLanguage || this.preferredTargetLanguage
+    })
+  }
+
+  async runTranslateOption(event) {
+    event.preventDefault()
+    if (!this.pendingMenu) return
+
+    const form = event.currentTarget.closest("form")
+    if (!form) return
+
+    const languageSelect = form.querySelector("[data-ai-review-translate-language]")
+    const modelSelect = form.querySelector("[data-ai-review-translate-model]")
+    const selectedModelOption = modelSelect?.selectedOptions?.[0]
+
+    await this._runPendingRequest({
+      providerName: selectedModelOption?.dataset.provider || this.aiProvider,
+      modelName: selectedModelOption?.dataset.model || "",
+      strategy: selectedModelOption?.dataset.strategy || "automatic",
+      targetLanguage: languageSelect?.value || this.preferredTargetLanguage
+    })
+  }
+
+  async _runPendingRequest({ providerName, modelName, strategy, targetLanguage }) {
     await this._cancelCurrentRequest()
     this._setActiveTrigger(this.pendingMenu.triggerButton)
     this._hideRequestMenu()
@@ -230,17 +256,17 @@ export default class extends Controller {
       : this.pendingMenu.documentMarkdown
     this.lastCompletedRequest = null
     this.aiSuggestedText = ""
-    this.pendingMenu.providerName = event.currentTarget.dataset.provider || this.aiProvider
-    this.pendingMenu.modelName = event.currentTarget.dataset.strategy === "automatic"
+    this.pendingMenu.providerName = providerName || this.aiProvider
+    this.pendingMenu.modelName = strategy === "automatic"
       ? this._autoModelFor(
           this.pendingMenu.capability,
           this.pendingMenu.text,
-          this.preferredTargetLanguage,
+          targetLanguage,
           this._providerModels(this.pendingMenu.providerName),
           this._providerDefaultModel(this.pendingMenu.providerName)
         )
-      : event.currentTarget.dataset.model
-    this.preferredTargetLanguage = event.currentTarget.dataset.targetLanguage || this.pendingMenu.targetLanguage || this.preferredTargetLanguage
+      : modelName
+    this.preferredTargetLanguage = targetLanguage
 
     this._showProcessing()
 
@@ -255,19 +281,20 @@ export default class extends Controller {
         },
         body: JSON.stringify({
           capability: this.pendingMenu.capability,
-          provider: event.currentTarget.dataset.provider,
-          model: event.currentTarget.dataset.strategy === "automatic" ? "" : event.currentTarget.dataset.model,
+          provider: this.pendingMenu.providerName,
+          model: strategy === "automatic" ? "" : modelName,
           target_language: this.preferredTargetLanguage,
           text: this.pendingMenu.text,
           document_markdown: this.pendingMenu.documentMarkdown
         })
       })
 
-      const data = await response.json()
+      const data = await this._parseJsonResponse(response, "Falha ao enfileirar processamento com IA.")
       if (!response.ok || data.error) throw new Error(data.error || "Falha ao enfileirar processamento com IA.")
 
       this._startPolling(data.request_id)
       this.refreshHistory()
+      this.refreshQueue()
     } catch (error) {
       this._showProcessingFailure(error.message || "Falha ao processar com IA.")
       this._clearActiveTrigger()
@@ -319,7 +346,7 @@ export default class extends Controller {
         headers: { Accept: "application/json" },
         credentials: "same-origin"
       })
-      const data = await response.json()
+      const data = await this._parseJsonResponse(response, "Falha ao carregar a fila de IA.")
       if (!response.ok) throw new Error(data.error || "Falha ao carregar a fila de IA.")
 
       this.queueRequests = this._mergeQueueSnapshot(data.requests || [])
@@ -614,7 +641,7 @@ export default class extends Controller {
         headers: { Accept: "application/json" },
         credentials: "same-origin"
       })
-      const data = await response.json()
+      const data = await this._parseJsonResponse(response, "Falha ao carregar a configuracao de IA.")
 
       this.aiEnabled = !!data.enabled
       this.aiProvider = data.provider
@@ -647,11 +674,11 @@ export default class extends Controller {
     const provider = this.pendingMenu?.providerName || this.aiProvider
     const model = this.pendingMenu?.modelName || this.aiModel
 
-    this._showWorkspace()
+    this._showPreviewShell()
     this.configNoticeTarget.classList.add("hidden")
     this.resultBoxTarget.classList.add("hidden")
-    this.processingBoxTarget.classList.remove("hidden")
-    this.processingBoxTarget.classList.add("flex")
+    this.processingBoxTarget.classList.add("hidden")
+    this.processingBoxTarget.classList.remove("flex")
     this.processingProviderTarget.textContent = provider && model ? `${provider}: ${model}` : "IA"
     this.processingStateTarget.textContent = "Na fila"
     this.processingHintTarget.textContent = provider === "ollama"
@@ -666,16 +693,13 @@ export default class extends Controller {
     this._editorController()?.exitAiReviewFocusMode?.()
     this._setQueueDockMode("default")
     this._clearProposalStage()
-    this._showWorkspace()
+    this._showPreviewShell()
     this.configNoticeTarget.classList.add("hidden")
     this.resultBoxTarget.classList.add("hidden")
-    this.processingBoxTarget.classList.remove("hidden")
-    this.processingBoxTarget.classList.add("flex")
-    this.processingStateTarget.textContent = "Falhou"
-    this.processingHintTarget.textContent = "A requisição não pôde ser concluída."
-    this.processingMetaTarget.textContent = ""
+    this.processingBoxTarget.classList.add("hidden")
+    this.processingBoxTarget.classList.remove("flex")
     this.processingErrorTarget.textContent = message
-    this.processingErrorTarget.classList.remove("hidden")
+    this.processingErrorTarget.classList.add("hidden")
   }
 
   _showProposal(corrected) {
@@ -736,6 +760,12 @@ export default class extends Controller {
     this.workspaceTarget.classList.remove("hidden")
     this.workspaceTarget.classList.add("flex")
     this.previewShellTarget.classList.add("hidden")
+  }
+
+  _showPreviewShell() {
+    this.workspaceTarget.classList.add("hidden")
+    this.workspaceTarget.classList.remove("flex")
+    this.previewShellTarget.classList.remove("hidden")
   }
 
   _aiStageVisible() {
@@ -809,7 +839,7 @@ export default class extends Controller {
         headers: { Accept: "application/json" },
         credentials: "same-origin"
       })
-      const data = await response.json()
+      const data = await this._parseJsonResponse(response, "Falha ao consultar o status da IA.")
 
       if (!response.ok) throw new Error(data.error || "Falha ao consultar o status da IA.")
 
@@ -1028,7 +1058,7 @@ export default class extends Controller {
         headers: { Accept: "application/json" },
         credentials: "same-origin"
       })
-      const request = await response.json()
+      const request = await this._parseJsonResponse(response, "Falha ao carregar a request de IA.")
       if (!response.ok || !request?.id) return
 
       this._upsertQueueRequest(request)
@@ -1056,11 +1086,6 @@ export default class extends Controller {
   _setTransportState(connected) {
     this.realtimeConnected = connected
     this._syncQueuePolling()
-    if (!this.hasTransportBadgeTarget) return
-
-    this.transportBadgeTarget.textContent = connected ? "Tempo real" : "Fallback polling"
-    this.transportBadgeTarget.classList.toggle("nm-ai-transport--live", connected)
-    this.transportBadgeTarget.classList.toggle("nm-ai-transport--fallback", !connected)
   }
 
   _syncQueuePolling() {
@@ -1100,7 +1125,7 @@ export default class extends Controller {
           headers: { Accept: "application/json" },
           credentials: "same-origin"
         })
-        const request = await response.json()
+        const request = await this._parseJsonResponse(response, "Falha ao carregar a request de IA.")
         if (!response.ok || !request?.id) throw new Error("queue_request_missing")
 
         this._upsertQueueRequest(request)
@@ -1201,7 +1226,7 @@ export default class extends Controller {
           "X-CSRF-Token": this._csrfToken()
         }
       })
-      const data = await response.json()
+      const data = await this._parseJsonResponse(response, "Falha ao reenfileirar request.")
       if (!response.ok || data.error) throw new Error(data.error || "Falha ao reenfileirar request.")
 
       this.dismissedQueueRequestIds.delete(String(requestId))
@@ -1786,18 +1811,11 @@ export default class extends Controller {
         failed: "Revisar"
       },
       rewrite: {
-        queued: "Markdown",
-        running: "Markdown...",
-        retrying: "Markdown...",
-        succeeded: "Markdown",
-        failed: "Markdown"
-      },
-      suggest: {
-        queued: "Sugestao",
-        running: "Sugerindo",
-        retrying: "Sugerindo",
-        succeeded: "Sugerido",
-        failed: "Sugestao"
+        queued: "Melhorar",
+        running: "Melhorando",
+        retrying: "Melhorando",
+        succeeded: "Melhorado",
+        failed: "Melhorar"
       },
       translate: {
         queued: "Traduzir",
@@ -1844,26 +1862,73 @@ export default class extends Controller {
     if (!request || request.status !== "succeeded") return
 
     if (request.promise_note_slug) {
-      const shell = this.application.getControllerForElementAndIdentifier(this.element, "note-shell")
-      if (shell?.navigateTo) await shell.navigateTo(`/notes/${request.promise_note_slug}`)
-      else if (window.Turbo?.visit) window.Turbo.visit(`/notes/${request.promise_note_slug}`)
-      else window.location.assign(`/notes/${request.promise_note_slug}`)
-
-      this.pendingApplyMode = "seed_note_review"
-      this.pendingOriginalText = ""
-      this.lastCompletedRequest = {
-        id: request.id,
-        capability: request.capability,
-        provider: request.provider,
-        model: request.model,
-        targetLanguage: request.target_language || this.selectedTargetLanguage()
-      }
-      this._showSeedNoteReview(request)
+      await this._openSeedNoteRequest(request)
       return
     }
 
+    if (request.capability === "translate") {
+      await this._openTranslateRequest(request)
+      return
+    }
+
+    if (["rewrite", "grammar_review"].includes(request.capability)) {
+      await this._openSourceReviewRequest(request)
+      return
+    }
+
+    this._clearPendingCompletedRequestReview()
     this._ensurePreviewVisible()
-    this.pendingApplyMode = request.capability === "translate" ? "translation_note" : "document"
+    this.pendingApplyMode = "document"
+    this.pendingOriginalText = request.input_text || this._editor().getValue()
+    this.lastCompletedRequest = {
+      id: request.id,
+      capability: request.capability,
+      provider: request.provider,
+      model: request.model,
+      targetLanguage: request.target_language || this.selectedTargetLanguage()
+    }
+    this._showProposal(request.corrected || "")
+  }
+
+  async _openSeedNoteRequest(request) {
+    const path = request.promise_note_slug ? `/notes/${request.promise_note_slug}` : null
+    if (path && this._currentNoteSlug() !== request.promise_note_slug) {
+      await this._navigateToAiRequestPath(path)
+    }
+
+    this.pendingApplyMode = "seed_note_review"
+    this.pendingOriginalText = ""
+    this.lastCompletedRequest = {
+      id: request.id,
+      capability: request.capability,
+      provider: request.provider,
+      model: request.model,
+      targetLanguage: request.target_language || this.selectedTargetLanguage()
+    }
+    this._showSeedNoteReview(request)
+  }
+
+  async _openTranslateRequest(request) {
+    if (request.translated_note_slug) {
+      this._clearPendingCompletedRequestReview()
+      await this._navigateToAiRequestPath(`/notes/${request.translated_note_slug}`)
+      this._hideWorkspace()
+      return
+    }
+
+    await this._openSourceReviewRequest(request, { mode: "translation_note" })
+  }
+
+  async _openSourceReviewRequest(request, { mode = "document" } = {}) {
+    if (request.note_slug && request.note_slug !== this._currentNoteSlug()) {
+      this._storePendingCompletedRequestReview(request)
+      await this._navigateToAiRequestPath(`/notes/${request.note_slug}`)
+      return
+    }
+
+    this._clearPendingCompletedRequestReview()
+    this._ensurePreviewVisible()
+    this.pendingApplyMode = mode
     this.pendingOriginalText = request.input_text || this._editor().getValue()
     this.lastCompletedRequest = {
       id: request.id,
@@ -1924,7 +1989,7 @@ export default class extends Controller {
         headers: { Accept: "application/json" },
         credentials: "same-origin"
       })
-      const data = await response.json()
+      const data = await this._parseJsonResponse(response, "Falha ao carregar a request de IA.")
       if (!response.ok || !data?.id) return existing || null
       this._upsertQueueRequest(data)
       this._upsertGlobalHistoryRequest(data)
@@ -1976,7 +2041,7 @@ export default class extends Controller {
           "X-CSRF-Token": this._csrfToken()
         }
       })
-      const data = await response.json()
+      const data = await this._parseJsonResponse(response, "Falha ao remover item da queue.")
       if (!response.ok || data.error) throw new Error(data.error || "Falha ao remover item da queue.")
 
       this._upsertQueueRequest(data)
@@ -2136,7 +2201,7 @@ export default class extends Controller {
         },
         body: JSON.stringify({ ordered_request_ids: orderedRequestIds })
       })
-      const data = await response.json()
+      const data = await this._parseJsonResponse(response, "Falha ao reordenar fila.")
       if (!response.ok || data.error) throw new Error(data.error || "Falha ao reordenar fila.")
 
       ;(data.requests || []).forEach((request) => {
@@ -2167,8 +2232,7 @@ export default class extends Controller {
   _capabilityLabel(capability) {
     return {
       grammar_review: "Revisao gramatical",
-      suggest: "Sugestao",
-      rewrite: "Reescrita",
+      rewrite: "Melhoria de Markdown",
       translate: "Traducao"
     }[capability] || capability
   }
@@ -2310,6 +2374,14 @@ export default class extends Controller {
     }
   }
 
+  _pendingCompletedRequestReviewStorage() {
+    try {
+      return window.sessionStorage
+    } catch (_) {
+      return null
+    }
+  }
+
   _storePendingSeedNoteReview(request) {
     if (!request?.id || !request?.promise_note_slug) return
 
@@ -2335,6 +2407,23 @@ export default class extends Controller {
   _clearPendingSeedNoteReview() {
     const storage = this._pendingSeedNoteReviewStorage()
     storage?.removeItem(PENDING_SEED_NOTE_REVIEW_STORAGE_KEY)
+  }
+
+  _storePendingCompletedRequestReview(request) {
+    if (!request?.id || !request?.note_slug) return
+
+    const storage = this._pendingCompletedRequestReviewStorage()
+    if (!storage) return
+
+    storage.setItem(PENDING_COMPLETED_REQUEST_REVIEW_STORAGE_KEY, JSON.stringify({
+      notePath: `/notes/${request.note_slug}`,
+      requestId: request.id
+    }))
+  }
+
+  _clearPendingCompletedRequestReview() {
+    const storage = this._pendingCompletedRequestReviewStorage()
+    storage?.removeItem(PENDING_COMPLETED_REQUEST_REVIEW_STORAGE_KEY)
   }
 
   _restorePendingSeedNoteReview(notePath = window.location.pathname) {
@@ -2363,6 +2452,23 @@ export default class extends Controller {
       return true
     } catch (_) {
       this._clearPendingSeedNoteReview()
+      return false
+    }
+  }
+
+  async _restorePendingCompletedRequestReview(notePath = window.location.pathname) {
+    const storage = this._pendingCompletedRequestReviewStorage()
+    if (!storage) return false
+
+    try {
+      const payload = JSON.parse(storage.getItem(PENDING_COMPLETED_REQUEST_REVIEW_STORAGE_KEY) || "null")
+      if (!payload?.notePath || payload.notePath !== notePath || !payload?.requestId) return false
+
+      this._clearPendingCompletedRequestReview()
+      await this._openCompletedRequest(payload.requestId)
+      return true
+    } catch (_) {
+      this._clearPendingCompletedRequestReview()
       return false
     }
   }
@@ -2417,6 +2523,24 @@ export default class extends Controller {
     return document.querySelector('meta[name="csrf-token"]')?.content || ""
   }
 
+  async _parseJsonResponse(response, fallbackMessage = "Resposta invalida do servidor.") {
+    const contentType = response.headers.get("content-type") || ""
+    if (contentType.includes("application/json")) return await response.json()
+
+    const rawBody = await response.text()
+    const normalized = rawBody.trim().toLowerCase()
+    const htmlLike = normalized.startsWith("<!doctype") || normalized.startsWith("<html")
+
+    if (response.redirected || response.status === 401 || response.status === 403) {
+      throw new Error("Sessao expirada ou acesso negado. Recarregue a pagina e tente novamente.")
+    }
+
+    if (htmlLike) throw new Error(fallbackMessage)
+
+    const snippet = rawBody.trim().replace(/\s+/g, " ").slice(0, 160)
+    throw new Error(snippet || fallbackMessage)
+  }
+
   selectedTargetLanguage() {
     return this.preferredTargetLanguage || this.languageOptionsValue?.[0] || "en-US"
   }
@@ -2439,7 +2563,7 @@ export default class extends Controller {
         target_language: this.lastCompletedRequest?.targetLanguage || this.selectedTargetLanguage()
       })
     })
-    const data = await response.json()
+    const data = await this._parseJsonResponse(response, "Falha ao criar nota traduzida.")
     if (!response.ok || data.error) throw new Error(data.error || "Falha ao criar nota traduzida.")
     window.location.assign(data.note_url)
   }
@@ -2450,6 +2574,12 @@ export default class extends Controller {
 
   async _destroyRequest(requestId) {
     const requestIdString = String(requestId)
+    if (String(this.currentRequestId) === requestIdString) {
+      this._stopPolling()
+      this.currentRequestId = null
+      this._showPreviewShell()
+      this._clearActiveTrigger()
+    }
     this._stopPromiseQueueWatcher(requestIdString)
     const wasDismissed = this.dismissedQueueRequestIds.has(requestIdString)
     const exitAnimation = this._animateQueueExit(requestIdString)
@@ -2468,7 +2598,7 @@ export default class extends Controller {
           "X-CSRF-Token": this._csrfToken()
         }
       })
-      data = await response.json()
+      data = await this._parseJsonResponse(response, "Falha ao cancelar request de IA.")
       if (!response.ok || data.error) throw new Error(data.error || "Falha ao cancelar request de IA.")
     } catch (error) {
       if (!wasDismissed) this.dismissedQueueRequestIds.delete(requestIdString)
@@ -2583,6 +2713,12 @@ export default class extends Controller {
     this.requestMenuTarget.style.top = `${rect.bottom + window.scrollY + 8}px`
     this.requestMenuTarget.style.left = `${Math.max(12, rect.left + window.scrollX - 12)}px`
     this.requestMenuTitleTarget.textContent = capability === "translate" ? "Escolha idioma e modelo" : "Escolha como processar"
+    if (capability === "translate") {
+      this.requestMenuListTarget.innerHTML = this._renderTranslateRequestMenu(suggestions)
+      this.requestMenuTarget.classList.remove("hidden")
+      return
+    }
+
     this.requestMenuListTarget.innerHTML = suggestions.map((option) => {
       const description = option.description ? `<p class="mt-0.5 text-xs text-[var(--theme-text-muted)]">${this._escapeHtml(option.description)}</p>` : ""
       return `
@@ -2601,6 +2737,57 @@ export default class extends Controller {
     this.requestMenuTarget.classList.remove("hidden")
   }
 
+  _renderTranslateRequestMenu(suggestions) {
+    const languages = [...new Set(
+      (this.languageOptionsValue?.length ? this.languageOptionsValue : [this.selectedTargetLanguage()])
+        .filter(Boolean)
+    )]
+    const selectedLanguage = languages.includes(this.preferredTargetLanguage) ? this.preferredTargetLanguage : (languages[0] || "en-US")
+
+    const modelOptions = suggestions.filter((option, index, collection) => {
+      return collection.findIndex((candidate) =>
+        candidate.provider === option.provider &&
+        candidate.model === option.model &&
+        candidate.strategy === option.strategy
+      ) === index
+    })
+
+    return `
+      <form class="space-y-3">
+        <label class="block">
+          <span class="mb-1 block text-xs uppercase tracking-[0.14em] text-[var(--theme-text-faint)]">Idioma</span>
+          <select class="w-full rounded-lg border border-[var(--theme-border)] bg-[var(--theme-bg-primary)] px-3 py-2 text-sm text-[var(--theme-text-primary)]"
+                  data-ai-review-translate-language>
+            ${languages.map((languageCode) => `
+              <option value="${this._escapeHtml(languageCode)}" ${languageCode === selectedLanguage ? "selected" : ""}>
+                ${this._escapeHtml(this._languageLabel(languageCode))}
+              </option>
+            `).join("")}
+          </select>
+        </label>
+        <label class="block">
+          <span class="mb-1 block text-xs uppercase tracking-[0.14em] text-[var(--theme-text-faint)]">Modelo</span>
+          <select class="w-full rounded-lg border border-[var(--theme-border)] bg-[var(--theme-bg-primary)] px-3 py-2 text-sm text-[var(--theme-text-primary)]"
+                  data-ai-review-translate-model>
+            ${modelOptions.map((option, index) => `
+              <option value="${index}"
+                      data-provider="${this._escapeHtml(option.provider || "")}"
+                      data-model="${this._escapeHtml(option.model || "")}"
+                      data-strategy="${this._escapeHtml(option.strategy || "automatic")}">
+                ${this._escapeHtml(option.label)}
+              </option>
+            `).join("")}
+          </select>
+        </label>
+        <button type="submit"
+                class="w-full rounded-lg bg-[var(--theme-accent)] px-3 py-2 text-sm font-semibold text-[var(--theme-accent-text)]"
+                data-action="click->ai-review#runTranslateOption">
+          Traduzir
+        </button>
+      </form>
+    `
+  }
+
   _hideRequestMenu() {
     if (!this.hasRequestMenuTarget) return
     this.requestMenuTarget.classList.add("hidden")
@@ -2615,16 +2802,12 @@ export default class extends Controller {
     }]
 
     if (capability === "translate") {
-      const languages = this.languageOptionsValue?.length ? this.languageOptionsValue : [targetLanguage || this.selectedTargetLanguage()]
-      return languages.flatMap((languageCode) => {
-        return providers.flatMap((option) => this._providerExecutionOptions({
-          capability,
-          provider: option,
-          text,
-          targetLanguage: languageCode,
-          labelPrefix: this._languageLabel(languageCode)
-        }))
-      })
+      return providers.flatMap((option) => this._providerExecutionOptions({
+        capability,
+        provider: option,
+        text,
+        targetLanguage: targetLanguage || this.selectedTargetLanguage()
+      }))
     }
 
     return providers.flatMap((option) => this._providerExecutionOptions({
@@ -2677,7 +2860,6 @@ export default class extends Controller {
     const preferred = (() => {
       switch (capability) {
         case "grammar_review": return length <= 800 ? "qwen2.5:0.5b" : "qwen2.5:1.5b"
-        case "suggest": return length <= 900 ? "qwen2:1.5b" : "qwen2.5:3b"
         case "rewrite": return length <= 900 ? "qwen2.5:1.5b" : "llama3.2:3b"
         case "translate": return targetLanguage === "en-US" ? (length <= 1200 ? "qwen2:1.5b" : "qwen2.5:3b") : "qwen2.5:3b"
         default: return fallbackModel || this.aiModel
@@ -2706,6 +2888,15 @@ export default class extends Controller {
     }
     const suffix = capability === "translate" && targetLanguage ? ` Idioma alvo: ${this._languageLabel(targetLanguage)}.` : ""
     return `${hints[model] || "Execucao manual neste modelo."}${suffix}`
+  }
+
+  async _navigateToAiRequestPath(path) {
+    if (!path) return
+
+    const shell = this.application.getControllerForElementAndIdentifier(this.element, "note-shell")
+    if (shell?.navigateTo) await shell.navigateTo(path)
+    else if (window.Turbo?.visit) window.Turbo.visit(path)
+    else window.location.assign(path)
   }
 
   _syncPreferredTargetLanguage() {
