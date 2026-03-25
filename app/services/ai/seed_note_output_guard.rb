@@ -43,6 +43,5 @@ module Ai
 
       raise InvalidOutputError, "A resposta da IA incluiu instrucoes internas do prompt da nota criada."
     end
-
   end
 end
