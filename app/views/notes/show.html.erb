@@ -643,6 +643,20 @@ AI_ENABLED_PROVIDERS=ollama</pre>
                   data-action="click->ai-review#selectHistoryFilter">
             Concluídas
           </button>
+          <button type="button"
+                  class="ai-history-filter"
+                  data-ai-review-target="historyFilter"
+                  data-filter-value="applicable"
+                  data-action="click->ai-review#selectHistoryFilter">
+            Aplicáveis
+          </button>
+          <button type="button"
+                  class="ai-history-filter"
+                  data-ai-review-target="historyFilter"
+                  data-filter-value="reopened"
+                  data-action="click->ai-review#selectHistoryFilter">
+            Reabertas
+          </button>
         </div>
         <p class="hidden text-sm text-[var(--theme-text-muted)]" data-ai-review-target="historyEmpty">
           Nenhuma execução de IA registrada no shell.

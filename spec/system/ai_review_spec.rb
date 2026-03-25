@@ -1281,6 +1281,50 @@ RSpec.describe "AI review", type: :system do
     end
   end
 
+  it "keeps older applicable results visible in the shell history" do
+    applicable_note = create(:note, :with_head_revision, title: "Nota Aplicavel Antiga")
+    create(
+      :ai_request,
+      note_revision: applicable_note.head_revision,
+      capability: "rewrite",
+      provider: "openai",
+      requested_provider: "openai",
+      model: "gpt-4o-mini",
+      status: "succeeded",
+      output_text: "Texto revisado antigo.",
+      created_at: 2.days.ago,
+      completed_at: 2.days.ago
+    )
+
+    24.times do |index|
+      recent_note = create(:note, :with_head_revision, title: "Historico Recente #{index}")
+      create(
+        :ai_request,
+        note_revision: recent_note.head_revision,
+        capability: "grammar_review",
+        provider: "openai",
+        requested_provider: "openai",
+        model: "gpt-4o-mini",
+        status: "failed",
+        error_message: "Falha #{index}",
+        created_at: (24 - index).minutes.ago
+      )
+    end
+
+    find("button[title='Histórico de IA']").click
+
+    within("[data-ai-review-target='historyList']") do
+      expect(page).to have_text("Nota Aplicavel Antiga", wait: 5)
+      expect(page).to have_text("Aplicavel", wait: 5)
+    end
+
+    click_button "Aplicáveis"
+    within("dialog[open]") do
+      expect(page).to have_text("Nota Aplicavel Antiga", wait: 5)
+      expect(page).to have_no_text("Historico Recente 0", wait: 5)
+    end
+  end
+
   it "filters queued items from the global AI history" do
     other_note = create(:note, :with_head_revision, title: "Fila Global")
     create(
@@ -1343,6 +1387,76 @@ RSpec.describe "AI review", type: :system do
     expect(page).to have_current_path(note_path(promise_note.slug), wait: 5)
     expect(page).to have_button("Recusar", wait: 5)
     expect(page).to have_button("Aplicar", wait: 5)
+  end
+
+  it "keeps a reopened result visible after newer activity pushes recent history forward" do
+    reopened_note = create(:note, :with_head_revision, title: "Nota Reaberta")
+    request_record = create(
+      :ai_request,
+      note_revision: reopened_note.head_revision,
+      capability: "grammar_review",
+      provider: "openai",
+      requested_provider: "openai",
+      model: "gpt-4o-mini",
+      status: "succeeded",
+      input_text: "Texto antigo com erro.",
+      output_text: "Texto antigo corrigido.",
+      created_at: 2.days.ago,
+      completed_at: 2.days.ago,
+      metadata: {
+        "language" => "pt-BR",
+        "accepted_at" => 1.day.ago.iso8601
+      }
+    )
+
+    10.times do |index|
+      recent_note = create(:note, :with_head_revision, title: "Janela Inicial #{index}")
+      create(
+        :ai_request,
+        note_revision: recent_note.head_revision,
+        capability: "rewrite",
+        provider: "openai",
+        requested_provider: "openai",
+        model: "gpt-4o-mini",
+        status: "failed",
+        error_message: "Falha inicial #{index}",
+        created_at: (10 - index).minutes.ago
+      )
+    end
+
+    find("button[title='Histórico de IA']").click
+    within("[data-ai-review-target='historyList']") do
+      find("[data-request-id='#{request_record.id}']", text: "Nota Reaberta").click
+    end
+    expect_ai_workspace(text: "Texto antigo corrigido.", wait: 5)
+
+    25.times do |index|
+      newer_note = create(:note, :with_head_revision, title: "Empurra Historico #{index}")
+      create(
+        :ai_request,
+        note_revision: newer_note.head_revision,
+        capability: "grammar_review",
+        provider: "openai",
+        requested_provider: "openai",
+        model: "gpt-4o-mini",
+        status: "failed",
+        error_message: "Falha nova #{index}",
+        created_at: index.seconds.ago
+      )
+    end
+
+    find("button[title='Histórico de IA']").click unless page.has_css?("dialog[open]", wait: 1)
+    within("dialog[open]") do
+      find("button[title='Atualizar histórico de IA']").click
+      expect(page).to have_text("Nota Reaberta", wait: 5)
+      expect(page).to have_text("Reaberta", wait: 5)
+    end
+
+    click_button "Reabertas"
+    within("dialog[open]") do
+      expect(page).to have_text("Nota Reaberta", wait: 5)
+      expect(page).to have_no_text("Empurra Historico 0", wait: 5)
+    end
   end
 
   it "opens a succeeded rewrite on the source note instead of the currently open note" do

@@ -158,6 +158,9 @@ class AiRequest < ApplicationRecord
       duration_human: duration_human,
       remote_long_job: remote_long_job?,
       remote_hint: remote_status_hint,
+      accepted_at: metadata_payload["accepted_at"],
+      translation_applied_at: metadata_payload["translation_applied_at"],
+      queue_hidden_at: metadata_payload["queue_hidden_at"],
       promise_source_note_id: metadata_payload["promise_source_note_id"],
       promise_source_note_slug: metadata_payload["promise_source_note_slug"],
       promise_note_id: metadata_payload["promise_note_id"],
@@ -166,6 +169,7 @@ class AiRequest < ApplicationRecord
       translated_note_id: metadata_payload["translated_note_id"],
       translated_note_title: translated_note&.title,
       translated_note_slug: translated_note&.slug,
+      result_applicable: result_applicable?,
       queue_hidden: queue_hidden?
     }
   end
@@ -183,6 +187,19 @@ class AiRequest < ApplicationRecord
 
     next_metadata = metadata_payload.except("queue_hidden_at")
     update!(metadata: next_metadata)
+  end
+
+  def result_applicable?
+    return false unless succeeded?
+
+    case capability
+    when "seed_note"
+      promise_note_record.present? && !queue_hidden?
+    when "translate"
+      output_text.present? && metadata_payload["translation_applied_at"].blank? && translated_note_record.blank?
+    else
+      output_text.present? && metadata_payload["accepted_at"].blank?
+    end
   end
 
   private

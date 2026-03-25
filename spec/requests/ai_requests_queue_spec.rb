@@ -50,7 +50,54 @@ RSpec.describe "AI requests queue API", type: :request do
         "note_slug" => other_note.slug,
         "note_title" => "Nota Global",
         "translated_note_slug" => translated_note.slug,
-        "status" => "succeeded"
+        "status" => "succeeded",
+        "result_applicable" => false,
+        "translation_applied_at" => nil
+      )
+    )
+  end
+
+  it "exposes applicability metadata for succeeded requests" do
+    note = create(:note, :with_head_revision)
+    applicable_request = create(
+      :ai_request,
+      note_revision: note.head_revision,
+      capability: "rewrite",
+      provider: "openai",
+      requested_provider: "openai",
+      model: "gpt-4o-mini",
+      status: "succeeded",
+      output_text: "Texto revisado",
+      completed_at: Time.current
+    )
+    accepted_request = create(
+      :ai_request,
+      note_revision: note.head_revision,
+      capability: "grammar_review",
+      provider: "openai",
+      requested_provider: "openai",
+      model: "gpt-4o-mini",
+      status: "succeeded",
+      output_text: "Texto aceito",
+      completed_at: Time.current,
+      metadata: {
+        "language" => "pt-BR",
+        "accepted_at" => Time.current.iso8601
+      }
+    )
+
+    get ai_requests_dashboard_path(format: :json)
+
+    expect(response).to have_http_status(:ok)
+    expect(response.parsed_body["recent_history"]).to include(
+      a_hash_including(
+        "id" => applicable_request.id,
+        "result_applicable" => true,
+        "accepted_at" => nil
+      ),
+      a_hash_including(
+        "id" => accepted_request.id,
+        "result_applicable" => false
       )
     )
   end

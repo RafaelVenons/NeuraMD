@@ -381,6 +381,7 @@ export default class extends Controller {
     if (!request) return
 
     if (request.status === "succeeded") {
+      this._markHistoryRequestReopened(requestId)
       await this._openCompletedRequest(requestId)
       return
     }
@@ -1580,6 +1581,8 @@ export default class extends Controller {
       case "active": return requests.filter((request) => ["running", "retrying"].includes(request.status))
       case "failed": return requests.filter((request) => request.status === "failed")
       case "succeeded": return requests.filter((request) => request.status === "succeeded")
+      case "applicable": return requests.filter((request) => this._historyApplicable(request))
+      case "reopened": return requests.filter((request) => this._historyReopened(request))
       default: return requests
     }
   }
@@ -1592,21 +1595,25 @@ export default class extends Controller {
 
   _historySummaryLabel(count) {
     return {
-      all: `${count} execucoes recentes do shell`,
+      all: `${count} execucoes visiveis no shell`,
       queued: `${count} requests na fila`,
       active: `${count} execucoes em processamento`,
       failed: `${count} falhas recentes`,
-      succeeded: `${count} execucoes concluidas`
+      succeeded: `${count} execucoes concluidas`,
+      applicable: `${count} resultados aplicaveis`,
+      reopened: `${count} resultados reabertos`
     }[this.historyFilter] || `${count} execucoes recentes`
   }
 
   _emptyHistoryLabel() {
     return {
-      all: "Nenhuma execução recente no shell.",
+      all: "Nenhuma execução visível no shell.",
       queued: "Nenhuma request na fila.",
       active: "Nenhuma execução em processamento.",
       failed: "Nenhuma falha recente.",
-      succeeded: "Nenhuma execução concluída."
+      succeeded: "Nenhuma execução concluída.",
+      applicable: "Nenhum resultado aplicável.",
+      reopened: "Nenhum resultado reaberto."
     }[this.historyFilter] || "Nenhuma execução recente."
   }
 
@@ -1623,6 +1630,7 @@ export default class extends Controller {
     const duration = this._durationLabel(request)
     const error = request.error ? `<p class="mt-2 text-xs text-amber-300">${this._escapeHtml(request.error)}</p>` : ""
     const remoteHint = request.remote_hint ? `<p class="mt-2 text-xs ${request.remote_long_job ? "text-amber-300" : "text-[var(--theme-text-secondary)]"}">${this._escapeHtml(request.remote_hint)}</p>` : ""
+    const historyTags = this._historyRetentionTags(request)
 
     return `
       <article class="rounded-lg border border-[var(--theme-border)] bg-[var(--theme-bg-secondary)] p-4 ${interactiveClass}" ${interactiveAttrs}>
@@ -1631,6 +1639,7 @@ export default class extends Controller {
             <p class="text-sm font-semibold text-[var(--theme-text-primary)]">${this._escapeHtml(this._capabilityLabel(request.capability))}</p>
             <p class="text-xs text-[var(--theme-text-muted)]">${this._escapeHtml(provider)}</p>
             ${noteLabel}
+            ${historyTags}
           </div>
           <span class="rounded-full px-2 py-1 text-[11px] font-medium ${statusClass}">
             ${this._escapeHtml(this._statusLabel(request.status))}
@@ -1966,18 +1975,87 @@ export default class extends Controller {
   }
 
   _mergeShellHistorySnapshot(serverHistory) {
-    const merged = [...serverHistory]
-    const supplemental = [...this.globalHistoryRequests, ...this.queueRequests]
-
-    supplemental.forEach((request) => {
-      if (merged.some((item) => String(item.id) === String(request.id))) return
-      if (request.queue_hidden) return
-      merged.push(request)
-    })
-
-    return merged
+    const merged = new Map()
+    const recent = [...serverHistory]
       .sort((left, right) => new Date(right.created_at || 0) - new Date(left.created_at || 0))
       .slice(0, 20)
+
+    recent.forEach((request) => {
+      merged.set(String(request.id), request)
+    })
+
+    ;[...this.globalHistoryRequests, ...this.queueRequests].forEach((request) => {
+      if (request.queue_hidden && !this._historyShouldStayPinned(request)) return
+
+      const existing = merged.get(String(request.id))
+      merged.set(String(request.id), this._mergeHistoryRequest(existing, request))
+    })
+
+    const sorted = Array.from(merged.values()).sort((left, right) => this._compareHistoryRequests(left, right))
+    return sorted.slice(0, 40)
+  }
+
+  _mergeHistoryRequest(existing, incoming) {
+    if (!existing) return incoming
+    return {
+      ...existing,
+      ...incoming,
+      reopened_at: incoming.reopened_at || existing.reopened_at || null
+    }
+  }
+
+  _compareHistoryRequests(left, right) {
+    const priorityDelta = this._historyPriority(right) - this._historyPriority(left)
+    if (priorityDelta !== 0) return priorityDelta
+
+    const reopenDelta = new Date(right.reopened_at || 0) - new Date(left.reopened_at || 0)
+    if (reopenDelta !== 0) return reopenDelta
+
+    return new Date(right.created_at || 0) - new Date(left.created_at || 0)
+  }
+
+  _historyPriority(request) {
+    if (this._historyReopened(request)) return 3
+    if (this._historyApplicable(request)) return 2
+    return 1
+  }
+
+  _historyShouldStayPinned(request) {
+    return this._historyApplicable(request) || this._historyReopened(request)
+  }
+
+  _historyApplicable(request) {
+    return request.status === "succeeded" && !!request.result_applicable
+  }
+
+  _historyReopened(request) {
+    return request.status === "succeeded" && !!request.reopened_at
+  }
+
+  _historyRetentionTags(request) {
+    const tags = []
+
+    if (this._historyApplicable(request)) {
+      tags.push('<span class="rounded-full border border-emerald-700/60 bg-emerald-950/60 px-2 py-0.5 text-[10px] font-medium uppercase tracking-[0.08em] text-emerald-200">Aplicavel</span>')
+    }
+
+    if (this._historyReopened(request)) {
+      tags.push('<span class="rounded-full border border-sky-700/60 bg-sky-950/60 px-2 py-0.5 text-[10px] font-medium uppercase tracking-[0.08em] text-sky-200">Reaberta</span>')
+    }
+
+    if (!tags.length) return ""
+
+    return `<div class="mt-2 flex flex-wrap gap-2">${tags.join("")}</div>`
+  }
+
+  _markHistoryRequestReopened(requestId) {
+    const requestIdString = String(requestId)
+    const reopenedAt = new Date().toISOString()
+    const update = { reopened_at: reopenedAt }
+
+    this._replaceRequestState(this.historyRequests, requestIdString, update)
+    this._replaceRequestState(this.globalHistoryRequests, requestIdString, update)
+    this._replaceRequestState(this.queueRequests, requestIdString, update)
   }
 
   async _fetchQueueRequest(requestId) {
