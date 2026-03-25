@@ -77,5 +77,19 @@ RSpec.describe Ai::WikilinkOutputGuard do
 
       expect(result).to eq("Bloco refinado com [[Referencia polida|b:#{uuid}]] para leitura.")
     end
+
+    it "appends missing wikilinks at the end of the corresponding source line as a fallback" do
+      first_uuid = SecureRandom.uuid
+      second_uuid = SecureRandom.uuid
+
+      result = described_class.normalize!(
+        content: "Linha 1 reescrita.\nLinha 2 reescrita.",
+        source_text: "Linha 1 [[Pai|f:#{first_uuid}]].\nLinha 2 [[Filho|c:#{second_uuid}]]."
+      )
+
+      expect(result).to eq(
+        "Linha 1 reescrita. [[Pai|f:#{first_uuid}]]\nLinha 2 reescrita. [[Filho|c:#{second_uuid}]]"
+      )
+    end
   end
 end

@@ -3,9 +3,10 @@ require_relative "error"
 module Ai
   class PromptBuilder
     WIKILINK_PRESERVATION_RULES = <<~RULES.freeze
-      If the source text contains wikilinks, preserve the exact payloads in formats like [[Title|uuid]], [[Title|f:uuid]], [[Title|c:uuid]], and [[Title|b:uuid]].
-      You may rewrite only the visible text before the pipe.
-      Never invent, drop, or rewrite wikilink UUIDs or role prefixes.
+      If the source text contains wikilinks, keep them in the exact [[Title]] structure in the same sequential order they appear.
+      Do not add anything after the pipe inside wikilinks, because hidden payloads are restored automatically after the response.
+      You may rewrite only the visible title inside [[...]].
+      Never invent, merge, split, reorder, or remove wikilinks.
     RULES
 
     GRAMMAR_REVIEW_PROMPT = <<~PROMPT.freeze
@@ -40,8 +41,9 @@ module Ai
       Preserve the language requested by the user context.
       Never wrap the answer in ```markdown fences or any other code fence.
       Never repeat the prompt, request metadata, or source-note instructions in the output.
-      If you keep wikilinks, preserve the exact formats [[Title|uuid]], [[Title|f:uuid]], [[Title|c:uuid]], and [[Title|b:uuid]].
-      Never invent, drop, or rewrite wikilink UUIDs.
+      If you keep wikilinks, preserve the exact [[Title]] structure and the same sequential order they appear.
+      Do not add anything after the pipe inside wikilinks.
+      Never invent, drop, merge, split, or reorder wikilinks.
       Do not explain your choices.
       Return only the markdown content.
     PROMPT

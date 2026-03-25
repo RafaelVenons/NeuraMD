@@ -134,6 +134,46 @@ RSpec.describe Ai::ReviewService do
       expect(request.completed_at).to be_present
     end
 
+    it "sends wikilinks without payloads to the provider and restores them by sequential order" do
+      first_uuid = SecureRandom.uuid
+      second_uuid = SecureRandom.uuid
+      request = create(
+        :ai_request,
+        note_revision: note_revision,
+        provider: "openai",
+        capability: "rewrite",
+        input_text: "Linha [[Pai|f:#{first_uuid}]].\nOutra [[Filho|c:#{second_uuid}]]."
+      )
+      provider = instance_double(
+        Ai::OpenaiCompatibleProvider,
+        review: Ai::Result.new(
+          content: "Linha refinada [[Parent polished]].\nOutra refinada [[Child polished]].",
+          provider: "openai",
+          model: "gpt-4o-mini"
+        )
+      )
+
+      allow(Ai::ProviderRegistry).to receive(:build).and_return(provider)
+      expect(provider).to receive(:review).with(
+        capability: "rewrite",
+        text: "Linha [[Pai]].\nOutra [[Filho]].",
+        language: "pt-BR",
+        target_language: nil
+      ).and_return(
+        Ai::Result.new(
+          content: "Linha refinada [[Parent polished]].\nOutra refinada [[Child polished]].",
+          provider: "openai",
+          model: "gpt-4o-mini"
+        )
+      )
+
+      described_class.process_request!(request)
+
+      expect(request.reload.output_text).to eq(
+        "Linha refinada [[Parent polished|f:#{first_uuid}]].\nOutra refinada [[Child polished|c:#{second_uuid}]]."
+      )
+    end
+
     it "preserves existing wikilink payloads during grammar review" do
       uuid = SecureRandom.uuid
       request = create(:ai_request, note_revision: note_revision, provider: "openai", capability: "grammar_review", input_text: "[[Pai|f:#{uuid}]] com erro.")

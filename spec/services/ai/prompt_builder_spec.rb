@@ -6,7 +6,8 @@ RSpec.describe Ai::PromptBuilder do
       prompt = described_class.system_prompt(capability: "grammar_review", language: "pt-BR")
 
       expect(prompt).to include("grammar and spelling corrector")
-      expect(prompt).to include("[[Title|uuid]]")
+      expect(prompt).to include("[[Title]]")
+      expect(prompt).to include("hidden payloads are restored automatically")
       expect(prompt).to include("Preferred language of the output: pt-BR.")
       expect(prompt).to include("Return the full answer only in pt-BR.")
     end
@@ -19,7 +20,7 @@ RSpec.describe Ai::PromptBuilder do
       )
 
       expect(prompt).to include("translation assistant")
-      expect(prompt).to include("You may rewrite only the visible text before the pipe.")
+      expect(prompt).to include("Do not add anything after the pipe inside wikilinks")
       expect(prompt).to include("Source language: pt-BR.")
       expect(prompt).to include("Target language: en-US.")
       expect(prompt).to include("Return the full answer only in en-US.")
@@ -30,7 +31,7 @@ RSpec.describe Ai::PromptBuilder do
 
       expect(prompt).to include("note-seeding assistant")
       expect(prompt).to include("Never wrap the answer in ```markdown fences")
-      expect(prompt).to include("[[Title|uuid]]")
+      expect(prompt).to include("[[Title]]")
       expect(prompt).to include("Preferred language of the output: pt-BR.")
       expect(prompt).to include("Return the full answer only in pt-BR.")
     end

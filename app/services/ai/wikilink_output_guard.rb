@@ -29,7 +29,7 @@ module Ai
 
     private
 
-    LinkToken = Struct.new(:full_match, :display, :payload, :start_pos, :end_pos, keyword_init: true)
+    LinkToken = Struct.new(:full_match, :display, :payload, :start_pos, :end_pos, :line_index, keyword_init: true)
 
     def preserve_missing_payloads(text)
       source_payloads = extract_payloads(@source_text)
@@ -82,20 +82,8 @@ module Ai
 
       bare_links = output_links.select { |link| link.payload.blank? }
       replacements = {}
-      remaining_bare = bare_links.dup
-      remaining_missing = []
 
-      missing_links.each do |source_link|
-        matched = remaining_bare.find { |candidate| normalized_display(candidate.display) == normalized_display(source_link.display) }
-        if matched
-          replacements[matched.object_id] = source_link.payload
-          remaining_bare.delete(matched)
-        else
-          remaining_missing << source_link
-        end
-      end
-
-      remaining_missing.zip(remaining_bare).each do |source_link, bare_link|
+      missing_links.zip(bare_links).each do |source_link, bare_link|
         break if source_link.nil? || bare_link.nil?
         replacements[bare_link.object_id] = source_link.payload
       end
@@ -129,7 +117,8 @@ module Ai
           display: display.to_s.strip,
           payload: payload.to_s.strip.presence,
           start_pos: match.begin(0),
-          end_pos: match.end(0)
+          end_pos: match.end(0),
+          line_index: line_index_for(text, match.begin(0))
         )
       end
     end
@@ -145,20 +134,27 @@ module Ai
     def append_missing_links_to_last_line(text, missing_links)
       return text if missing_links.empty?
 
-      additions = missing_links.map { |link| "[[#{link.display}|#{link.payload}]]" }.uniq
-      normalized = String(text).dup
+      normalized = String(text)
+      return missing_links.map { |link| "[[#{link.display}|#{link.payload}]]" }.uniq.join(" ") if normalized.blank?
 
-      line_index = normalized.rindex(/\n[^\n]*\z/)
-      if line_index
-        insertion = additions.map { |link| " #{link}" }.join
-        normalized << insertion
-      elsif normalized.blank?
-        normalized = additions.join(" ")
-      else
-        normalized = "#{normalized} #{additions.join(' ')}"
+      lines = normalized.split("\n", -1)
+      grouped_additions = missing_links.each_with_object(Hash.new { |hash, key| hash[key] = [] }) do |link, hash|
+        addition = "[[#{link.display}|#{link.payload}]]"
+        hash[link.line_index] << addition unless hash[link.line_index].include?(addition)
       end
 
-      normalized
+      grouped_additions.each do |source_line_index, additions|
+        target_index = [source_line_index, lines.length - 1].min
+        suffix = additions.join(" ")
+        lines[target_index] =
+          if lines[target_index].blank?
+            suffix
+          else
+            "#{lines[target_index]} #{suffix}"
+          end
+      end
+
+      lines.join("\n")
     end
 
     def restore_payloads_from_plain_text(text, source_links)
@@ -197,6 +193,10 @@ module Ai
 
     def overlap?(left, right)
       left.begin < right.end && right.begin < left.end
+    end
+
+    def line_index_for(text, offset)
+      text.to_s.slice(0, offset).to_s.count("\n")
     end
   end
 end

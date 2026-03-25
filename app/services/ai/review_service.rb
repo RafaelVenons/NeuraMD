@@ -108,9 +108,10 @@ module Ai
         end
 
         provider = ProviderRegistry.build(request.requested_provider, model_name: request.metadata["requested_model"])
+        prompt_text = prompt_input_text(request.capability, request.input_text)
         result = provider.review(
           capability: normalized_capability(request.capability),
-          text: request.input_text,
+          text: prompt_text,
           language: request.metadata["language"],
           target_language: request.metadata["target_language"]
         )
@@ -329,6 +330,12 @@ module Ai
         end
 
         normalized
+      end
+
+      def prompt_input_text(capability, text)
+        return text if normalized_capability(capability) == "seed_note"
+
+        WikilinkPromptText.normalize(text)
       end
     end
   end
