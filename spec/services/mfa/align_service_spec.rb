@@ -29,7 +29,7 @@ RSpec.describe Mfa::AlignService do
 
   before do
     allow(Mfa::RemoteExecutor).to receive(:new).and_return(executor)
-    allow(executor).to receive(:docker_exec)
+    allow(executor).to receive(:execute)
     # Stub filesystem operations so we don't need ffmpeg or real files
     allow_any_instance_of(described_class).to receive(:prepare_input)
     allow_any_instance_of(described_class).to receive(:cleanup)
@@ -56,10 +56,10 @@ RSpec.describe Mfa::AlignService do
       expect(asset.alignment_data["duration_s"]).to eq(0.92)
     end
 
-    it "calls docker exec with MFA align command" do
+    it "calls execute with MFA align command" do
       described_class.call(asset)
 
-      expect(executor).to have_received(:docker_exec).with(
+      expect(executor).to have_received(:execute).with(
         a_string_matching(/mfa align.*english_mfa.*--output_format json/)
       )
     end

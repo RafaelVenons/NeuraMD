@@ -7,20 +7,22 @@ module Mfa
     SSH_HOST = ENV.fetch("MFA_SSH_HOST", "rafael@AIrch.local")
     SSH_TIMEOUT = ENV.fetch("MFA_SSH_TIMEOUT", "10").to_i
     EXEC_TIMEOUT = ENV.fetch("MFA_EXEC_TIMEOUT", "300").to_i # 5 min max
-    MFA_CONTAINER = ENV.fetch("MFA_CONTAINER", "mfa")
-
     def self.call(command)
       new.execute(command)
     end
 
+    # MFA conda env bin dir — needed because SSH non-login shells don't activate conda
+    MFA_ENV_BIN = ENV.fetch("MFA_ENV_BIN", "~/.local/share/mamba/envs/mfa/bin")
+
     def execute(command)
+      wrapped = "export PATH=#{MFA_ENV_BIN}:$PATH && #{command}"
       ssh_cmd = [
         "ssh",
         "-o", "ConnectTimeout=#{SSH_TIMEOUT}",
         "-o", "StrictHostKeyChecking=no",
         "-o", "BatchMode=yes",
         SSH_HOST,
-        command
+        wrapped
       ]
 
       stdout, stderr, status = nil
@@ -35,8 +37,5 @@ module Mfa
       stdout
     end
 
-    def docker_exec(mfa_command)
-      execute("docker exec #{MFA_CONTAINER} #{mfa_command}")
-    end
   end
 end

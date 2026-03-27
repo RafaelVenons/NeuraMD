@@ -4,13 +4,18 @@ require_relative "error"
 
 module Mfa
   class AlignService
-    MFA_INPUT_ROOT = ENV.fetch("MFA_ROOT", "/mnt/neuramd-share/mfa") + "/input"
-    MFA_OUTPUT_ROOT = ENV.fetch("MFA_ROOT", "/mnt/neuramd-share/mfa") + "/output"
-    ALIGNMENT_ROOT = ENV.fetch("ALIGNMENT_ROOT", "/mnt/neuramd-share/alignments")
+    # Local (NFS) paths — where Rails reads/writes files
+    MFA_INPUT_ROOT = ENV.fetch("MFA_LOCAL_ROOT", "/mnt/AIrch/data/mfa") + "/input"
+    MFA_OUTPUT_ROOT = ENV.fetch("MFA_LOCAL_ROOT", "/mnt/AIrch/data/mfa") + "/output"
+    ALIGNMENT_ROOT = ENV.fetch("ALIGNMENT_ROOT", "/mnt/AIrch/data/alignments")
+
+    # Remote paths — how the same dirs appear on AIrch (via NFS bind)
+    MFA_REMOTE_INPUT = ENV.fetch("MFA_REMOTE_ROOT", "/srv/airch-data/mfa") + "/input"
+    MFA_REMOTE_OUTPUT = ENV.fetch("MFA_REMOTE_ROOT", "/srv/airch-data/mfa") + "/output"
 
     DICTIONARY_MAP = {
       "pt-BR" => "portuguese_brazil_mfa",
-      "pt" => "portuguese_brazil_mfa",
+      "pt" => "portuguese_mfa",
       "en-US" => "english_mfa",
       "en-GB" => "english_mfa",
       "en" => "english_mfa",
@@ -18,17 +23,16 @@ module Mfa
       "es" => "spanish_mfa",
       "fr-FR" => "french_mfa",
       "fr" => "french_mfa",
-      "it-IT" => "italian_mfa",
-      "it" => "italian_mfa",
+      "it-IT" => "italian_cv",
+      "it" => "italian_cv",
       "zh-CN" => "mandarin_mfa",
       "ja-JP" => "japanese_mfa",
-      "ko-KR" => "korean_mfa",
-      "hi-IN" => "hindi_mfa"
+      "ko-KR" => "korean_mfa"
     }.freeze
 
     ACOUSTIC_MODEL_MAP = {
-      "pt-BR" => "portuguese_brazil_mfa",
-      "pt" => "portuguese_brazil_mfa",
+      "pt-BR" => "portuguese_mfa",
+      "pt" => "portuguese_mfa",
       "en-US" => "english_mfa",
       "en-GB" => "english_mfa",
       "en" => "english_mfa",
@@ -36,12 +40,11 @@ module Mfa
       "es" => "spanish_mfa",
       "fr-FR" => "french_mfa",
       "fr" => "french_mfa",
-      "it-IT" => "italian_mfa",
-      "it" => "italian_mfa",
+      "it-IT" => "italian_cv",
+      "it" => "italian_cv",
       "zh-CN" => "mandarin_mfa",
       "ja-JP" => "japanese_mfa",
-      "ko-KR" => "korean_mfa",
-      "hi-IN" => "hindi_mfa"
+      "ko-KR" => "korean_mfa"
     }.freeze
 
     def self.call(tts_asset)
@@ -89,17 +92,18 @@ module Mfa
     end
 
     def run_alignment
+      mfa_bin = ENV.fetch("MFA_BIN", "~/.local/share/mamba/envs/mfa/bin/mfa")
       mfa_cmd = [
-        "mfa align",
-        "/mnt/neuramd-share/mfa/input/#{@asset.id}",
+        mfa_bin, "align",
+        File.join(MFA_REMOTE_INPUT, @asset.id.to_s),
         dictionary,
         acoustic_model,
-        "/mnt/neuramd-share/mfa/output/#{@asset.id}",
+        File.join(MFA_REMOTE_OUTPUT, @asset.id.to_s),
         "--output_format json",
         "--clean"
       ].join(" ")
 
-      executor.docker_exec(mfa_cmd)
+      executor.execute(mfa_cmd)
     end
 
     def parse_output
