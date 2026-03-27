@@ -1,0 +1,10 @@
+{
+  "ignored_warnings": [
+    {
+      "fingerprint": "f040f3fd93ace0e66d3502cf0a82cab285e52cdb3b87eb1f1266071e4bc59bce",
+      "note": "MFA RemoteExecutor: command is built internally from trusted ENV values, not user input"
+    }
+  ],
+  "updated": "2026-03-27",
+  "brakeman_version": "8.0.4"
+}
