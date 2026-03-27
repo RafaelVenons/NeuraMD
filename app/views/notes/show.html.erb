@@ -3,7 +3,7 @@
 <div id="editor-root"
      class="flex flex-col"
      style="height: 100dvh; background: var(--theme-bg-primary);"
-     data-controller="note-shell editor autosave ai-review"
+     data-controller="note-shell editor autosave ai-review tts"
      data-note-shell-target="root"
      data-editor-autosave-url-value="<%= draft_note_path(@note.slug) %>"
      data-editor-revisions-url-value="<%= revisions_note_path(@note.slug) %>"
@@ -38,7 +38,14 @@
      data-autosave-local-key-value="note-draft-<%= @note.id %>"
      data-autosave-server-updated-at-value="<%= @revision&.updated_at&.iso8601 %>"
      data-autosave-draft-ms-value="60000"
-     data-autosave-local-ms-value="3000">
+     data-autosave-local-ms-value="3000"
+     data-tts-status-url-value="<%= tts_status_note_path(@note.slug) %>"
+     data-tts-generate-url-value="<%= tts_generate_note_path(@note.slug) %>"
+     data-tts-show-url-value="<%= tts_show_note_path(@note.slug) %>"
+     data-tts-reject-url-value="<%= tts_reject_note_path(@note.slug) %>"
+     data-tts-audio-url-value="<%= tts_audio_note_path(@note.slug) %>"
+     data-tts-library-url-value="<%= tts_library_note_path(@note.slug) %>"
+     data-tts-note-language-value="<%= @note.detected_language || 'pt-BR' %>">
 
   <div data-note-shell-target="streamSource">
     <%= render "notes/ai_requests_stream", note: @note %>
@@ -156,6 +163,42 @@
         <path d="M15 11l4 8"/>
         <path d="M13 19l4-8 4 8"/>
       </svg>
+    </button>
+
+    <%# TTS generate button %>
+    <button title="Gerar Audio (TTS)"
+            class="toolbar-btn"
+            data-tts-target="generateBtn"
+            data-action="click->tts#openDialog">
+      <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M11 5L6 9H2v6h4l5 4V5z"/>
+        <path d="M19.07 4.93a10 10 0 0 1 0 14.14"/>
+        <path d="M15.54 8.46a5 5 0 0 1 0 7.07"/>
+      </svg>
+    </button>
+
+    <%# TTS spinner (hidden by default) %>
+    <span data-tts-target="spinner" class="hidden toolbar-btn animate-pulse text-xs" style="color: var(--theme-text-faint)">
+      <svg class="w-4 h-4 animate-spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <circle cx="12" cy="12" r="10" stroke-opacity="0.25"/>
+        <path d="M12 2a10 10 0 0 1 10 10" stroke-opacity="0.75"/>
+      </svg>
+    </span>
+
+    <%# TTS status label %>
+    <span data-tts-target="statusLabel" class="text-xs flex-shrink-0" style="color: var(--theme-text-faint)"></span>
+
+    <%# Stale audio notice — shown when note is edited after TTS was generated %>
+    <button data-tts-target="staleNotice"
+            data-action="click->tts#loadStaleAudio"
+            class="hidden text-xs px-2 py-0.5 rounded-full cursor-pointer flex items-center gap-1 hover:opacity-80 transition-opacity"
+            style="background: var(--theme-warning-bg, #fef3c7); color: var(--theme-warning-text, #92400e);">
+      <svg class="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M11 5L6 9H2v6h4l5 4V5z"/>
+        <line x1="23" y1="9" x2="17" y2="15"/>
+        <line x1="17" y1="9" x2="23" y2="15"/>
+      </svg>
+      Revisão anterior possui audio
     </button>
 
     <button title="Histórico de IA"
@@ -665,5 +708,148 @@ AI_ENABLED_PROVIDERS=ollama</pre>
       </div>
     </div>
   </dialog>
+
+  <%# ── TTS Dialog ──────────────────────────────────── %>
+  <div data-tts-target="dialogOverlay"
+       class="hidden fixed inset-0 z-50 bg-black/50"
+       data-action="click->tts#closeDialog"></div>
+
+  <div data-tts-target="dialog"
+       class="hidden fixed z-50 top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-96 rounded-xl border shadow-2xl"
+       style="background: var(--theme-bg-secondary); border-color: var(--toolbar-border);">
+
+    <%# ── Tab bar ── %>
+    <div class="flex border-b" style="border-color: var(--toolbar-border);">
+      <button data-tts-target="generateTab"
+              data-action="click->tts#switchToGenerate"
+              class="flex-1 px-4 py-2.5 text-xs font-semibold border-b-2 border-[var(--theme-accent)]"
+              style="color: var(--theme-text-primary);">
+        Gerar
+      </button>
+      <button data-tts-target="libraryTab"
+              data-action="click->tts#switchToLibrary"
+              class="flex-1 px-4 py-2.5 text-xs font-semibold border-b-2 border-transparent"
+              style="color: var(--theme-text-muted);">
+        Biblioteca
+      </button>
+      <button class="px-3 py-2.5 text-xs"
+              style="color: var(--theme-text-muted);"
+              data-action="click->tts#closeDialog"
+              title="Fechar">
+        <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+        </svg>
+      </button>
+    </div>
+
+    <%# ── Generate panel ── %>
+    <div data-tts-target="generatePanel" class="p-4">
+      <label class="block text-xs mb-1" style="color: var(--theme-text-muted);">Idioma</label>
+      <select data-tts-target="languageSelect"
+              data-action="change->tts#languageChanged"
+              class="tts-select mb-2">
+        <option value="pt-BR">Portugues (BR)</option>
+        <option value="en-US">English (US)</option>
+        <option value="en-GB">English (GB)</option>
+        <option value="zh-CN">Chinese (Mandarin)</option>
+        <option value="ja-JP">Japanese</option>
+        <option value="ko-KR">Korean</option>
+        <option value="es-ES">Spanish</option>
+        <option value="fr-FR">French</option>
+        <option value="it-IT">Italian</option>
+        <option value="hi-IN">Hindi</option>
+      </select>
+
+      <label class="block text-xs mb-1" style="color: var(--theme-text-muted);">Provider</label>
+      <select data-tts-target="providerSelect"
+              data-action="change->tts#providerChanged"
+              class="tts-select mb-2">
+      </select>
+
+      <label class="block text-xs mb-1" style="color: var(--theme-text-muted);">Voz</label>
+      <select data-tts-target="voiceSelect" class="tts-select mb-2"></select>
+
+      <label class="block text-xs mb-1" style="color: var(--theme-text-muted);">Formato</label>
+      <select data-tts-target="formatSelect" class="tts-select mb-3">
+        <option value="mp3">MP3</option>
+        <option value="wav">WAV</option>
+        <option value="opus">Opus</option>
+      </select>
+
+      <div class="flex gap-2">
+        <button class="tts-btn-primary flex-1"
+                data-action="click->tts#generate">
+          Gerar
+        </button>
+        <button class="tts-btn-secondary"
+                data-action="click->tts#closeDialog">
+          Cancelar
+        </button>
+      </div>
+    </div>
+
+    <%# ── Library panel ── %>
+    <div data-tts-target="libraryPanel" class="hidden p-4">
+      <div data-tts-target="libraryList"
+           class="max-h-80 overflow-y-auto space-y-2">
+        <p class="text-xs text-center py-4" style="color: var(--theme-text-muted);">Carregando...</p>
+      </div>
+    </div>
+  </div>
+
+  <%# ── TTS Player ──────────────────────────────────── %>
+  <div data-tts-target="player"
+       class="hidden fixed bottom-0 left-0 right-0 z-40 border-t shadow-2xl"
+       style="background: var(--theme-bg-secondary); border-color: var(--toolbar-border);">
+    <div class="flex items-center gap-2 px-4 py-2 max-w-3xl mx-auto">
+      <audio data-tts-target="audio" controls preload="auto"
+             class="h-8 flex-1" style="min-width: 200px; max-width: 320px;"></audio>
+
+      <span data-tts-target="playerInfo" class="text-[10px] flex-shrink-0" style="color: var(--theme-text-muted);"></span>
+
+      <div class="flex items-center gap-0.5 text-[10px]" style="color: var(--theme-text-muted);">
+        <button data-speed="0.75" data-action="click->tts#changeSpeed" class="px-1 py-0.5 rounded hover:bg-[var(--theme-bg-hover)]" title="0.75x">.75</button>
+        <button data-speed="1" data-action="click->tts#changeSpeed" class="px-1 py-0.5 rounded hover:bg-[var(--theme-bg-hover)]" style="color: var(--theme-accent);" title="1x">1x</button>
+        <button data-speed="1.25" data-action="click->tts#changeSpeed" class="px-1 py-0.5 rounded hover:bg-[var(--theme-bg-hover)]" title="1.25x">1.25</button>
+        <button data-speed="1.5" data-action="click->tts#changeSpeed" class="px-1 py-0.5 rounded hover:bg-[var(--theme-bg-hover)]" title="1.5x">1.5</button>
+      </div>
+
+      <button title="Karaoke (texto sincronizado)"
+              class="toolbar-btn"
+              data-tts-target="karaokeToggle"
+              data-action="click->tts#toggleKaraoke"
+              style="color: var(--theme-text-muted);">
+        <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M9 9l10.5-3m0 6.553v3.75a2.25 2.25 0 01-1.632 2.163l-1.32.377a1.803 1.803 0 11-.99-3.467l2.31-.66a2.25 2.25 0 001.632-2.163zm0 0V4.846A2.25 2.25 0 0016.174 2.7L7.346 5.194A2.25 2.25 0 005.25 7.336v8.318"/>
+        </svg>
+      </button>
+
+      <button title="Biblioteca de audios"
+              class="toolbar-btn"
+              data-action="click->tts#openDialog"
+              style="color: var(--theme-text-muted);">
+        <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M3.75 12h16.5m-16.5 3.75h16.5M3.75 19.5h16.5M5.625 4.5h12.75a1.875 1.875 0 010 3.75H5.625a1.875 1.875 0 010-3.75z"/>
+        </svg>
+      </button>
+
+      <button title="Rejeitar e gerar novo"
+              class="toolbar-btn text-red-400 hover:text-red-300"
+              data-action="click->tts#reject">
+        <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+        </svg>
+      </button>
+    </div>
+
+    <%# ── Karaoke panel ── %>
+    <div data-tts-target="karaokePanel" class="hidden border-t" style="border-color: var(--toolbar-border);">
+      <div data-controller="karaoke"
+           data-tts-target="karaokeContainer"
+           class="max-w-3xl mx-auto px-4 py-3 max-h-40 overflow-y-auto">
+        <div data-karaoke-target="text" class="karaoke-text leading-relaxed"></div>
+      </div>
+    </div>
+  </div>
 
 </div>

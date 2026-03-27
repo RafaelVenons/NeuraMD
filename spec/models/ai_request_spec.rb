@@ -104,4 +104,65 @@ RSpec.describe AiRequest, type: :model do
       translated_note_slug: translated_note.slug
     )
   end
+
+  it "includes TTS-specific fields in realtime_payload for tts capability" do
+    note = create(:note, :with_head_revision)
+    tts_asset = create(:note_tts_asset,
+      note_revision: note.head_revision,
+      provider: "kokoro",
+      voice: "af_bella",
+      language: "pt-BR",
+      format: "mp3",
+      duration_ms: 4500
+    )
+    # Attach a fake audio so asset is "ready"
+    tts_asset.audio.attach(
+      io: StringIO.new("fake-audio"),
+      filename: "test.mp3",
+      content_type: "audio/mpeg"
+    )
+
+    request = create(:ai_request,
+      note_revision: note.head_revision,
+      capability: "tts",
+      provider: "kokoro",
+      metadata: {
+        "tts_asset_id" => tts_asset.id,
+        "voice" => "af_bella",
+        "language" => "pt-BR",
+        "format" => "mp3"
+      }
+    )
+
+    payload = request.realtime_payload
+    expect(payload).to include(
+      tts_voice: "af_bella",
+      tts_language: "pt-BR",
+      tts_format: "mp3",
+      tts_audio_ready: true,
+      tts_duration_ms: 4500
+    )
+  end
+
+  it "handles missing TTS asset gracefully in realtime_payload" do
+    request = create(:ai_request,
+      capability: "tts",
+      provider: "kokoro",
+      metadata: {
+        "tts_asset_id" => SecureRandom.uuid,
+        "voice" => "af_bella",
+        "language" => "pt-BR",
+        "format" => "mp3"
+      }
+    )
+
+    payload = request.realtime_payload
+    expect(payload).to include(
+      tts_voice: "af_bella",
+      tts_language: "pt-BR",
+      tts_format: "mp3",
+      tts_audio_ready: false,
+      tts_duration_ms: nil
+    )
+  end
 end

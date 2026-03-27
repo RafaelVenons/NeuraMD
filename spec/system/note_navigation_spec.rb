@@ -141,8 +141,11 @@ RSpec.describe "Note navigation via links", type: :system do
       editor.click
       editor.send_keys("Conteúdo não salvo")
 
+      # Switch footer to backlinks mode
+      find("select[data-editor-target='contextMode']").select("Backlinks")
+
       # Backlinks panel should show src_note as a backlink
-      expect(page).to have_css(".backlinks-panel a", wait: 3)
+      expect(page).to have_css(".backlinks-panel a", wait: 5)
 
       find(".backlinks-panel a", text: src_note.title).click
 

@@ -1017,9 +1017,9 @@ Executar nesta ordem, porque cada etapa reduz ambiguidade da próxima e evita re
   - grafo embutido
   - histórico back/forward em sequências mais longas
 - [x] Manter o grafo embutido persistente com foco barato por nota, evitando relayout quando só o nó focado muda
-- [ ] Refinar o histórico global do shell para decidir quanto sobe além da atividade recente:
-  - somente requests recentes
-  - ou também resultados aplicáveis/reabertos
+- [x] Refinar o histórico global do shell para decidir quanto sobe além da atividade recente:
+  - manter atividade recente de requests no shell
+  - manter também resultados aplicáveis e resultados reabertos
 
 #### Etapa D — Endurecer preservação estrutural de wikilinks
 - [x] Incluir nos prompts instruções explícitas para preservar a estrutura `[[texto|uuid]]`, `[[texto|f:uuid]]`, `[[texto|c:uuid]]` e `[[texto|b:uuid]]`
@@ -1084,18 +1084,18 @@ Executar nesta ordem, porque cada etapa reduz ambiguidade da próxima e evita re
 
 #### 2b — Wiki-Links semânticos com autocomplete
 - [x] `GET /notes/search?q=:query` — endpoint JSON `{id, title, slug}` para autocomplete
-- [ ] Ajustar o contrato prioritário de link ativo para `[[Título|uuid]]`, `[[Título|f:uuid]]`, `[[Título|c:uuid]]` e `[[Título|b:uuid]]`, sem introduzir `h:`
-- [ ] `Links::ExtractService` — extrair `f:`, `c:` e `b:` preservando semântica e compatibilidade com `|uuid`
-- [ ] `Links::SyncService` — considerar apenas links presentes no latest da nota src como ativos no grafo; revisões antigas não contam
-- [ ] ~~`Links::TitleSyncService`~~ — não necessário; Display Text é livre e não rastreia o título da nota
+- [x] Ajustar o contrato prioritário de link ativo para `[[Título|uuid]]`, `[[Título|f:uuid]]`, `[[Título|c:uuid]]` e `[[Título|b:uuid]]`, sem introduzir `h:`
+- [x] `Links::ExtractService` — extrair `f:`, `c:` e `b:` preservando semântica e compatibilidade com `|uuid`
+- [x] `Links::SyncService` — considerar apenas links presentes no latest da nota src como ativos no grafo; revisões antigas não contam
+- [x] ~~`Links::TitleSyncService`~~ — não necessário; Display Text é livre e não rastreia o título da nota
 - [x] CodeMirror extension: detecta `[[`, abre dropdown Stimulus com sugestões via fetch, navega com `↑`/`↓`, insere com `Enter`/`Tab`, fecha com `Esc`
 - [x] Decoração de link quebrado: UUID não encontrado no DB → classe CSS `wikilink-broken` (fundo vermelho) no editor via CodeMirror ViewPlugin
 - [x] Preview: render `[[Título|uuid]]` como `<a href="/notes/slug">Título</a>` (client-side no preview controller)
 - [x] Preview: se UUID inexistente, render como `<span class="wikilink-broken">Título</span>`
 - [x] Backlinks no preview: seção no rodapé com notas src linkando para a nota atual
-- [ ] Fluxo de promessa: ao fechar `]]` e escolher IA, criar a nota no backend, inserir UUID correto no link atual, enfileirar job visual e permanecer na nota atual
-- [ ] Desfazer promessa com IA rejeitada: apagar a nota criada no banco e remover o link quando o usuário descartar a resposta
-- [ ] Specs: ExtractService, SyncService, endpoint search, render com links ativos/legados e promessa com IA
+- [x] Fluxo de promessa: ao fechar `]]` e escolher IA, criar a nota no backend, inserir UUID correto no link atual, enfileirar job visual e permanecer na nota atual
+- [x] Desfazer promessa com IA rejeitada: apagar a nota criada no banco e remover o link quando o usuário descartar a resposta
+- [x] Specs: ExtractService, SyncService, endpoint search, render com links ativos/legados e promessa com IA
 
 #### 2c — Tags
 - [x] API Tags: `GET/POST/DELETE /tags` — JSON, Pundit auth

@@ -132,7 +132,7 @@ class AiRequest < ApplicationRecord
     promise_note = promise_note_record
     translated_note = translated_note_record
 
-    {
+    payload = {
       id: id,
       status: status,
       provider: provider,
@@ -172,6 +172,20 @@ class AiRequest < ApplicationRecord
       result_applicable: result_applicable?,
       queue_hidden: queue_hidden?
     }
+
+    if capability == "tts"
+      tts_asset = NoteTtsAsset.find_by(id: metadata_payload["tts_asset_id"])
+      payload.merge!(
+        tts_asset_id: metadata_payload["tts_asset_id"],
+        tts_voice: metadata_payload["voice"],
+        tts_language: metadata_payload["language"],
+        tts_format: metadata_payload["format"],
+        tts_audio_ready: tts_asset&.ready? || false,
+        tts_duration_ms: tts_asset&.duration_ms
+      )
+    end
+
+    payload
   end
 
   def queue_hidden?

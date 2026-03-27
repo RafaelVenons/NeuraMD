@@ -984,6 +984,13 @@ export default class extends Controller {
     this._upsertGlobalHistoryRequest(request)
     if (this._belongsToCurrentNote(request)) this._upsertHistoryRequest(request)
     if (this.historyDialogTarget?.open) this._renderHistory()
+
+    // Auto-resolve TTS queue cards — TTS results are shown via the TTS player, not proposals
+    if (request.capability === "tts" && request.status === "succeeded") {
+      this._resolveQueueRequest(String(request.id))
+      this._persistQueueResolution(String(request.id))
+    }
+
     this._renderQueue()
     if (String(request.id) !== String(this.currentRequestId)) return
 
@@ -1618,6 +1625,8 @@ export default class extends Controller {
   }
 
   _historyCard(request) {
+    if (request.capability === "tts") return this._ttsHistoryCard(request)
+
     const interactive = request.status === "succeeded" || request.promise_note_slug || request.note_slug
     const interactiveClass = interactive ? "cursor-pointer hover:border-[var(--theme-accent)] hover:bg-[var(--theme-bg-hover)]" : ""
     const interactiveAttrs = interactive
@@ -1652,6 +1661,57 @@ export default class extends Controller {
           <p>Concluído: ${this._escapeHtml(this._formatTimestamp(request.completed_at))}</p>
         </div>
         ${remoteHint}
+        ${error}
+      </article>
+    `
+  }
+
+  _ttsHistoryCard(request) {
+    const statusClass = this._statusClass(request.status)
+    const noteTitle = request.note_title
+    const noteLabel = noteTitle ? `<p class="mt-1 text-xs text-[var(--theme-text-faint)]">${this._escapeHtml(noteTitle)}</p>` : ""
+    const error = request.error ? `<p class="mt-2 text-xs text-amber-300">${this._escapeHtml(request.error)}</p>` : ""
+    const duration = this._durationLabel(request)
+
+    const voice = request.tts_voice || ""
+    const lang = request.tts_language || ""
+    const fmt = request.tts_format || "mp3"
+    const ttsDuration = request.tts_duration_ms
+      ? `${(request.tts_duration_ms / 1000).toFixed(1)}s`
+      : ""
+
+    const badges = [voice, lang, fmt].filter(Boolean)
+      .map(b => `<span class="inline-block rounded bg-[var(--theme-bg-tertiary)] px-1.5 py-0.5 text-[10px] text-[var(--theme-text-muted)]">${this._escapeHtml(b)}</span>`)
+      .join(" ")
+
+    const audioPlayer = request.tts_audio_ready && request.note_slug && request.tts_asset_id
+      ? `<audio controls preload="none" class="mt-2 w-full h-8" style="max-height: 32px;"
+           src="/notes/${encodeURIComponent(request.note_slug)}/tts_audio?tts_asset_id=${encodeURIComponent(request.tts_asset_id)}">
+         </audio>`
+      : ""
+
+    return `
+      <article class="rounded-lg border border-[var(--theme-border)] bg-[var(--theme-bg-secondary)] p-4">
+        <div class="flex items-start justify-between gap-4">
+          <div>
+            <p class="text-sm font-semibold text-[var(--theme-text-primary)]">
+              <svg class="inline-block w-4 h-4 mr-1 align-text-bottom" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.536 8.464a5 5 0 010 7.072M12 6v12m-3.536-2.464a5 5 0 010-7.072M18.364 5.636a9 9 0 010 12.728M5.636 18.364a9 9 0 010-12.728"/></svg>
+              ${this._escapeHtml(this._capabilityLabel(request.capability))}
+            </p>
+            <p class="text-xs text-[var(--theme-text-muted)]">${this._escapeHtml(request.provider || "TTS")}</p>
+            ${noteLabel}
+            <div class="mt-1 flex flex-wrap gap-1">${badges}</div>
+          </div>
+          <span class="rounded-full px-2 py-1 text-[11px] font-medium ${statusClass}">
+            ${this._escapeHtml(this._statusLabel(request.status))}
+          </span>
+        </div>
+        <div class="mt-2 flex gap-3 text-xs text-[var(--theme-text-muted)]">
+          <span>Duração job: ${this._escapeHtml(duration)}</span>
+          ${ttsDuration ? `<span>Audio: ${this._escapeHtml(ttsDuration)}</span>` : ""}
+          <span>${this._escapeHtml(this._formatTimestamp(request.created_at))}</span>
+        </div>
+        ${audioPlayer}
         ${error}
       </article>
     `
@@ -1839,6 +1899,13 @@ export default class extends Controller {
         retrying: "Criando",
         succeeded: "Criado",
         failed: "Criar"
+      },
+      tts: {
+        queued: "Criar Audio",
+        running: "Criando Audio",
+        retrying: "Criando Audio",
+        succeeded: "Audio Criado",
+        failed: "Criar Audio"
       }
     }
 
@@ -1882,6 +1949,11 @@ export default class extends Controller {
 
     if (["rewrite", "grammar_review"].includes(request.capability)) {
       await this._openSourceReviewRequest(request)
+      return
+    }
+
+    if (request.capability === "tts") {
+      await this._openTtsRequest(request)
       return
     }
 
@@ -1947,6 +2019,18 @@ export default class extends Controller {
       targetLanguage: request.target_language || this.selectedTargetLanguage()
     }
     this._showProposal(request.corrected || "")
+  }
+
+  async _openTtsRequest(request) {
+    // Navigate to the note — TTS results are shown via the TTS player, not a proposal
+    if (request.note_slug && request.note_slug !== this._currentNoteSlug()) {
+      const shell = this.application.getControllerForElementAndIdentifier(this.element, "note-shell")
+      if (shell?.navigateTo) await shell.navigateTo(`/notes/${request.note_slug}`)
+      else if (window.Turbo?.visit) window.Turbo.visit(`/notes/${request.note_slug}`)
+      else window.location.assign(`/notes/${request.note_slug}`)
+    }
+    // Mark as resolved in queue so it doesn't keep showing
+    await this._persistQueueResolution(request.id)
   }
 
   _findRequestById(requestId) {
@@ -2311,7 +2395,9 @@ export default class extends Controller {
     return {
       grammar_review: "Revisao gramatical",
       rewrite: "Melhoria de Markdown",
-      translate: "Traducao"
+      translate: "Traducao",
+      tts: "Audio TTS",
+      seed_note: "Nota sugerida"
     }[capability] || capability
   }
 

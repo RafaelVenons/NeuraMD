@@ -124,6 +124,55 @@
     color: var(--theme-accent-hover);
   }
 
+  /* TTS dialog & player */
+  .tts-select {
+    @apply w-full rounded-lg border px-2 py-1.5 text-sm;
+    background: var(--theme-bg-primary);
+    border-color: var(--theme-border);
+    color: var(--theme-text-primary);
+  }
+  .tts-select:focus {
+    outline: none;
+    border-color: var(--theme-accent);
+  }
+  .tts-btn-primary {
+    @apply rounded-lg px-3 py-1.5 text-sm font-medium cursor-pointer;
+    background: var(--theme-accent);
+    color: var(--theme-bg-primary);
+  }
+  .tts-btn-primary:hover {
+    background: var(--theme-accent-hover);
+  }
+  .tts-btn-secondary {
+    @apply rounded-lg px-3 py-1.5 text-sm cursor-pointer;
+    background: var(--theme-bg-primary);
+    color: var(--theme-text-muted);
+    border: 1px solid var(--theme-border);
+  }
+  .tts-btn-secondary:hover {
+    color: var(--theme-text-primary);
+  }
+
+  /* Karaoke player */
+  .karaoke-text {
+    font-size: 0.9rem;
+    line-height: 1.8;
+    color: var(--theme-text-secondary);
+  }
+  .karaoke-word {
+    padding: 1px 3px;
+    border-radius: 3px;
+    cursor: pointer;
+    transition: background 0.1s ease, color 0.1s ease;
+  }
+  .karaoke-word:hover {
+    background: var(--theme-bg-hover);
+  }
+  .karaoke-active {
+    background: var(--theme-accent) !important;
+    color: white !important;
+  }
+
   .ai-history-filter {
     padding: 6px 10px;
     border-radius: 999px;

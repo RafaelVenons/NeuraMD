@@ -27,7 +27,7 @@ RSpec.describe Ai::ReviewService do
         )
       }.to change(AiRequest, :count).by(1)
         .and have_enqueued_job(Ai::ReviewJob)
-        .on_queue("ai_remote")
+        .on_queue("airch")
 
       request = AiRequest.recent_first.first
       expect(request.status).to eq("queued")

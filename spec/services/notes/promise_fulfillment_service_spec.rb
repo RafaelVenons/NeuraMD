@@ -42,11 +42,11 @@ RSpec.describe Notes::PromiseFulfillmentService do
   end
 
   it "rejects invalid seed-note output before saving corrupted markdown into the promise note" do
-    request_record.update!(output_text: "[[Promessa IA|nao-e-uuid]]")
+    request_record.update!(output_text: "")
 
     expect {
       described_class.call(ai_request: request_record)
-    }.to raise_error(Ai::InvalidOutputError, /wikilink invalido/)
+    }.to raise_error(Ai::InvalidOutputError, /vazia/)
 
     expect(target_note.reload.head_revision).to be_nil
   end

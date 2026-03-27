@@ -1,5 +1,5 @@
 class NoteTtsAsset < ApplicationRecord
-  PROVIDERS = %w[elevenlabs fish_audio openai].freeze
+  PROVIDERS = %w[elevenlabs fish_audio gemini kokoro].freeze
   FORMATS = %w[mp3 wav opus].freeze
 
   belongs_to :note_revision
@@ -14,6 +14,9 @@ class NoteTtsAsset < ApplicationRecord
 
   scope :active, -> { where(is_active: true) }
   scope :inactive, -> { where(is_active: false) }
+  scope :ready, -> { active.joins(:audio_attachment) }
+  scope :pending, -> { active.left_joins(:audio_attachment).where(active_storage_attachments: {id: nil}) }
+  scope :for_note, ->(note) { joins(:note_revision).where(note_revisions: {note_id: note.id}) }
 
   def self.find_cached(text_sha256:, language:, voice:, provider:, model:, settings_hash:)
     active.find_by(
@@ -28,5 +31,25 @@ class NoteTtsAsset < ApplicationRecord
 
   def deactivate!
     update!(is_active: false)
+  end
+
+  def ready?
+    audio.attached?
+  end
+
+  def pending?
+    is_active && !audio.attached?
+  end
+
+  def alignment_ready?
+    alignment_status == "succeeded" && alignment_data.present?
+  end
+
+  def alignment_pending?
+    alignment_status == "pending"
+  end
+
+  def alignment_failed?
+    alignment_status == "failed"
   end
 end

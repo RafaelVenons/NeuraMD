@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_03_21_110000) do
+ActiveRecord::Schema[8.1].define(version: 2026_03_26_015235) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
   enable_extension "pg_trgm"
@@ -153,6 +153,8 @@ ActiveRecord::Schema[8.1].define(version: 2026_03_21_110000) do
   end
 
   create_table "note_tts_assets", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.jsonb "alignment_data"
+    t.string "alignment_status"
     t.datetime "created_at", null: false
     t.integer "duration_ms"
     t.string "format", default: "mp3", null: false

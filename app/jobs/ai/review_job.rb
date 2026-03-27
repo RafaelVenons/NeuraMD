@@ -1,6 +1,6 @@
 module Ai
   class ReviewJob < ApplicationJob
-    queue_as :ai_remote
+    queue_as :airch
 
     discard_on ActiveJob::DeserializationError
 
