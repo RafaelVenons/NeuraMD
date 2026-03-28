@@ -24,10 +24,10 @@ RSpec.describe "TTS player", type: :system do
     {
       "words" => [
         {"word" => "Trecho", "start" => 0.0, "end" => 0.4},
-        {"word" => "com", "start" => 0.45, "end" => 0.6},
-        {"word" => "erro", "start" => 0.65, "end" => 1.0}
+        {"word" => "com", "start" => 0.45, "end" => 0.75},
+        {"word" => "erro", "start" => 0.8, "end" => 1.2}
       ],
-      "duration_s" => 1.0
+      "duration_s" => 1.2
     }
   end
 
@@ -194,6 +194,159 @@ RSpec.describe "TTS player", type: :system do
 
       # Only one word should be active at a time
       expect(page).to have_css(".karaoke-active", count: 1)
+    end
+  end
+
+  it "groups short-duration words so they highlight together" do
+    # Alignment with very short words: "é" (30ms) and "uma" (70ms) are too fast
+    # to be visible individually. They should be grouped and highlighted together.
+    short_alignment = {
+      "words" => [
+        {"word" => "Saúde",  "start" => 0.0,  "end" => 0.4},
+        {"word" => "é",      "start" => 0.9,  "end" => 0.93},   # 30ms
+        {"word" => "uma",    "start" => 0.93, "end" => 1.0},    # 70ms
+        {"word" => "prioridade", "start" => 1.05, "end" => 1.6}
+      ],
+      "duration_s" => 1.6
+    }
+
+    head_revision.update!(content_markdown: "Saúde é uma prioridade.")
+
+    create(:note_tts_asset, :with_audio,
+      note_revision: head_revision,
+      alignment_data: short_alignment,
+      alignment_status: "succeeded")
+
+    visit note_path(note.slug)
+    expect(page).to have_css("[data-tts-target='player']:not(.hidden)", wait: 10)
+
+    page.execute_script(<<~JS)
+      (() => {
+        const el = document.querySelector("[data-controller~='karaoke']");
+        const ctrl = window.Stimulus.getControllerForElementAndIdentifier(el, "karaoke");
+        ctrl._words = #{short_alignment["words"].to_json};
+        ctrl._injected = false;
+        ctrl._retryCount = 0;
+        ctrl.activate();
+      })()
+    JS
+
+    within("[data-preview-target='output']") do
+      expect(page).to have_css(".karaoke-word", minimum: 4, wait: 5)
+    end
+
+    page.execute_script("document.querySelectorAll('.karaoke-word').forEach(el => el.style.transition = 'none')")
+
+    # Simulate time at t=0.92 — inside "é" (30ms word).
+    # Without grouping, this word would flash too fast to see.
+    # "é" + "uma" = 100ms (still < 200ms), so they get merged with next word "prioridade".
+    # The full group "é uma prioridade" highlights together.
+    page.execute_script(<<~JS)
+      (() => {
+        const el = document.querySelector("[data-controller~='karaoke']");
+        const ctrl = window.Stimulus.getControllerForElementAndIdentifier(el, "karaoke");
+        const idx = ctrl._findWordIndex(0.92);
+        ctrl._highlightWord(idx);
+        ctrl._currentIndex = idx;
+      })()
+    JS
+
+    within("[data-preview-target='output']") do
+      active_words = all(".karaoke-active", wait: 3)
+      expect(active_words.length).to eq(3)
+      expect(active_words.map(&:text)).to eq(["é", "uma", "prioridade."])
+    end
+
+    # "Saúde" (400ms) should highlight alone — it's long enough
+    page.execute_script(<<~JS)
+      (() => {
+        const el = document.querySelector("[data-controller~='karaoke']");
+        const ctrl = window.Stimulus.getControllerForElementAndIdentifier(el, "karaoke");
+        const idx = ctrl._findWordIndex(0.2);
+        ctrl._highlightWord(idx);
+        ctrl._currentIndex = idx;
+      })()
+    JS
+
+    within("[data-preview-target='output']") do
+      active_words = all(".karaoke-active", wait: 3)
+      expect(active_words.length).to eq(1)
+      expect(active_words.first.text).to eq("Saúde")
+    end
+  end
+
+  it "groups an isolated short word with its next neighbor" do
+    # "da" (90ms) is isolated between two long words — no gap to expand into.
+    # It must merge with the next word "humanidade" so it's visible.
+    isolated_alignment = {
+      "words" => [
+        {"word" => "culturas", "start" => 1.98, "end" => 2.46},
+        {"word" => "da",       "start" => 2.46, "end" => 2.55},  # 90ms, no gaps
+        {"word" => "humanidade", "start" => 2.55, "end" => 3.19}
+      ],
+      "duration_s" => 3.19
+    }
+
+    head_revision.update!(content_markdown: "culturas da humanidade")
+
+    create(:note_tts_asset, :with_audio,
+      note_revision: head_revision,
+      alignment_data: isolated_alignment,
+      alignment_status: "succeeded")
+
+    visit note_path(note.slug)
+    expect(page).to have_css("[data-tts-target='player']:not(.hidden)", wait: 10)
+
+    page.execute_script(<<~JS)
+      (() => {
+        const el = document.querySelector("[data-controller~='karaoke']");
+        const ctrl = window.Stimulus.getControllerForElementAndIdentifier(el, "karaoke");
+        ctrl._words = #{isolated_alignment["words"].to_json};
+        ctrl._injected = false;
+        ctrl._retryCount = 0;
+        ctrl.activate();
+      })()
+    JS
+
+    within("[data-preview-target='output']") do
+      expect(page).to have_css(".karaoke-word", minimum: 3, wait: 5)
+    end
+
+    page.execute_script("document.querySelectorAll('.karaoke-word').forEach(el => el.style.transition = 'none')")
+
+    # Simulate time at t=2.50 — inside "da" (90ms, no gaps around it).
+    # "da" should be grouped with "humanidade" and both highlight.
+    page.execute_script(<<~JS)
+      (() => {
+        const el = document.querySelector("[data-controller~='karaoke']");
+        const ctrl = window.Stimulus.getControllerForElementAndIdentifier(el, "karaoke");
+        const idx = ctrl._findWordIndex(2.50);
+        ctrl._highlightWord(idx);
+        ctrl._currentIndex = idx;
+      })()
+    JS
+
+    within("[data-preview-target='output']") do
+      active_words = all(".karaoke-active", wait: 3)
+      expect(active_words.length).to eq(2)
+      expect(active_words.map(&:text)).to eq(["da", "humanidade"])
+    end
+
+    # "culturas" (480ms) should highlight alone
+    page.execute_script(<<~JS)
+      (() => {
+        const el = document.querySelector("[data-controller~='karaoke']");
+        const ctrl = window.Stimulus.getControllerForElementAndIdentifier(el, "karaoke");
+        const idx = ctrl._findWordIndex(2.2);
+        ctrl._highlightWord(idx);
+        ctrl._currentIndex = idx;
+      })()
+    JS
+
+    within("[data-preview-target='output']") do
+      active_words = all(".karaoke-active", wait: 3)
+      expect(active_words.length).to eq(1)
+      expect(active_words.first.text).to eq("culturas")
     end
   end
 

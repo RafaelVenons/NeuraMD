@@ -8,9 +8,13 @@ export default class extends Controller {
     alignment: { type: Object, default: {} }
   }
 
+  static MIN_GROUP_DURATION = 0.2 // 200ms — minimum visual duration for a word group
+
   initialize() {
     this._currentIndex = -1
     this._words = []
+    this._groups = []      // [{start, end, indices: [wordIdx, ...]}]
+    this._wordToGroup = [] // wordIdx → groupIdx
     this._spans = []
     this._injected = false
     this._boundTimeUpdate = this._onTimeUpdate.bind(this)
@@ -50,6 +54,7 @@ export default class extends Controller {
     this._retryCount = 0
 
     this._injectSpans()
+    this._buildGroups()
     this._bindAudio()
     this._watchPreview()
     this._injected = true
@@ -169,6 +174,74 @@ export default class extends Controller {
     }
   }
 
+  // ── Word grouping (short words) ─────────────────────
+  // Groups consecutive short-duration words so they highlight together.
+  // Without this, words like "é" (30ms) flash too fast to be visible.
+
+  _buildGroups() {
+    const MIN = this.constructor.MIN_GROUP_DURATION
+    const words = this._words
+    this._groups = []
+    this._wordToGroup = new Array(words.length)
+
+    // Pass 1: build initial groups — consecutive short words together, long words solo
+    let i = 0
+    while (i < words.length) {
+      const dur = words[i].end - words[i].start
+      if (dur >= MIN) {
+        this._groups.push({ start: words[i].start, end: words[i].end, indices: [i] })
+        i++
+        continue
+      }
+
+      // Short word — group with consecutive short words only
+      const group = { start: words[i].start, end: words[i].end, indices: [i] }
+      let j = i + 1
+      while (j < words.length && (words[j].end - words[j].start) < MIN) {
+        group.indices.push(j)
+        group.end = words[j].end
+        j++
+      }
+      this._groups.push(group)
+      i = j
+    }
+
+    // Pass 2: merge any group still too short with its nearest neighbor
+    // (handles isolated short words between long words, e.g. "da" between "culturas" + "humanidade")
+    let merged = true
+    while (merged) {
+      merged = false
+      for (let g = 0; g < this._groups.length; g++) {
+        const group = this._groups[g]
+        if (group.end - group.start >= MIN) continue
+
+        // Pick neighbor: prefer next group (reading direction), fallback to previous
+        let target = -1
+        if (g + 1 < this._groups.length) target = g + 1
+        else if (g > 0) target = g - 1
+
+        if (target < 0) break
+
+        // Absorb into neighbor
+        const lo = Math.min(g, target)
+        const hi = Math.max(g, target)
+        const a = this._groups[lo]
+        const b = this._groups[hi]
+        a.indices = a.indices.concat(b.indices)
+        a.start = Math.min(a.start, b.start)
+        a.end = Math.max(a.end, b.end)
+        this._groups.splice(hi, 1)
+        merged = true
+        break // restart scan after mutation
+      }
+    }
+
+    // Build reverse mapping: wordIdx → groupIdx
+    this._groups.forEach((group, gi) => {
+      group.indices.forEach(wi => { this._wordToGroup[wi] = gi })
+    })
+  }
+
   // ── Audio sync ───────────────────────────────────────
 
   _bindAudio() {
@@ -195,35 +268,48 @@ export default class extends Controller {
   }
 
   _findWordIndex(time) {
-    const words = this._words
-    if (words.length === 0) return -1
+    // Search groups instead of individual words for stable highlighting
+    const groups = this._groups
+    if (groups.length === 0) return -1
 
-    let lo = 0, hi = words.length - 1
+    let lo = 0, hi = groups.length - 1
     while (lo <= hi) {
       const mid = (lo + hi) >> 1
-      if (time < words[mid].start) hi = mid - 1
-      else if (time >= words[mid].end) lo = mid + 1
+      if (time < groups[mid].start) hi = mid - 1
+      else if (time >= groups[mid].end) lo = mid + 1
       else return mid
     }
     return -1
   }
 
-  _highlightWord(index) {
+  _highlightWord(groupIndex) {
+    // Highlight all spans belonging to the active group
+    const activeGroup = this._groups[groupIndex]
+    const activeIndices = activeGroup ? new Set(activeGroup.indices) : new Set()
+
     this._spans.forEach((span, i) => {
-      if (i === index) {
+      if (activeIndices.has(i)) {
         span.classList.add("karaoke-active")
-        span.scrollIntoView({ behavior: "smooth", block: "nearest" })
       } else {
         span.classList.remove("karaoke-active")
       }
     })
+
+    // Scroll first active span into view
+    if (activeGroup && activeGroup.indices.length > 0) {
+      this._spans[activeGroup.indices[0]]?.scrollIntoView({ behavior: "smooth", block: "nearest" })
+    }
   }
 
   // ── Click to seek ────────────────────────────────────
 
   _onWordClick(event) {
     const span = event.currentTarget
-    const start = parseFloat(span.dataset.start)
+    const wordIdx = parseInt(span.dataset.index, 10)
+    const groupIdx = this._wordToGroup[wordIdx]
+    const group = this._groups[groupIdx]
+    // Seek to the start of the group so the whole group highlights
+    const start = group ? group.start : parseFloat(span.dataset.start)
     const audio = this._audioElement()
     if (audio && !isNaN(start)) {
       audio.currentTime = start

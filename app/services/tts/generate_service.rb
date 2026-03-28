@@ -81,7 +81,8 @@ module Tts
       # headings, paragraphs, and list items.
       def strip_markup(text)
         text = text.to_s
-        text = text.gsub(/[^\S\n]+/, " ")                   # spaces/tabs → single space
+        text = text.gsub(/[(){}\[\]]/, "")                    # remove parens/brackets (MFA can't align them)
+        text = text.gsub(/[^\S\n]+/, " ")                    # spaces/tabs → single space
         text = text.gsub(/\n{3,}/, "\n\n")                   # 3+ newlines → double
         # Convert line breaks to sentence breaks for natural TTS pauses.
         # Add period only when line doesn't already end with punctuation.

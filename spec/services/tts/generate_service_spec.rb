@@ -114,6 +114,12 @@ RSpec.describe Tts::GenerateService do
       expect(result[:ai_request].input_text).to eq("Frase um. Frase dois.")
     end
 
+    it "removes parentheses and brackets for MFA compatibility" do
+      allow(Tts::GenerateJob).to receive(:perform_later)
+      result = described_class.call(**params.merge(text: "AI (Artificial Intelligence) é bom"))
+      expect(result[:ai_request].input_text).to eq("AI Artificial Intelligence é bom")
+    end
+
     it "defaults voice to first available when blank" do
       allow(Tts::GenerateJob).to receive(:perform_later)
       allow(Tts::ProviderRegistry).to receive(:voices_for).with("kokoro", language: "en-US").and_return(%w[af_heart bf_emma])
