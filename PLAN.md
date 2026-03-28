@@ -1265,7 +1265,12 @@ Essas decisões devem permanecer em ENV e em service de roteamento, nunca hardco
 - [x] Queue cards de TTS auto-resolvem quando processamento conclui
 - [x] Strip de markdown/wikilinks do texto antes de enviar ao provider TTS
 - [x] Fila única `airch` (1 thread) para processamento sequencial AI/TTS/MFA no AIrch
-- [x] System specs E2E: dialog, karaoke, stale notice, library (5 specs, Capybara+Cuprite)
+- [x] System specs E2E: dialog, karaoke, stale notice, library (8 specs, Capybara+Cuprite)
+- [x] Fix karaoke span injection: guard contra Stimulus double-fire + MutationObserver para re-render do preview
+- [x] Strip de parênteses/colchetes do texto TTS para compatibilidade MFA
+- [x] Conversão de quebras de linha em pausas (`. `) para TTS natural em headings/parágrafos
+- [x] Remapeamento de palavras compostas no MFA: merge "bem"+"estar" → "bem-estar" com timing expandido
+- [x] Agrupamento de palavras curtas no karaoke: 2 passes (consecutivas + merge com vizinha) para garantir ≥200ms de visibilidade por grupo
 - **Entrega:** áudio eficiente e multi-idioma com karaoke sincronizado
 
 #### Fase 6 — Gotchas e decisões de implementação
@@ -1283,6 +1288,38 @@ Essas decisões devem permanecer em ENV e em service de roteamento, nunca hardco
 - MFA `RemoteExecutor` precisa de timeout de execução (`Timeout.timeout(300)`) além do connect timeout SSH, para evitar travar a fila inteira
 - Fila `airch` (1 thread, 1 process) garante processamento sequencial no AIrch — AI, TTS e MFA compartilham a mesma fila
 - `config/brakeman.ignore` contém false positive para `Open3.capture3` no `RemoteExecutor` (array-based, sem shell, valores de ENV internos)
+- MFA roda nativo via mamba (não Docker): `~/.local/share/mamba/envs/mfa/bin/mfa` — mais estável e rápido que `docker exec`
+- Karaoke word grouping: palavras <200ms são agrupadas em 2 passes — (1) consecutivas curtas juntas, (2) grupos ainda <200ms absorvidos pelo vizinho mais próximo
+- Karaoke CSS: `.karaoke-active` fora de `@layer components` para máxima especificidade em Tailwind v4
+- `innerText` do preview como fonte de texto TTS — já vem sem markdown, preserva quebras de linha entre blocos
+
+#### Fase 6 — Testes Paralelos com AIrch
+
+O host `AIrch` (rafael@AIrch.local) pode executar a bateria de testes em paralelo com a máquina de desenvolvimento, dividindo a carga de CPU. Setup:
+
+**Infraestrutura no AIrch:**
+- Ruby 3.3.10 via mise (mesmo que dev)
+- PostgreSQL 17 (user `rafael`, database `neuramd_test`)
+- Chromium headless para system specs (Capybara+Cuprite)
+- Código sincronizado via rsync
+
+**Script `bin/rspec-airch`:**
+```bash
+bin/rspec-airch [--sync] [spec paths...]
+```
+- `--sync` executa rsync antes de rodar (código + Gemfile + migrations)
+- Roda `bundle install`, `rails db:migrate`, então `rspec` via SSH
+- Pode rodar subsets de specs no AIrch enquanto dev roda outros localmente
+
+**Estratégia de divisão:**
+- **AIrch:** specs unitários/request (rápidos, CPU-bound, sem browser): `spec/models/`, `spec/services/`, `spec/requests/`, `spec/jobs/`
+- **Dev local:** system specs (browser-bound, Cuprite): `spec/system/`
+- Exemplo: `bin/rspec-airch --sync spec/models/ spec/services/ spec/requests/` em paralelo com `bundle exec rspec spec/system/`
+
+**Requisitos:**
+- SSH sem senha configurado (`~/.ssh/authorized_keys`)
+- NFS mount compartilhado em `/mnt/AIrch/data/` para artefatos MFA/TTS
+- `DATABASE_URL` configurado no AIrch para PostgreSQL local
 
 #### Fase 6 — Preparação de Infra para Ferramentas Locais
 
@@ -1311,12 +1348,12 @@ services:
 
 Esse padrão evita drift entre caminhos internos dos serviços.
 
-**Imagens base atualmente escolhidas para alinhamento inicial:**
+**Serviços ativos no AIrch:**
 
-- Kokoro: `ghcr.io/remsky/kokoro-fastapi-cpu:v0.2.4`
-- Montreal Forced Aligner: `mmcauliffe/montreal-forced-aligner:latest`
-
-Essas escolhas devem ser revisitadas quando houver benchmark real de CPU/GPU, throughput e footprint no host `AIrch`.
+- Kokoro TTS: FastAPI server nativo em `~/kokoro-env/kokoro_server.py`, systemd user service na porta 8880
+- Montreal Forced Aligner: instalação nativa via mamba em `~/.local/share/mamba/envs/mfa/bin/mfa` (não usa Docker — mais rápido e estável)
+- NFS paths: local `/mnt/AIrch/data/mfa/{input,output}` ↔ remoto `/srv/airch-data/mfa/{input,output}`
+- Alignments permanentes: `/mnt/AIrch/data/alignments/json/`
 
 ### Fase 7 — Polimento Editor e UX
 - [ ] Themes (dark + custom) — base FrankMD
