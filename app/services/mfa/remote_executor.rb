@@ -36,6 +36,5 @@ module Mfa
 
       stdout
     end
-
   end
 end
