@@ -85,6 +85,18 @@ export default class extends Controller {
     this.filteredItems = [...this.allEmojis]
     this.selectedIndex = 0
     this.activeTab = "emoji"
+
+    // Event delegation on grid — Stimulus actions on innerHTML don't always
+    // register inside <dialog> top-layer, so we handle clicks manually.
+    this._boundGridClick = this._onGridClick.bind(this)
+    this._boundGridHover = this._onGridHover.bind(this)
+    this.gridTarget.addEventListener("click", this._boundGridClick)
+    this.gridTarget.addEventListener("mouseover", this._boundGridHover)
+  }
+
+  disconnect() {
+    this.gridTarget?.removeEventListener("click", this._boundGridClick)
+    this.gridTarget?.removeEventListener("mouseover", this._boundGridHover)
   }
 
   open() {
@@ -188,7 +200,6 @@ export default class extends Controller {
             style="${sel}"
             data-index="${index}"
             data-shortcode="${this._esc(shortcode)}"
-            data-action="click->emoji-picker#selectFromClick mouseenter->emoji-picker#onHover"
             title=":${this._esc(shortcode)}:"
           >${emoji}</button>
         `
@@ -208,7 +219,6 @@ export default class extends Controller {
             style="${sel}"
             data-index="${index}"
             data-emoticon="${this._esc(emoticon)}"
-            data-action="click->emoji-picker#selectFromClick mouseenter->emoji-picker#onHover"
             title="${this._esc(name)}"
           >${this._esc(emoticon)}</button>
         `
@@ -286,22 +296,26 @@ export default class extends Controller {
     this.updatePreview()
   }
 
-  onHover(event) {
-    const index = parseInt(event.currentTarget.dataset.index, 10)
+  _onGridClick(event) {
+    const btn = event.target.closest("[data-index]")
+    if (!btn) return
+    if (this.activeTab === "emoji") {
+      const shortcode = btn.dataset.shortcode
+      if (shortcode) this._dispatchSelected(`:${shortcode}:`)
+    } else {
+      const emoticon = btn.dataset.emoticon
+      if (emoticon) this._dispatchSelected(emoticon)
+    }
+  }
+
+  _onGridHover(event) {
+    const btn = event.target.closest("[data-index]")
+    if (!btn) return
+    const index = parseInt(btn.dataset.index, 10)
     if (!isNaN(index) && index !== this.selectedIndex) {
       this.selectedIndex = index
       this.renderGrid()
       this.updatePreview()
-    }
-  }
-
-  selectFromClick(event) {
-    if (this.activeTab === "emoji") {
-      const shortcode = event.currentTarget.dataset.shortcode
-      if (shortcode) this._dispatchSelected(`:${shortcode}:`)
-    } else {
-      const emoticon = event.currentTarget.dataset.emoticon
-      if (emoticon) this._dispatchSelected(emoticon)
     }
   }
 

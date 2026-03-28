@@ -3454,6 +3454,24 @@
   }
 }
 
+/* ── Centered dialog ── */
+.dialog-centered {
+  margin: auto;
+}
+
+/* ── Keyboard shortcut keys ── */
+kbd {
+  display: inline-block;
+  padding: 1px 6px;
+  border: 1px solid var(--theme-border);
+  border-radius: 4px;
+  background: var(--theme-bg-primary);
+  font-family: inherit;
+  font-size: 11px;
+  line-height: 1.6;
+  color: var(--theme-text-primary);
+}
+
 /* ── Karaoke active word — outside @layer for maximum specificity ── */
 .karaoke-active {
   background: #ffffff !important;

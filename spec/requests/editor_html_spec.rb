@@ -110,5 +110,12 @@ RSpec.describe "Editor HTML structure", type: :request do
       expect(response.body).to include('data-theme-target="menu"')
       expect(response.body).to include("click->theme#toggle")
     end
+
+    it "renders shortcuts help dialog with keyboard reference" do
+      expect(response.body).to include('id="shortcuts-help-dialog"')
+      expect(response.body).to include("Atalhos do Teclado")
+      expect(response.body).to include("<kbd>Ctrl+B</kbd>")
+      expect(response.body).to include("<kbd>F1</kbd>")
+    end
   end
 end

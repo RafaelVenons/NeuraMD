@@ -120,6 +120,19 @@ RSpec.describe Tts::GenerateService do
       expect(result[:ai_request].input_text).to eq("AI Artificial Intelligence é bom")
     end
 
+    it "strips Unicode emoji characters before sending to TTS" do
+      allow(Tts::GenerateJob).to receive(:perform_later)
+      result = described_class.call(**params.merge(text: "Olá 🌍 mundo! 🎉🚀 Tudo ✨ bem?"))
+      expect(result[:ai_request].input_text).to eq("Olá mundo! Tudo bem?")
+    end
+
+    it "preserves kaomoji text characters" do
+      allow(Tts::GenerateJob).to receive(:perform_later)
+      result = described_class.call(**params.merge(text: "Legal (╯°□°)╯"))
+      # Parens stripped by existing rule, but text chars preserved
+      expect(result[:ai_request].input_text).to eq("Legal ╯°□°╯")
+    end
+
     it "defaults voice to first available when blank" do
       allow(Tts::GenerateJob).to receive(:perform_later)
       allow(Tts::ProviderRegistry).to receive(:voices_for).with("kokoro", language: "en-US").and_return(%w[af_heart bf_emma])

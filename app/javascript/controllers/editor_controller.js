@@ -276,7 +276,7 @@ export default class extends Controller {
 
     // Listen for emoji-picker selection
     this.element.addEventListener("emoji-picker:selected", (e) => {
-      const cm = this._getCodeMirrorController()
+      const cm = this._getCodemirrorController()
       if (!cm) return
       cm.replaceSelection(e.detail.text)
       cm.focus()
@@ -478,6 +478,11 @@ export default class extends Controller {
       if (e.isComposing || e.keyCode === 229 || this._getCodemirrorController()?.isComposing()) return
       const ctrl = e.ctrlKey || e.metaKey
 
+      if (ctrl && e.shiftKey && e.key === "E") {
+        e.preventDefault()
+        this._toggleEmojiPicker()
+        return
+      }
       if (ctrl && e.key === "p") {
         e.preventDefault()
         this.togglePreview()
@@ -486,9 +491,21 @@ export default class extends Controller {
         e.preventDefault()
         this._openDialog("find-replace-dialog")
       }
+      if (ctrl && e.key === "h") {
+        e.preventDefault()
+        this._openDialogFocusReplace("find-replace-dialog")
+      }
       if (ctrl && e.key === "g") {
         e.preventDefault()
         this._openDialog("jump-to-line-dialog")
+      }
+      if (ctrl && e.key === "\\") {
+        e.preventDefault()
+        this._toggleTypewriter()
+      }
+      if (e.key === "F1") {
+        e.preventDefault()
+        this._toggleShortcutsHelp()
       }
       if (e.key === "Escape") {
         this._closeAllDialogs()
@@ -502,9 +519,43 @@ export default class extends Controller {
     document.getElementById(id)?.querySelector("input")?.focus()
   }
 
+  _openDialogFocusReplace(id) {
+    const dialog = document.getElementById(id)
+    if (!dialog) return
+    dialog.classList.remove("hidden")
+    const replaceInput = dialog.querySelector("[data-find-replace-target='replaceInput']")
+    if (replaceInput) replaceInput.focus()
+    else dialog.querySelector("input")?.focus()
+  }
+
+  _toggleEmojiPicker() {
+    const el = document.querySelector("[data-controller~='emoji-picker']")
+    if (!el) return
+    const ctrl = this.application.getControllerForElementAndIdentifier(el, "emoji-picker")
+    if (!ctrl) return
+    const dialog = el.querySelector("dialog")
+    if (dialog?.open) ctrl.close()
+    else ctrl.open()
+  }
+
+  _toggleTypewriter() {
+    const el = document.querySelector("[data-controller~='typewriter']")
+    if (!el) return
+    const ctrl = this.application.getControllerForElementAndIdentifier(el, "typewriter")
+    ctrl?.toggle()
+  }
+
+  _toggleShortcutsHelp() {
+    const dialog = document.getElementById("shortcuts-help-dialog")
+    if (!dialog) return
+    if (dialog.open) dialog.close()
+    else dialog.showModal()
+  }
+
   _closeAllDialogs() {
     document.getElementById("find-replace-dialog")?.classList.add("hidden")
     document.getElementById("jump-to-line-dialog")?.classList.add("hidden")
+    document.getElementById("shortcuts-help-dialog")?.close()
     this._closeRevisions()
   }
 

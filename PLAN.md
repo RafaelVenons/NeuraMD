@@ -1534,7 +1534,7 @@ Portar e padronizar do FrankMD:
 | `Ctrl+Shift+H` | Highlight |
 | `Ctrl+Shift+C` | Code block |
 | `Ctrl+Shift+E` | Emoji picker |
-| `Ctrl+Shift+T` | TTS dialog (ja existe) |
+| `Ctrl+Shift+A` | TTS dialog (Audio) |
 | `Ctrl+P` | Toggle preview (ja existe) |
 | `Ctrl+\` | Typewriter mode |
 | `Ctrl+F` | Find in file |

@@ -62,6 +62,7 @@ export default class extends Controller {
       switch (e.key) {
         case "S": e.preventDefault(); this.strikethrough(); return
         case "H": e.preventDefault(); this.highlight(); return
+        case "C": e.preventDefault(); this.codeBlock(); return
       }
     }
 

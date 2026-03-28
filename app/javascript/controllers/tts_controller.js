@@ -398,7 +398,6 @@ export default class extends Controller {
     }
     if (this.hasStatusLabelTarget) this.statusLabelTarget.textContent = ""
 
-    // Update player info with asset metadata
     this._updatePlayerInfo()
     this._updateKaraoke()
   }
@@ -623,8 +622,8 @@ export default class extends Controller {
   // ── Keyboard shortcut ────────────────────────────
 
   _onKeydown(event) {
-    // Ctrl+Shift+T — toggle TTS dialog
-    if (event.ctrlKey && event.shiftKey && event.key === "T") {
+    // Ctrl+Shift+A — toggle TTS dialog (Audio)
+    if (event.ctrlKey && event.shiftKey && event.key === "A") {
       event.preventDefault()
       if (this.hasDialogTarget && !this.dialogTarget.classList.contains("hidden")) {
         this.closeDialog()
