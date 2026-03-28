@@ -74,39 +74,15 @@ module Tts
 
       private
 
-      # Strip markdown and wikilink syntax so TTS reads clean text
+      # Minimal cleanup — text arrives pre-rendered from the preview pane
+      # (innerText), so markdown/wikilink syntax is already stripped.
+      # We only normalize whitespace for consistent hashing and TTS input.
       def strip_markup(text)
         text = text.to_s
-        # Wikilinks: [[Display Text|role:uuid]] → Display Text
-        text = text.gsub(/\[\[([^\]|]+)\|[^\]]*\]\]/, '\1')
-        # Code blocks
-        text = text.gsub(/```.*?```/m, " ")
-        # Inline code
-        text = text.gsub(/`[^`]+`/, " ")
-        # Headings
-        text = text.gsub(/^#+\s*/, "")
-        # Bold/italic markers
-        text = text.gsub(/\*{1,3}/, "")
-        text = text.gsub(/_{1,3}/, "")
-        # Strikethrough
-        text = text.gsub(/~~/, "")
-        # Links: [text](url) → text
-        text = text.gsub(/\[([^\]]*)\]\([^)]*\)/, '\1')
-        # Images: ![alt](url) → alt
-        text = text.gsub(/!\[([^\]]*)\]\([^)]*\)/, '\1')
-        # Blockquotes
-        text = text.gsub(/^>\s*/, "")
-        # Horizontal rules
-        text = text.gsub(/^[-*_]{3,}\s*$/, "")
-        # HTML tags
-        text = text.gsub(/<[^>]+>/, "")
-        # List markers
-        text = text.gsub(/^[\s]*[-*+]\s+/, "")
-        text = text.gsub(/^[\s]*\d+\.\s+/, "")
-        # URLs
-        text = text.gsub(%r{https?://\S+}, "")
-        # Collapse whitespace
-        text = text.gsub(/\s+/, " ").strip
+        # Collapse runs of whitespace (preserve single newlines for paragraph structure)
+        text = text.gsub(/[^\S\n]+/, " ")        # spaces/tabs → single space
+        text = text.gsub(/\n{3,}/, "\n\n")        # 3+ newlines → double
+        text = text.gsub(/^\s+|\s+$/, "")         # trim
         text
       end
     end

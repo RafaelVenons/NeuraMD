@@ -1,0 +1,50 @@
+#!/usr/bin/env bash
+# Run RSpec specs on AIrch.local via SSH
+# Usage:
+#   bin/rspec-airch                          # all non-system specs
+#   bin/rspec-airch spec/models/             # specific path
+#   bin/rspec-airch --sync                   # rsync code first, then run
+#   bin/rspec-airch --sync spec/services/    # rsync + specific path
+
+set -euo pipefail
+
+REMOTE="rafael@AIrch.local"
+REMOTE_DIR="~/NeuraMD"
+SHIMS="export PATH=~/.local/share/mise/shims:~/.local/bin:\$PATH"
+
+SYNC=false
+SPEC_ARGS=()
+
+for arg in "$@"; do
+  if [[ "$arg" == "--sync" ]]; then
+    SYNC=true
+  else
+    SPEC_ARGS+=("$arg")
+  fi
+done
+
+# Default: run all non-system specs if no path specified
+if [[ ${#SPEC_ARGS[@]} -eq 0 ]]; then
+  SPEC_ARGS=("spec/requests/" "spec/services/" "spec/models/" "spec/jobs/")
+fi
+
+# Sync code to AIrch
+if $SYNC; then
+  echo "🔄 Syncing code to AIrch..."
+  rsync -az --delete \
+    --exclude='.git' \
+    --exclude='tmp/' \
+    --exclude='log/' \
+    --exclude='node_modules/' \
+    --exclude='storage/' \
+    --exclude='vendor/bundle' \
+    /home/venom/projects/NeuraMD/ \
+    "${REMOTE}:${REMOTE_DIR}/"
+
+  # Re-bundle if Gemfile changed and run migrations
+  echo "📦 Ensuring dependencies..."
+  ssh "$REMOTE" "${SHIMS} && cd ${REMOTE_DIR} && bundle install --quiet 2>&1 && RAILS_ENV=test bin/rails db:migrate 2>&1" | tail -3
+fi
+
+echo "🧪 Running specs on AIrch: ${SPEC_ARGS[*]}"
+ssh "$REMOTE" "${SHIMS} && cd ${REMOTE_DIR} && bundle exec rspec ${SPEC_ARGS[*]} --format progress 2>&1"

@@ -68,7 +68,7 @@ RSpec.describe "TTS player", type: :system do
     expect(page).to have_text("Criando Audio...")
   end
 
-  it "shows karaoke toggle when alignment data is present" do
+  it "shows karaoke words in preview when alignment data is present" do
     # Create a ready asset with alignment data
     asset = create(:note_tts_asset, :with_audio,
       note_revision: head_revision,
@@ -81,16 +81,9 @@ RSpec.describe "TTS player", type: :system do
     expect(page).to have_css("[data-tts-target='player']:not(.hidden)", wait: 10)
     expect(page).to have_css("[data-tts-target='karaokeToggle']:not(.hidden)")
 
-    # Click karaoke toggle
-    find("[data-tts-target='karaokeToggle']").click
-    expect(page).to have_css("[data-tts-target='karaokePanel']:not(.hidden)")
-
-    # Verify karaoke words are rendered
-    within("[data-karaoke-target='text']") do
-      expect(page).to have_css(".karaoke-word", count: 3)
-      expect(page).to have_text("Trecho")
-      expect(page).to have_text("com")
-      expect(page).to have_text("erro")
+    # Karaoke auto-activates — verify words are highlighted in the preview pane
+    within("[data-preview-target='output']") do
+      expect(page).to have_css(".karaoke-word", minimum: 1, wait: 10)
     end
   end
 
@@ -128,6 +121,80 @@ RSpec.describe "TTS player", type: :system do
     # Click the notice to load old audio
     find("[data-tts-target='staleNotice']").click
     expect(page).to have_css("[data-tts-target='player']:not(.hidden)", wait: 5)
+  end
+
+  it "highlights the active karaoke word with white background at a known MFA time" do
+    # Create a ready asset with alignment data
+    create(:note_tts_asset, :with_audio,
+      note_revision: head_revision,
+      alignment_data: alignment_data,
+      alignment_status: "succeeded")
+
+    visit note_path(note.slug)
+
+    # Wait for player to show (confirms fetchStatus ran and asset loaded)
+    expect(page).to have_css("[data-tts-target='player']:not(.hidden)", wait: 10)
+
+    # Programmatically inject karaoke spans and activate highlighting.
+    # Set _words directly (not alignmentValue) to avoid Stimulus MutationObserver
+    # double-firing alignmentValueChanged which would deactivate the spans.
+    page.execute_script(<<~JS)
+      (() => {
+        const el = document.querySelector("[data-controller~='karaoke']");
+        const ctrl = window.Stimulus.getControllerForElementAndIdentifier(el, "karaoke");
+        ctrl._words = #{alignment_data["words"].to_json};
+        ctrl._injected = false;
+        ctrl._retryCount = 0;
+        ctrl.activate();
+      })()
+    JS
+
+    # Verify karaoke spans were injected into the preview pane
+    within("[data-preview-target='output']") do
+      expect(page).to have_css(".karaoke-word", minimum: 1, wait: 5)
+    end
+
+    # Disable CSS transitions so computed styles reflect final values immediately
+    page.execute_script("document.querySelectorAll('.karaoke-word').forEach(el => el.style.transition = 'none')")
+
+    # Simulate audio at t=0.2s — should highlight "Trecho" (start=0.0, end=0.4)
+    page.execute_script(<<~JS)
+      (() => {
+        const el = document.querySelector("[data-controller~='karaoke']");
+        const ctrl = window.Stimulus.getControllerForElementAndIdentifier(el, "karaoke");
+        ctrl._highlightWord(0);
+        ctrl._currentIndex = 0;
+      })()
+    JS
+
+    # Verify "Trecho" is highlighted with white background
+    within("[data-preview-target='output']") do
+      active_word = find(".karaoke-active", wait: 3)
+      expect(active_word.text).to eq("Trecho")
+
+      bg_color = page.evaluate_script(<<~JS)
+        (() => { return getComputedStyle(document.querySelector('.karaoke-active')).backgroundColor; })()
+      JS
+      expect(bg_color).to eq("rgb(255, 255, 255)")
+    end
+
+    # Simulate time advancing to t=0.5s — should highlight "com" (start=0.45, end=0.6)
+    page.execute_script(<<~JS)
+      (() => {
+        const el = document.querySelector("[data-controller~='karaoke']");
+        const ctrl = window.Stimulus.getControllerForElementAndIdentifier(el, "karaoke");
+        ctrl._highlightWord(1);
+        ctrl._currentIndex = 1;
+      })()
+    JS
+
+    within("[data-preview-target='output']") do
+      active_word = find(".karaoke-active", wait: 3)
+      expect(active_word.text).to eq("com")
+
+      # Only one word should be active at a time
+      expect(page).to have_css(".karaoke-active", count: 1)
+    end
   end
 
   it "opens library tab in dialog" do

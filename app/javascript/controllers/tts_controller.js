@@ -1,4 +1,5 @@
 import { Controller } from "@hotwired/stimulus"
+import { marked } from "marked"
 
 export default class extends Controller {
   static values = {
@@ -16,7 +17,7 @@ export default class extends Controller {
     "providerSelect", "voiceSelect", "languageSelect", "formatSelect",
     "dialogOverlay", "spinner",
     "generateTab", "libraryTab", "generatePanel", "libraryPanel", "libraryList",
-    "karaokePanel", "karaokeContainer", "karaokeToggle", "playerInfo",
+    "karaokeContainer", "karaokeToggle", "playerInfo",
     "staleNotice"
   ]
 
@@ -86,6 +87,8 @@ export default class extends Controller {
 
       if (this._activeAsset?.ready) {
         this.showPlayer(this._activeAsset.audio_url)
+        // If MFA alignment is still running, poll until it completes
+        if (this._activeAsset.alignment_status === "pending") this.startPolling()
       } else if (this._activeAsset?.pending) {
         this.showGenerating()
         this.startPolling()
@@ -270,7 +273,7 @@ export default class extends Controller {
   // ── Generate ────────────────────────────────────────
 
   async generate() {
-    const text = this._getEditorText()
+    const text = this._getTextForTts()
 
     if (!text.trim()) {
       this.showFlash("Nenhum texto para gerar audio.")
@@ -366,7 +369,7 @@ export default class extends Controller {
   hidePlayer() {
     if (this.hasPlayerTarget) this.playerTarget.classList.add("hidden")
     if (this.hasAudioTarget) this.audioTarget.src = ""
-    if (this.hasKaraokePanelTarget) this.karaokePanelTarget.classList.add("hidden")
+    this._karaokeController()?.deactivate()
   }
 
   showGenerateButton() {
@@ -376,50 +379,52 @@ export default class extends Controller {
     if (this.hasStatusLabelTarget) this.statusLabelTarget.textContent = ""
   }
 
-  // ── Karaoke ────────────────────────────────────────
+  // ── Karaoke (preview highlighting) ─────────────────
 
   toggleKaraoke() {
-    if (!this.hasKaraokePanelTarget) return
+    const karaokeCtrl = this._karaokeController()
+    if (!karaokeCtrl) return
 
-    const isHidden = this.karaokePanelTarget.classList.contains("hidden")
-    if (isHidden) {
-      this.karaokePanelTarget.classList.remove("hidden")
-      if (this.hasKaraokeToggleTarget) {
-        this.karaokeToggleTarget.style.color = "var(--theme-accent)"
-      }
-    } else {
-      this.karaokePanelTarget.classList.add("hidden")
+    if (karaokeCtrl.isActive) {
+      karaokeCtrl.deactivate()
       if (this.hasKaraokeToggleTarget) {
         this.karaokeToggleTarget.style.color = "var(--theme-text-muted)"
+      }
+    } else {
+      karaokeCtrl.activate()
+      if (this.hasKaraokeToggleTarget) {
+        this.karaokeToggleTarget.style.color = "var(--theme-accent)"
       }
     }
   }
 
   _updateKaraoke() {
-    if (!this.hasKaraokeContainerTarget || !this._activeAsset) return
-
-    const karaokeCtrl = this.application.getControllerForElementAndIdentifier(
-      this.karaokeContainerTarget, "karaoke"
-    )
+    const karaokeCtrl = this._karaokeController()
+    if (!karaokeCtrl || !this._activeAsset) return
 
     const alignment = this._activeAsset.alignment_data
     if (alignment && alignment.words && alignment.words.length > 0) {
-      // Use Stimulus value setter to trigger alignmentValueChanged()
-      if (karaokeCtrl) {
-        karaokeCtrl.alignmentValue = alignment
-      }
+      // Set words directly to avoid Stimulus MutationObserver double-fire
+      karaokeCtrl._words = alignment.words
+      karaokeCtrl.activate()
       if (this.hasKaraokeToggleTarget) {
         this.karaokeToggleTarget.classList.remove("hidden")
+        this.karaokeToggleTarget.style.color = "var(--theme-accent)"
       }
     } else {
-      if (karaokeCtrl) {
-        karaokeCtrl.alignmentValue = {}
-      }
+      karaokeCtrl.deactivate()
+      karaokeCtrl._words = []
       if (this.hasKaraokeToggleTarget) {
         this.karaokeToggleTarget.classList.add("hidden")
       }
-      if (this.hasKaraokePanelTarget) this.karaokePanelTarget.classList.add("hidden")
     }
+  }
+
+  _karaokeController() {
+    if (!this.hasKaraokeContainerTarget) return null
+    return this.application.getControllerForElementAndIdentifier(
+      this.karaokeContainerTarget, "karaoke"
+    )
   }
 
   _updatePlayerInfo() {
@@ -458,10 +463,22 @@ export default class extends Controller {
 
       const data = await res.json()
       if (data.ready && data.audio_url) {
-        this.stopPolling()
+        const wasReady = this._activeAsset?.ready
         this._activeAsset = data
-        this.showPlayer(data.audio_url)
-        this.showFlashSuccess("Audio pronto!")
+
+        if (!wasReady) {
+          // First time audio is ready — show player
+          this.showPlayer(data.audio_url)
+        } else {
+          // Audio already playing — just refresh karaoke (MFA may have completed)
+          this._updateKaraoke()
+        }
+
+        // Keep polling while MFA alignment is still running
+        if (data.alignment_status === "pending") return
+
+        this.stopPolling()
+        if (!wasReady) this.showFlashSuccess("Audio pronto!")
       }
     } catch (e) {
       // Silently retry on next poll
@@ -501,17 +518,34 @@ export default class extends Controller {
 
   // ── Helpers ─────────────────────────────────────────
 
-  _getEditorText() {
+  _getTextForTts() {
     const editorPane = this.element.querySelector('[data-controller~="codemirror"]')
     const cmController = editorPane &&
       this.application.getControllerForElementAndIdentifier(editorPane, "codemirror")
-    if (!cmController) return ""
 
-    // Prefer selected text if available
-    const selection = cmController.getSelection?.()
-    if (selection && selection.trim()) return selection
+    // Prefer selected text if available — render it through marked first
+    if (cmController) {
+      const selection = cmController.getSelection?.()
+      if (selection && selection.trim()) return this._markdownToPlaintext(selection)
+    }
 
-    return cmController.getValue?.() || ""
+    // Full note: use the preview pane's rendered text (exact match with what user sees)
+    const previewOutput = this.element.querySelector('[data-preview-target="output"]')
+    if (previewOutput) return previewOutput.innerText || ""
+
+    // Fallback: render editor content through marked
+    if (cmController) {
+      const raw = cmController.getValue?.() || ""
+      return this._markdownToPlaintext(raw)
+    }
+
+    return ""
+  }
+
+  _markdownToPlaintext(markdown) {
+    const tmp = document.createElement("div")
+    tmp.innerHTML = marked.parse(markdown || "")
+    return tmp.innerText || ""
   }
 
   // ── Speed control ────────────────────────────────

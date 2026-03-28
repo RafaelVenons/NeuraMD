@@ -14,7 +14,7 @@ RSpec.describe "Editor HTML structure", type: :request do
 
     # ── Regression: autosave controller was not mounted in DOM ──
     it "mounts autosave controller on editor-root" do
-      expect(response.body).to include('data-controller="note-shell editor autosave ai-review tts"')
+      expect(response.body).to include('data-controller="note-shell editor autosave ai-review tts note-tags"')
     end
 
     it "passes draft and checkpoint URLs to autosave controller" do

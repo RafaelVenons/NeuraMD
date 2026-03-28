@@ -295,7 +295,8 @@ class NotesController < ApplicationController
         backlinks: render_to_string(partial: "notes/backlinks_content", formats: [:html], locals: {note:}),
         ai_requests_stream: render_to_string(partial: "notes/ai_requests_stream", formats: [:html], locals: {note:})
       },
-      link_tags_map: outgoing_link_tags_payload(note)
+      link_tags_map: outgoing_link_tags_payload(note),
+      note_tags: note.tags.where(tag_scope: %w[note both]).map { |t| { id: t.id, name: t.name, color_hex: t.color_hex } }
     }
   end
 

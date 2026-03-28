@@ -95,28 +95,10 @@ RSpec.describe Tts::GenerateService do
         .to raise_error(Tts::ProviderUnavailableError)
     end
 
-    it "strips wikilinks from text before sending to TTS" do
+    it "normalizes whitespace in text (text comes pre-rendered from preview innerText)" do
       allow(Tts::GenerateJob).to receive(:perform_later)
-      result = described_class.call(**params.merge(text: "Veja [[Nota Teste|f:abc12345-1234-1234-1234-123456789abc]] aqui"))
-      expect(result[:ai_request].input_text).to eq("Veja Nota Teste aqui")
-    end
-
-    it "strips markdown bold/italic from text" do
-      allow(Tts::GenerateJob).to receive(:perform_later)
-      result = described_class.call(**params.merge(text: "Texto **negrito** e *italico*"))
-      expect(result[:ai_request].input_text).to eq("Texto negrito e italico")
-    end
-
-    it "strips heading markers from text" do
-      allow(Tts::GenerateJob).to receive(:perform_later)
-      result = described_class.call(**params.merge(text: "# Titulo\nParagrafo"))
-      expect(result[:ai_request].input_text).to eq("Titulo Paragrafo")
-    end
-
-    it "strips code blocks from text" do
-      allow(Tts::GenerateJob).to receive(:perform_later)
-      result = described_class.call(**params.merge(text: "Antes ```code aqui``` depois"))
-      expect(result[:ai_request].input_text).to eq("Antes depois")
+      result = described_class.call(**params.merge(text: "  Texto   com   espaços  "))
+      expect(result[:ai_request].input_text).to eq("Texto com espaços")
     end
 
     it "defaults voice to first available when blank" do

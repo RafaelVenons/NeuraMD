@@ -3,7 +3,7 @@
 <div id="editor-root"
      class="flex flex-col"
      style="height: 100dvh; background: var(--theme-bg-primary);"
-     data-controller="note-shell editor autosave ai-review tts"
+     data-controller="note-shell editor autosave ai-review tts note-tags"
      data-note-shell-target="root"
      data-editor-autosave-url-value="<%= draft_note_path(@note.slug) %>"
      data-editor-revisions-url-value="<%= revisions_note_path(@note.slug) %>"
@@ -45,7 +45,9 @@
      data-tts-reject-url-value="<%= tts_reject_note_path(@note.slug) %>"
      data-tts-audio-url-value="<%= tts_audio_note_path(@note.slug) %>"
      data-tts-library-url-value="<%= tts_library_note_path(@note.slug) %>"
-     data-tts-note-language-value="<%= @note.detected_language || 'pt-BR' %>">
+     data-tts-note-language-value="<%= @note.detected_language || 'pt-BR' %>"
+     data-note-tags-note-id-value="<%= @note.id %>"
+     data-note-tags-initial-tags-value="<%= @note.tags.where(tag_scope: %w[note both]).select(:id, :name, :color_hex).map { |t| { id: t.id, name: t.name, color_hex: t.color_hex } }.to_json %>">
 
   <div data-note-shell-target="streamSource">
     <%= render "notes/ai_requests_stream", note: @note %>
@@ -77,6 +79,31 @@
           data-editor-target="langBadge">
       <%= @note.detected_language || "auto" %>
     </span>
+
+    <%# Note tag chips %>
+    <div class="flex items-center gap-1 flex-shrink-0 flex-wrap" data-note-tags-target="chipContainer">
+    </div>
+    <div class="relative flex-shrink-0">
+      <button type="button"
+              title="Adicionar tag à nota"
+              class="toolbar-btn"
+              data-note-tags-target="addButton"
+              data-action="click->note-tags#toggleDropdown">
+        <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M20.59 13.41l-7.17 7.17a2 2 0 01-2.83 0L2 12V2h10l8.59 8.59a2 2 0 010 2.82z"/>
+          <line x1="7" y1="7" x2="7.01" y2="7"/>
+          <line x1="12" y1="2" x2="12" y2="6"/>
+          <line x1="10" y1="4" x2="14" y2="4"/>
+        </svg>
+      </button>
+      <div class="hidden absolute left-0 top-full z-40 mt-1 w-48 max-h-60 overflow-y-auto rounded-lg border shadow-xl"
+           style="border-color: var(--toolbar-border); background: var(--theme-bg-secondary);"
+           data-note-tags-target="dropdown">
+      </div>
+    </div>
+
+    <%# Divider %>
+    <div class="w-px h-5 bg-gray-700 flex-shrink-0"></div>
 
     <%# Format buttons %>
     <div class="flex items-center gap-0.5 flex-shrink-0">
@@ -842,14 +869,8 @@ AI_ENABLED_PROVIDERS=ollama</pre>
       </button>
     </div>
 
-    <%# ── Karaoke panel ── %>
-    <div data-tts-target="karaokePanel" class="hidden border-t" style="border-color: var(--toolbar-border);">
-      <div data-controller="karaoke"
-           data-tts-target="karaokeContainer"
-           class="max-w-3xl mx-auto px-4 py-3 max-h-40 overflow-y-auto">
-        <div data-karaoke-target="text" class="karaoke-text leading-relaxed"></div>
-      </div>
-    </div>
+    <%# Karaoke controller — injects word spans directly into the preview pane %>
+    <div data-controller="karaoke" data-tts-target="karaokeContainer" class="hidden"></div>
   </div>
 
 </div>

@@ -124,6 +124,32 @@
     color: var(--theme-accent-hover);
   }
 
+  /* Note tag chips */
+  .note-tag-chip {
+    @apply inline-flex items-center gap-0.5 rounded-full px-2 py-0.5 text-xs font-medium;
+    line-height: 1.2;
+  }
+  .note-tag-chip-remove {
+    @apply ml-0.5 cursor-pointer text-current opacity-60 hover:opacity-100;
+    font-size: 14px;
+    line-height: 1;
+    background: none;
+    border: none;
+    padding: 0;
+  }
+  .note-tag-option {
+    @apply flex items-center gap-2 w-full px-3 py-1.5 text-xs text-left cursor-pointer;
+    color: var(--theme-text-primary);
+    background: none;
+    border: none;
+  }
+  .note-tag-option:hover {
+    background: var(--theme-bg-hover);
+  }
+  .note-tag-option-dot {
+    @apply inline-block w-2.5 h-2.5 rounded-full flex-shrink-0;
+  }
+
   /* TTS dialog & player */
   .tts-select {
     @apply w-full rounded-lg border px-2 py-1.5 text-sm;
@@ -153,24 +179,16 @@
     color: var(--theme-text-primary);
   }
 
-  /* Karaoke player */
-  .karaoke-text {
-    font-size: 0.9rem;
-    line-height: 1.8;
-    color: var(--theme-text-secondary);
-  }
+  /* Karaoke — word highlighting in the preview pane */
   .karaoke-word {
     padding: 1px 3px;
     border-radius: 3px;
     cursor: pointer;
-    transition: background 0.1s ease, color 0.1s ease;
+    transition: background 0.15s ease, color 0.15s ease;
+    border-bottom: 2px dotted var(--theme-accent, #6366f1);
   }
   .karaoke-word:hover {
-    background: var(--theme-bg-hover);
-  }
-  .karaoke-active {
-    background: var(--theme-accent) !important;
-    color: white !important;
+    background: rgba(99, 102, 241, 0.15);
   }
 
   .ai-history-filter {
@@ -3042,4 +3060,12 @@
       grid-template-columns: 1fr;
     }
   }
+}
+
+/* ── Karaoke active word — outside @layer for maximum specificity ── */
+.karaoke-active {
+  background: #ffffff !important;
+  color: #111111 !important;
+  border-bottom-color: transparent !important;
+  border-radius: 4px;
 }

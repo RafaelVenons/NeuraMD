@@ -1147,20 +1147,20 @@ Executar nesta ordem, porque cada etapa reduz ambiguidade da próxima e evita re
 
 #### Fase 5 — Prioridades de UX e preservação estrutural
 
-- [ ] Remover overlay/modal bloqueante durante processamento; usar apenas balões flutuantes e fila de jobs enquanto não houver resposta útil
-- [ ] Permitir múltiplas requisições enfileiradas e cancelamento individual
-- [ ] Cada item da fila deve ser um balão compacto com serviço, título da nota e modelo usado
-- [ ] A fila deve ser vertical, com frente embaixo, scroll próprio e reordenação por drag and drop
-- [ ] Durante drag, usar placeholder e impedir duplicata visível do mesmo item
-- [ ] Borda por estado: cinza (`queued`), amarela (`processing`), verde (`success`), vermelha (`error`)
-- [ ] Retry por clique em item com erro; cancelamento imediato para itens ainda ativos
-- [ ] Separar claramente estado lógico (`queued/running/succeeded/failed/cancelled`) do estado visual derivado
-- [ ] O preview só pode ser substituído quando existir resposta com conteúdo relevante
-- [ ] Reduzir toolbar de IA para exatamente três ações: melhorar Markdown, revisão gramatical e tradução
-- [ ] Endurecer prompts e pós-processamento para preservar wikilinks existentes (`[[Titulo|uuid]]`, `[[Titulo|f:uuid]]`, `[[Titulo|c:uuid]]`, `[[Titulo|b:uuid]]`)
-- [ ] Validar resposta de IA antes de aplicar: nunca quebrar/remover a parte estrutural `[[...|uuid]]` e seus prefixos hierárquicos válidos
-- [ ] Para promessa com IA, manter criação backend-only até aprovação; se houver descarte, remover a nota criada
-- [ ] Specs de system/request para fila visual, cancelamento e preservação estrutural de wikilinks
+- [x] Remover overlay/modal bloqueante durante processamento; usar apenas balões flutuantes e fila de jobs enquanto não houver resposta útil
+- [x] Permitir múltiplas requisições enfileiradas e cancelamento individual
+- [x] Cada item da fila deve ser um balão compacto com serviço, título da nota e modelo usado
+- [x] A fila deve ser vertical, com frente embaixo, scroll próprio e reordenação por drag and drop
+- [x] Durante drag, usar placeholder e impedir duplicata visível do mesmo item
+- [x] Borda por estado: cinza (`queued`), amarela (`processing`), verde (`success`), vermelha (`error`)
+- [x] Retry por clique em item com erro; cancelamento imediato para itens ainda ativos
+- [x] Separar claramente estado lógico (`queued/running/succeeded/failed/cancelled`) do estado visual derivado
+- [x] O preview só pode ser substituído quando existir resposta com conteúdo relevante
+- [x] Reduzir toolbar de IA para exatamente três ações: melhorar Markdown, revisão gramatical e tradução
+- [x] Endurecer prompts e pós-processamento para preservar wikilinks existentes (`[[Titulo|uuid]]`, `[[Titulo|f:uuid]]`, `[[Titulo|c:uuid]]`, `[[Titulo|b:uuid]]`)
+- [x] Validar resposta de IA antes de aplicar: nunca quebrar/remover a parte estrutural `[[...|uuid]]` e seus prefixos hierárquicos válidos
+- [x] Para promessa com IA, manter criação backend-only até aprovação; se houver descarte, remover a nota criada
+- [x] Specs de system/request para fila visual, cancelamento e preservação estrutural de wikilinks
 
 #### Fase 5 — O que portar do FrankMD e o que não portar
 
@@ -1196,16 +1196,25 @@ Toda evolução da fase 5 deve manter esta matriz:
   - seleção de provider por ENV/DB
   - tratamento de timeout/erro do provider
   - parsing da resposta de cada provider
+  - `SeedNoteOutputGuard` — rejeita output vazio, prompt echo, markers proibidos
+  - `WikilinkOutputGuard` — restaura payloads missing, sanitiza payloads inválidos
 - `spec/system/ai_review_spec.rb`
   - abrir modal pelo toolbar
   - processar seleção
   - processar documento inteiro
   - aplicar texto no CodeMirror
   - exibir fallback de “IA não configurada”
-- testes futuros de job
-  - enfileirar requisições para `AIrch`
+- `spec/jobs/ai/review_job_spec.rb`
+  - enfileirar requisições para `AIrch` (queue: `:airch`)
   - persistir estado `queued/running/succeeded/failed`
   - reprocessar falhas transitórias de rede
+- `spec/system/wikilink_editor_spec.rb` (24 specs)
+  - autocomplete dropdown (abrir, filtrar, navegar, inserir, scroll, cosine similarity)
+  - promessa: criar nota em branco, gerar com IA, ignorar
+  - tag sidebar: link mode vs global mode por posição do cursor
+- `spec/services/notes/promise_*_spec.rb`
+  - `PromiseFulfillmentService` — aplica output, rejeita output vazio, não sobrescreve conteúdo
+  - `PromiseCleanupService` — soft-delete nota, reverte wikilink, cancela request
 
 #### Fase 5 — Benchmarks `AIrch` CPU-only (2026-03-20)
 
@@ -1224,30 +1233,56 @@ Benchmarks reais no host `AIrch` indicam:
 Essas decisões devem permanecer em ENV e em service de roteamento, nunca hardcoded apenas na UI.
 
 ### Fase 5.5 — Tradução Assistida com Nota Irmã
-- [ ] Nova capability `translate`
-- [ ] UI de tradução com duas escolhas independentes: língua alvo e modelo
-- [ ] Criar nota irmã (`brother`) a partir de uma nota existente para armazenar a tradução
-- [ ] Vincular idioma de origem/destino na nota e na request
-- [ ] Atualizar o título da nota traduzida para refletir a língua alvo
-- [ ] Inserir no corpo traduzido a associação explícita com a nota original: `Traduzida de [[Titulo original|b:uuid]]`
-- [ ] Atualizar links necessários da nota traduzida para manter associação com a nota original sem quebrar UUIDs
-- [ ] Não criar dois links `brother` sintéticos; só pode existir link persistido quando a nota src realmente tiver o markup correspondente no corpo latest
-- [ ] Corrigir o bug atual em que a tradução cria link recíproco para uma nota dst que não contém o link em seu próprio corpo
-- [ ] Fluxo inicial priorizando `pt-BR -> en`
+- [x] Nova capability `translate`
+- [x] UI de tradução com duas escolhas independentes: língua alvo e modelo
+- [x] Criar nota irmã (`brother`) a partir de uma nota existente para armazenar a tradução
+- [x] Vincular idioma de origem/destino na nota e na request
+- [x] Atualizar o título da nota traduzida para refletir a língua alvo
+- [x] Inserir no corpo traduzido a associação explícita com a nota original: `Traduzida de [[Titulo original|b:uuid]]`
+- [x] Atualizar links necessários da nota traduzida para manter associação com a nota original sem quebrar UUIDs
+- [x] Não criar dois links `brother` sintéticos; só pode existir link persistido quando a nota src realmente tiver o markup correspondente no corpo latest
+- [x] Corrigir o bug atual em que a tradução cria link recíproco para uma nota dst que não contém o link em seu próprio corpo
+- [x] Fluxo inicial priorizando `pt-BR -> en`
 - [ ] Benchmarks adicionais com textos maiores e Markdown real
 - **Entrega:** tradução controlada, auditável e sem misturar idiomas na mesma nota
 
-### Fase 6 — TTS com Cache (ElevenLabs + Fish Audio)
-- [ ] `Tts::BaseProvider` interface + `ElevenLabsProvider` + `FishAudioProvider`
-- [ ] `note_tts_assets` com cache por hash
-- [ ] Detecção automática de idioma da nota (`detected_language`)
-- [ ] UI: dialog "Gerar Áudio" (idioma/provider/voz/configurações)
-- [ ] Player embutido na nota
-- [ ] Fluxo de rejeição: "Gerar Novo" com novas configurações
-- [ ] Suporte a zh-CN, zh-TW, ja-JP, ko-KR
-- [ ] Definir bind mounts de workspace para Kokoro e MFA usando `SHARED_AI_ROOT`
-- [ ] Padronizar nomeação de artefatos compartilhados por `note_revision_id`
-- **Entrega:** áudio eficiente e multi-idioma
+### Fase 6 — TTS com Cache (ElevenLabs + Fish Audio + Gemini + Kokoro)
+- [x] `Tts::BaseProvider` interface + `ElevenlabsProvider` + `FishAudioProvider` + `GeminiProvider` + `KokoroProvider`
+- [x] `note_tts_assets` com cache por SHA256 hash do texto + provider + voice
+- [x] Detecção automática de idioma da nota (`detected_language`)
+- [x] UI: dialog "Gerar Áudio" com 2 abas (Gerar + Biblioteca), provider/voz/idioma/formato selects
+- [x] Player embutido na nota com speed control (0.75x/1x/1.25x/1.5x), info bar, karaoke toggle
+- [x] Fluxo de rejeição: "Rejeitar" desativa asset, "Gerar" com novas configurações
+- [x] Suporte a zh-CN, zh-TW, ja-JP, ko-KR (Kokoro + Gemini)
+- [x] Definir bind mounts de workspace para Kokoro e MFA usando `SHARED_AI_ROOT`
+- [x] Padronizar nomeação de artefatos compartilhados por `note_revision_id`
+- [x] TTS cards no AI History com badges (provider/voz/idioma) e mini audio player
+- [x] Audio Library: `GET /notes/:slug/tts_library` → lista todos assets da nota
+- [x] MFA alignment pipeline: `Mfa::AlignService` → SSH to AIrch → `docker exec mfa mfa align` → JSONB
+- [x] Karaoke player: `karaoke_controller.js` com binary search em `timeupdate`, click-to-seek
+- [x] Auto-checkpoint antes de gerar TTS (revisão sempre vinculada a um marco)
+- [x] Stale audio notice quando nota é editada após TTS, com opção de carregar áudio da revisão anterior
+- [x] Queue cards de TTS auto-resolvem quando processamento conclui
+- [x] Strip de markdown/wikilinks do texto antes de enviar ao provider TTS
+- [x] Fila única `airch` (1 thread) para processamento sequencial AI/TTS/MFA no AIrch
+- [x] System specs E2E: dialog, karaoke, stale notice, library (5 specs, Capybara+Cuprite)
+- **Entrega:** áudio eficiente e multi-idioma com karaoke sincronizado
+
+#### Fase 6 — Gotchas e decisões de implementação
+
+- Zeitwerk: `ElevenlabsProvider` (não `ElevenLabsProvider`) — `elevenlabs_provider.rb` mapeia para `Elevenlabs`
+- `Tts::Error` e `Mfa::Error` + subclasses em `error.rb` — carregados via `require_relative`, não autoload individual do Zeitwerk
+- `Ai::InvalidOutputError` em `ai/error.rb` — precisa de `require_relative "error"` em qualquer service que o use diretamente (ex: `seed_note_output_guard.rb`)
+- Gemini TTS retorna áudio base64 em JSON (não binário) — usa `post_json`, não `post_binary`
+- `format` como parâmetro HTTP conflita com Rails (interpreta como formato de resposta) — renomeado para `audio_format` em JS e Ruby
+- Validação `voice: presence: true` — service deve defaultar para primeira voz disponível quando vazio
+- Stimulus `alignmentValueChanged()` callback: só dispara ao usar setter da API (`controller.alignmentValue = data`), NOT `dataset.karaokeAlignmentValue = JSON.stringify(data)`
+- Queue cards de TTS: auto-resolver via `_resolveQueueRequest()` no handler de stream quando `capability === "tts" && status === "succeeded"`
+- `Note.search_by_title` usa scope `with_latest_content` que exige `head_revision_id` — notas sem revisão checkpoint não aparecem em autocomplete/search
+- Backlinks panel é `hidden` por default (footer mostra Grafo) — testes que verificam backlinks devem trocar para "Backlinks" primeiro
+- MFA `RemoteExecutor` precisa de timeout de execução (`Timeout.timeout(300)`) além do connect timeout SSH, para evitar travar a fila inteira
+- Fila `airch` (1 thread, 1 process) garante processamento sequencial no AIrch — AI, TTS e MFA compartilham a mesma fila
+- `config/brakeman.ignore` contém false positive para `Open3.capture3` no `RemoteExecutor` (array-based, sem shell, valores de ENV internos)
 
 #### Fase 6 — Preparação de Infra para Ferramentas Locais
 
