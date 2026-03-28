@@ -74,11 +74,16 @@
            data-editor-target="titleInput"
            placeholder="Título da nota">
 
-    <%# Language badge %>
-    <span class="flex-shrink-0 rounded bg-gray-800 px-2 py-0.5 text-xs font-mono text-gray-400"
-          data-editor-target="langBadge">
-      <%= @note.detected_language || "auto" %>
-    </span>
+    <%# Language badge — only show when language is detected %>
+    <% if @note.detected_language.present? %>
+      <span class="flex-shrink-0 rounded bg-gray-800 px-2 py-0.5 text-xs font-mono text-gray-400"
+            data-editor-target="langBadge">
+        <%= @note.detected_language %>
+      </span>
+    <% else %>
+      <span class="hidden flex-shrink-0 rounded bg-gray-800 px-2 py-0.5 text-xs font-mono text-gray-400"
+            data-editor-target="langBadge"></span>
+    <% end %>
 
     <%# Note tag chips %>
     <div class="flex items-center gap-1 flex-shrink-0 flex-wrap" data-note-tags-target="chipContainer">
@@ -103,7 +108,7 @@
     </div>
 
     <%# Divider %>
-    <div class="w-px h-5 bg-gray-700 flex-shrink-0"></div>
+    <div class="w-px h-5 flex-shrink-0" style="background: var(--toolbar-border)"></div>
 
     <%# Format buttons %>
     <div class="flex items-center gap-0.5 flex-shrink-0">
@@ -140,7 +145,7 @@
     </div>
 
     <%# Divider %>
-    <div class="w-px h-5 bg-gray-700 flex-shrink-0"></div>
+    <div class="w-px h-5 flex-shrink-0" style="background: var(--toolbar-border)"></div>
 
     <%# Preview toggle %>
     <button title="Buscar notas (Ctrl+Shift+K)"
@@ -161,6 +166,9 @@
         <circle cx="12" cy="12" r="3"/>
       </svg>
     </button>
+
+    <%# Divider %>
+    <div class="w-px h-5 flex-shrink-0" style="background: var(--toolbar-border)"></div>
 
     <button title="Melhorar Markdown com IA"
             class="toolbar-btn"
@@ -191,6 +199,9 @@
         <path d="M13 19l4-8 4 8"/>
       </svg>
     </button>
+
+    <%# Divider %>
+    <div class="w-px h-5 flex-shrink-0" style="background: var(--toolbar-border)"></div>
 
     <%# TTS generate button %>
     <button title="Gerar Audio (TTS)"
@@ -247,6 +258,9 @@
       </p>
       <div data-ai-review-target="requestMenuList" class="space-y-1"></div>
     </div>
+
+    <%# Divider %>
+    <div class="w-px h-5 flex-shrink-0" style="background: var(--toolbar-border)"></div>
 
     <%# Typewriter mode toggle %>
     <button title="Modo Typewriter"
@@ -426,10 +440,9 @@
 
     <%# Preview pane %>
     <div id="preview-pane"
-         class="flex-1 min-w-0 overflow-y-auto flex flex-col"
+         class="flex-1 min-w-0 flex flex-col overflow-hidden"
          data-controller="preview"
-         data-editor-target="previewPane"
-         data-action="scroll->preview#scroll">
+         data-editor-target="previewPane">
       <section data-ai-review-target="workspace"
                class="hidden flex-1 min-h-0 flex-col bg-[var(--theme-bg-secondary)]">
         <div data-ai-review-target="configNotice"
@@ -534,10 +547,13 @@ AI_ENABLED_PROVIDERS=ollama</pre>
       </section>
 
       <div data-ai-review-target="previewShell" class="flex flex-1 min-h-0 flex-col">
-        <div class="preview-prose flex-1"
-             data-editor-target="previewContent"
-             data-preview-target="output">
-          <p style="color: var(--theme-text-faint); font-style: italic;">Comece a digitar para ver o preview...</p>
+        <div class="preview-prose-wrapper flex-1 min-h-0 overflow-y-auto"
+             data-action="scroll->preview#scroll">
+          <div class="preview-prose"
+               data-editor-target="previewContent"
+               data-preview-target="output">
+            <p style="color: var(--theme-text-faint); font-style: italic;">Comece a digitar para ver o preview...</p>
+          </div>
         </div>
 
         <div class="preview-context-resize-handle"

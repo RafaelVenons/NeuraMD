@@ -709,7 +709,11 @@ export default class extends Controller {
     this._workingContent = this._selectedRevisionContent
 
     if (this.hasTitleInputTarget) this.titleInputTarget.value = note.title || ""
-    if (this.hasLangBadgeTarget) this.langBadgeTarget.textContent = note.detected_language || "auto"
+    if (this.hasLangBadgeTarget) {
+      const lang = note.detected_language
+      this.langBadgeTarget.textContent = lang || ""
+      this.langBadgeTarget.classList.toggle("hidden", !lang)
+    }
     if (this.hasBacklinksPanelTarget) this.backlinksPanelTarget.innerHTML = payload.html?.backlinks || ""
 
     this._closeRevisions()

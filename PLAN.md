@@ -1355,13 +1355,195 @@ Esse padrão evita drift entre caminhos internos dos serviços.
 - NFS paths: local `/mnt/AIrch/data/mfa/{input,output}` ↔ remoto `/srv/airch-data/mfa/{input,output}`
 - Alignments permanentes: `/mnt/AIrch/data/alignments/json/`
 
-### Fase 7 — Polimento Editor e UX
-- [ ] Themes (dark + custom) — base FrankMD
-- [ ] Font dialog, zoom refinado
-- [ ] Grid de imagens melhorado + upload/insert via Active Storage
-- [ ] Embed YouTube dialog
-- [ ] Histórico de revisões com diff visual
-- **Entrega:** editor com cara de app
+### Fase 7 — Polimento Editor e UX (forte inspiracao FrankMD)
+
+> **Referencia:** `~/projects/FrankMD` — portar controles, dialogs e padroes visuais.
+> **Principio:** o editor NeuraMD deve ter a mesma fluencia do FrankMD, preservando as features exclusivas (wiki-links, grafo, TTS, MFA).
+
+#### 7.0 — Correcoes de Layout (PRIORIDADE)
+
+**Scroll do editor:**
+- [ ] Bug: texto cabe no editor mas scroll desloca para baixo escondendo conteudo
+- [ ] Investigar padding/margin do `.cm-content` e `#codemirror-host` que gera scroll desnecessario
+- [ ] Typewriter mode (40vh padding) nao deve aplicar quando desativado — verificar residual
+
+**Footer (Grafo/Backlinks) independente do scroll do preview:**
+- [ ] Extrair `.note-context-panel` para FORA do `#preview-pane` overflow container
+- [ ] Layout: preview-pane vira flex column com `flex: 1 1 auto; overflow-y: auto` para o conteudo e `flex: 0 0 auto` para o footer
+- [ ] Footer ocupa sua propria regiao visual — scroll do preview NAO afeta grafo/backlinks
+- [ ] Resize handle continua funcional entre preview e footer
+
+**Graph resize bug:**
+- [ ] Bug atual: ao redimensionar o grafo, se scroll esconde parte dele, o Sigma.js da zoom ao inves de ocupar area visivel
+- [ ] Fix: forcar `sigma.refresh()` / resize apos mutation do container (ResizeObserver)
+- [ ] Graph canvas deve preencher 100% do container visivel, sem depender de scroll
+- [ ] Testar com ResizeObserver no `graph_controller.js` para recalcular dimensoes ao redimensionar
+
+#### 7.1 — Toolbar Revisada
+
+**Limpar toolbar atual:**
+- [ ] Remover label "auto" do badge de idioma — so mostrar quando ha idioma detectado (ex: "pt-BR", "en")
+- [ ] Remover indicadores poluentes que nao comunicam acao clara
+- [ ] Padronizar visual de TODOS os botoes: mesma altura, padding, hover, active state
+- [ ] Agrupar por funcao com separadores visuais:
+  - Grupo 1: Navegacao (voltar ao grafo)
+  - Grupo 2: Titulo + idioma + tags
+  - Grupo 3: Formatacao (bold, italic, code, link, strikethrough, highlight, heading, lista, quote, code block)
+  - Grupo 4: Inserir (tabela, emoji, imagem, video embed)
+  - Grupo 5: IA (rewrite, grammar, translate)
+  - Grupo 6: TTS (gerar, status)
+  - Grupo 7: Editor (preview toggle, typewriter, find/replace)
+  - Grupo 8: Save (status, revisoes, checkpoint)
+
+**Novos botoes da toolbar (portar do FrankMD):**
+- [ ] Strikethrough (`~~texto~~`) — `Ctrl+Shift+S`
+- [ ] Highlight (`==texto==`) — `Ctrl+Shift+H`
+- [ ] Headings H1/H2/H3 — dropdown ou botoes individuais
+- [ ] Bullet list (`- `) / Numbered list (`1. `) / Blockquote (`> `)
+- [ ] Code block (``` ```) — `Ctrl+Shift+C`
+- [ ] Tabela — abre Table Editor dialog
+- [ ] Emoji picker — abre Emoji dialog
+- [ ] Imagem — upload/insert via Active Storage
+
+**Acoes que nao funcionam (auditar e implementar ou remover):**
+- [ ] Auditar cada botao da toolbar atual — listar os que nao respondem
+- [ ] Implementar ou remover botoes mortos — zero botoes decorativos
+
+#### 7.2 — Table Editor (portar do FrankMD)
+
+- [ ] Dialog modal com grid visual para criar/editar tabelas Markdown
+- [ ] Inputs por celula, header row com estilo diferenciado
+- [ ] Operacoes: add/remove/mover colunas e linhas
+- [ ] Menu de contexto por celula (right-click)
+- [ ] Detectar tabela existente sob cursor e abrir em modo edicao
+- [ ] Gerar markdown formatado com pipes e separadores
+- [ ] Portar `table_editor_controller.js` e `table_utils.js` do FrankMD
+- [ ] Adaptar para inserir no CodeMirror via API do NeuraMD (dispatch `codemirror:insert`)
+
+#### 7.3 — Emoji Picker (portar do FrankMD)
+
+- [ ] Dialog com 2 abas: Unicode emojis + Kaomoji emoticons
+- [ ] Busca por shortcode (`:smile:`) e keywords em ingles
+- [ ] Grid navegavel por teclado (setas, Page Up/Down)
+- [ ] Preview panel com nome/shortcode do item selecionado
+- [ ] 150+ kaomoji organizados por categoria (Happy, Love, Sad, Actions, etc.)
+- [ ] `Ctrl+Shift+E` para abrir picker
+- [ ] Portar `emoji_picker_controller.js`, `emoji_data.js`, `emoji_i18n.js` do FrankMD
+
+**Integracao com TTS:**
+- [ ] Emoji/emoticon inserido como Unicode — Kokoro/MFA tratam como caractere normal
+- [ ] `strip_markup` em `GenerateService` deve remover emojis Unicode antes de enviar ao TTS
+- [ ] Regex: `text.gsub(/[\u{1F600}-\u{1F64F}\u{1F300}-\u{1F5FF}\u{1F680}-\u{1F6FF}\u{1F1E0}-\u{1F1FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}]/, "")`
+- [ ] Kaomoji: ja sao caracteres texto — MFA pode ou nao alinhar; testar e decidir se strip
+
+#### 7.4 — Themes (portar do FrankMD)
+
+- [ ] System de themes via CSS custom properties (`--theme-bg-primary`, `--theme-text-primary`, `--theme-accent`, etc.)
+- [ ] `data-theme="theme-id"` no `<html>` + classe `dark` para Tailwind
+- [ ] Picker dropdown na toolbar (ou dialog de customizacao)
+- [ ] Persistencia: `localStorage` + config no backend
+- [ ] Dark mode auto-detection via `prefers-color-scheme`
+- [ ] Portar subset inicial de themes do FrankMD:
+  - Dark (default)
+  - Light
+  - Nord
+  - Tokyo Night
+  - Catppuccin
+  - Gruvbox
+  - Solarized Dark/Light
+  - Rose Pine
+- [ ] Adaptar CSS do NeuraMD para usar custom properties (substituir cores hardcoded)
+- [ ] CodeMirror theme deve reagir a mudanca de theme (reconfigurar highlighting)
+- [ ] Preview, grafo, sidebar, toolbar — todos devem respeitar o theme ativo
+
+#### 7.5 — Font Dialog e Customizacao (portar do FrankMD)
+
+- [ ] Dialog de customizacao: font family + font size + preview ao vivo
+- [ ] Fonts monospacadas disponiveis (portar do FrankMD):
+  - Cascadia Code, Fira Code, JetBrains Mono, Hack, Consolas, DejaVu Sans Mono, Roboto Mono, Source Code Pro, Ubuntu Mono
+- [ ] Tamanhos: 12px a 24px
+- [ ] CSS custom properties: `--editor-font-family`, `--editor-font-size`
+- [ ] Preview zoom: 50% a 200% (9 niveis)
+- [ ] Persistencia em localStorage
+- [ ] Portar `customize_controller.js` do FrankMD
+
+#### 7.6 — Typewriter Mode Melhorado
+
+O typewriter mode atual e apenas CSS (40vh padding). O FrankMD tem uma implementacao mais sofisticada:
+
+- [ ] Cursor sempre centralizado verticalmente durante digitacao (nao so padding)
+- [ ] CodeMirror extension dedicada: `codemirror_typewriter.js` com scroll automatico
+- [ ] Preview sync: preview acompanha posicao do cursor no typewriter mode
+- [ ] Debounce para evitar jitter durante digitacao rapida
+- [ ] Portar `typewriter_utils.js` e `codemirror_typewriter.js` do FrankMD
+- [ ] **Modo hibrido (visao futura):** ocultar UUIDs dos wikilinks no editor mantendo-os no arquivo original
+  - Exibir `[[Display Text]]` no editor, armazenar `[[Display Text|uuid]]` no markdown
+  - CodeMirror decoration/widget que substitui visualmente o `|uuid` por nada
+  - Clicar no link mostra UUID em tooltip ou expande inline para edicao
+  - NAO alterar o markdown subjacente — apenas camada visual
+
+#### 7.7 — Internacionalizacao (i18n)
+
+- [ ] Implementar sistema de traducao client-side: `window.t(key)` helper global
+- [ ] Locales iniciais: `pt-BR` (default), `en`, `es`
+- [ ] Arquivos de traducao JSON carregados no frontend
+- [ ] Picker de idioma na toolbar ou dialog de customizacao
+- [ ] Persistencia: localStorage + config backend
+- [ ] Traduzir: toolbar labels, dialogs, status messages, placeholders
+- [ ] Portar `locale_controller.js` do FrankMD, adaptar para NeuraMD endpoints
+
+#### 7.8 — AI Grammar Melhorada
+
+A implementacao atual funciona mas pode ser mais fluida:
+
+- [ ] **Diff visual word-level:** portar `diff_utils.js` do FrankMD para diff colorido palavra-por-palavra
+  - Painel esquerdo: texto original com delecoes em vermelho
+  - Painel direito: texto corrigido com adicoes em verde
+- [ ] **Modo edicao no resultado:** toggle para editar o texto corrigido antes de aceitar
+- [ ] **Grammarly extension:** documentar que CodeMirror 6 suporta Grammarly nativamente via contenteditable
+  - Nenhuma integracao custom necessaria — Grammarly browser extension funciona se `contenteditable` ativo
+  - Testar e documentar compatibilidade
+- [ ] **Inline suggestions (futuro):** ao inves de dialog, mostrar sugestoes inline no editor com accept/reject
+
+#### 7.9 — Imagens e Media
+
+- [ ] Upload de imagem via Active Storage com drag-and-drop no editor
+- [ ] Dialog de insercao de imagem (URL ou upload)
+- [ ] Grid de imagens da nota (galeria)
+- [ ] Embed YouTube: dialog com URL → gera markdown/HTML embed
+- [ ] Preview renderiza embeds inline
+
+#### 7.10 — Historico de Revisoes com Diff Visual
+
+- [ ] UI para navegar revisoes (timeline ou lista)
+- [ ] Diff visual entre revisoes (word-level ou line-level)
+- [ ] Restaurar revisao anterior
+- [ ] Reutilizar `diff_utils.js` do item 7.8
+
+#### 7.11 — Keyboard Shortcuts Padronizados
+
+Portar e padronizar do FrankMD:
+
+| Shortcut | Acao |
+|----------|------|
+| `Ctrl+B` | Bold |
+| `Ctrl+I` | Italic |
+| `Ctrl+K` | Link |
+| `` Ctrl+` `` | Inline code |
+| `Ctrl+Shift+S` | Strikethrough |
+| `Ctrl+Shift+H` | Highlight |
+| `Ctrl+Shift+C` | Code block |
+| `Ctrl+Shift+E` | Emoji picker |
+| `Ctrl+Shift+T` | TTS dialog (ja existe) |
+| `Ctrl+P` | Toggle preview (ja existe) |
+| `Ctrl+\` | Typewriter mode |
+| `Ctrl+F` | Find in file |
+| `Ctrl+H` | Find & Replace |
+| `Ctrl+G` | Jump to line |
+| `Ctrl+Shift+K` | Note finder (ja existe) |
+| `F1` | Help / keyboard shortcuts reference |
+
+- **Entrega:** editor com a fluencia e polimento do FrankMD, features exclusivas do NeuraMD preservadas
 
 ### Fase 8 — iPad (futuro)
 - [ ] API REST estabilizada

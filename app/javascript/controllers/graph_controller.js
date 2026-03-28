@@ -57,8 +57,11 @@ export default class extends Controller {
     this.stagePanState = null
     this._boundResize = () => this.positionTooltip()
     this._resizeObserver = new ResizeObserver(() => {
-      this.state.renderer?.refresh()
-      this.positionTooltip()
+      // Defer refresh to next frame so CSS layout has settled
+      requestAnimationFrame(() => {
+        this.state.renderer?.refresh()
+        this.positionTooltip()
+      })
     })
     this._resizeObserver.observe(this.graphHostTarget)
     window.addEventListener("resize", this._boundResize)

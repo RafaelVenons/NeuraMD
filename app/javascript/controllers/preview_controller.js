@@ -30,15 +30,19 @@ export default class extends Controller {
   // Set scroll position from ratio (0-1)
   setScrollRatio(ratio) {
     if (this._isScrolling) return
-    const el = this.element
+    const el = this._scrollContainer()
     const max = el.scrollHeight - el.clientHeight
     if (max > 0) el.scrollTop = max * ratio
   }
 
   getScrollRatio() {
-    const el = this.element
+    const el = this._scrollContainer()
     const max = el.scrollHeight - el.clientHeight
     return max > 0 ? el.scrollTop / max : 0
+  }
+
+  _scrollContainer() {
+    return this.element.querySelector(".preview-prose-wrapper") || this.element
   }
 
   // Handle preview scroll → sync back to editor

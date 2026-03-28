@@ -3,7 +3,7 @@ import { EditorState, Compartment } from "@codemirror/state"
 import {
   EditorView, keymap, lineNumbers, drawSelection,
   dropCursor, rectangularSelection, crosshairCursor, highlightActiveLine,
-  highlightActiveLineGutter, scrollPastEnd
+  highlightActiveLineGutter
 } from "@codemirror/view"
 import { defaultKeymap, history, historyKeymap, indentWithTab } from "@codemirror/commands"
 import { markdown, markdownLanguage } from "@codemirror/lang-markdown"
@@ -59,7 +59,6 @@ export default class extends Controller {
         crosshairCursor(),
         highlightActiveLine(),
         highlightActiveLineGutter(),
-        scrollPastEnd(),
         this._lineNumbersCompartment.of(lineNumbers()),
         this._themeCompartment.of(oneDark),
         this._aiDiffCompartment.of(aiDiffExtension()),
