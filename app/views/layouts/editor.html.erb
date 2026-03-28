@@ -10,6 +10,15 @@
 
     <%= yield :head %>
 
+    <%# Apply saved theme before paint to prevent FOUC %>
+    <script>
+      (function(){
+        var t = localStorage.getItem('neuramd-theme') || 'dark';
+        document.documentElement.setAttribute('data-theme', t);
+        if (t !== 'light') document.documentElement.classList.add('dark');
+      })();
+    </script>
+
     <link rel="icon" href="<%= image_path("logo/favicon.png") %>" type="image/png">
     <%= stylesheet_link_tag :app, "data-turbo-track": "reload" %>
     <%= javascript_importmap_tags %>

@@ -58,6 +58,13 @@ export default class extends Controller {
     const editor = this._getEditor()
     if (!editor) return
 
+    if (e.shiftKey) {
+      switch (e.key) {
+        case "S": e.preventDefault(); this.strikethrough(); return
+        case "H": e.preventDefault(); this.highlight(); return
+      }
+    }
+
     switch (e.key) {
       case "b": e.preventDefault(); this.bold(); break
       case "i": e.preventDefault(); this.italic(); break

@@ -71,5 +71,44 @@ RSpec.describe "Editor HTML structure", type: :request do
     it "renders the dynamic ai stream source inside the editor shell" do
       expect(response.body).to include('data-note-shell-target="streamSource"')
     end
+
+    # ── Toolbar format buttons ──
+    %w[bold italic strikethrough highlight inlineCode link].each do |action|
+      it "has toolbar button for text-format##{action}" do
+        expect(response.body).to include("click->text-format##{action}")
+      end
+    end
+
+    %w[heading1 heading2 heading3 bulletList numberList blockquote codeBlock].each do |action|
+      it "has toolbar button for text-format##{action}" do
+        expect(response.body).to include("click->text-format##{action}")
+      end
+    end
+
+    it "has toolbar button for table-editor#open" do
+      expect(response.body).to include("click->table-editor#open")
+    end
+
+    it "renders table editor dialog" do
+      expect(response.body).to include('data-controller="table-editor"')
+      expect(response.body).to include('data-table-editor-target="dialog"')
+      expect(response.body).to include('data-table-editor-target="grid"')
+    end
+
+    it "has toolbar button for emoji-picker#open" do
+      expect(response.body).to include("click->emoji-picker#open")
+    end
+
+    it "renders emoji picker dialog" do
+      expect(response.body).to include('data-controller="emoji-picker"')
+      expect(response.body).to include('data-emoji-picker-target="dialog"')
+      expect(response.body).to include('data-emoji-picker-target="grid"')
+    end
+
+    it "has theme picker with toggle and menu" do
+      expect(response.body).to include('data-controller="theme"')
+      expect(response.body).to include('data-theme-target="menu"')
+      expect(response.body).to include("click->theme#toggle")
+    end
   end
 end

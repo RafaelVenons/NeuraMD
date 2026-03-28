@@ -1,14 +1,7 @@
-// Emoji map (common subset)
-const EMOJI_MAP = {
-  smile: "😊", heart: "❤️", thumbsup: "👍", thumbsdown: "👎",
-  fire: "🔥", star: "⭐", check: "✅", x: "❌",
-  warning: "⚠️", info: "ℹ️", bulb: "💡", rocket: "🚀",
-  tada: "🎉", eyes: "👀", wave: "👋", clap: "👏",
-  thinking: "🤔", laugh: "😂", cry: "😢", angry: "😠",
-  note: "📝", book: "📚", link: "🔗", lock: "🔒",
-  key: "🔑", mail: "📧", phone: "📞", computer: "💻",
-  code: "💻", bug: "🐛", sparkles: "✨", zap: "⚡",
-}
+import { getEmojiMap } from "lib/emoji_data"
+
+// Full emoji map loaded from emoji_data.js
+const EMOJI_MAP = getEmojiMap()
 
 export const emojiExtension = {
   name: "emoji",

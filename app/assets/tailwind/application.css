@@ -39,7 +39,7 @@
 }
 
 /* ── Theme: Dark (default) ─────────────────────────────── */
-:root {
+:root, [data-theme="dark"] {
   --theme-bg-primary:    #18181b;
   --theme-bg-secondary:  #1f1f23;
   --theme-bg-tertiary:   #27272a;
@@ -81,6 +81,314 @@
   --wikilink-child:      #34d399;   /* emerald */
   --wikilink-brother:    #f59e0b;   /* amber   */
   --wikilink-null:       #3b82f6;   /* blue (default accent) */
+}
+
+/* ── Theme: Light ────────────────────────────────────── */
+[data-theme="light"] {
+  --theme-bg-primary:    #ffffff;
+  --theme-bg-secondary:  #fafafa;
+  --theme-bg-tertiary:   #f4f4f5;
+  --theme-bg-hover:      #e4e4e7;
+
+  --theme-text-primary:  #18181b;
+  --theme-text-secondary:#3f3f46;
+  --theme-text-muted:    #71717a;
+  --theme-text-faint:    #a1a1aa;
+
+  --theme-border:        #d4d4d8;
+  --theme-accent:        #2563eb;
+  --theme-accent-hover:  #3b82f6;
+  --theme-accent-text:   #ffffff;
+
+  --theme-selection:     #dbeafe;
+  --theme-selection-text:#1e40af;
+  --theme-scrollbar:     #a1a1aa;
+
+  --theme-success:       #16a34a;
+  --theme-warning:       #d97706;
+  --theme-error:         #dc2626;
+
+  --theme-code-bg:       #f1f5f9;
+  --theme-code-text:     #1e293b;
+  --theme-code-inline-bg:#e2e8f0;
+  --theme-code-inline-text:#0369a1;
+
+  --theme-heading-1:     #18181b;
+  --theme-heading-2:     #27272a;
+  --theme-heading-3:     #3f3f46;
+
+  --toolbar-bg:          #f9fafb;
+  --toolbar-border:      #e5e7eb;
+  --preview-bg:          #ffffff;
+
+  --wikilink-father:     #7c3aed;
+  --wikilink-child:      #059669;
+  --wikilink-brother:    #d97706;
+  --wikilink-null:       #2563eb;
+}
+
+/* ── Theme: Nord ─────────────────────────────────────── */
+[data-theme="nord"] {
+  --theme-bg-primary:    #2e3440;
+  --theme-bg-secondary:  #3b4252;
+  --theme-bg-tertiary:   #434c5e;
+  --theme-bg-hover:      #4c566a;
+
+  --theme-text-primary:  #eceff4;
+  --theme-text-secondary:#d8dee9;
+  --theme-text-muted:    #a3b1c7;
+  --theme-text-faint:    #6c7a96;
+
+  --theme-border:        #4c566a;
+  --theme-accent:        #88c0d0;
+  --theme-accent-hover:  #8fbcbb;
+  --theme-accent-text:   #2e3440;
+
+  --theme-selection:     #3b4252;
+  --theme-selection-text:#88c0d0;
+  --theme-scrollbar:     #4c566a;
+
+  --theme-success:       #a3be8c;
+  --theme-warning:       #ebcb8b;
+  --theme-error:         #bf616a;
+
+  --theme-code-bg:       #242933;
+  --theme-code-text:     #d8dee9;
+  --theme-code-inline-bg:#3b4252;
+  --theme-code-inline-text:#88c0d0;
+
+  --theme-heading-1:     #eceff4;
+  --theme-heading-2:     #d8dee9;
+  --theme-heading-3:     #a3b1c7;
+
+  --toolbar-bg:          #2e3440;
+  --toolbar-border:      #3b4252;
+  --preview-bg:          #2e3440;
+
+  --wikilink-father:     #b48ead;
+  --wikilink-child:      #a3be8c;
+  --wikilink-brother:    #ebcb8b;
+  --wikilink-null:       #88c0d0;
+}
+
+/* ── Theme: Rose Pine ────────────────────────────────── */
+[data-theme="rose-pine"] {
+  --theme-bg-primary:    #191724;
+  --theme-bg-secondary:  #1f1d2e;
+  --theme-bg-tertiary:   #26233a;
+  --theme-bg-hover:      #403d52;
+
+  --theme-text-primary:  #e0def4;
+  --theme-text-secondary:#c4a7e7;
+  --theme-text-muted:    #908caa;
+  --theme-text-faint:    #6e6a86;
+
+  --theme-border:        #403d52;
+  --theme-accent:        #c4a7e7;
+  --theme-accent-hover:  #ebbcba;
+  --theme-accent-text:   #191724;
+
+  --theme-selection:     #2a283e;
+  --theme-selection-text:#c4a7e7;
+  --theme-scrollbar:     #403d52;
+
+  --theme-success:       #9ccfd8;
+  --theme-warning:       #f6c177;
+  --theme-error:         #eb6f92;
+
+  --theme-code-bg:       #16141f;
+  --theme-code-text:     #e0def4;
+  --theme-code-inline-bg:#26233a;
+  --theme-code-inline-text:#9ccfd8;
+
+  --theme-heading-1:     #e0def4;
+  --theme-heading-2:     #c4a7e7;
+  --theme-heading-3:     #908caa;
+
+  --toolbar-bg:          #191724;
+  --toolbar-border:      #26233a;
+  --preview-bg:          #191724;
+
+  --wikilink-father:     #c4a7e7;
+  --wikilink-child:      #9ccfd8;
+  --wikilink-brother:    #f6c177;
+  --wikilink-null:       #ebbcba;
+}
+
+/* ── Theme: Tokyo Night ──────────────────────────────── */
+[data-theme="tokyo-night"] {
+  --theme-bg-primary:    #1a1b26;
+  --theme-bg-secondary:  #24283b;
+  --theme-bg-tertiary:   #292e42;
+  --theme-bg-hover:      #33394c;
+
+  --theme-text-primary:  #c0caf5;
+  --theme-text-secondary:#a9b1d6;
+  --theme-text-muted:    #737aa2;
+  --theme-text-faint:    #565f89;
+
+  --theme-border:        #33394c;
+  --theme-accent:        #7aa2f7;
+  --theme-accent-hover:  #89b4fa;
+  --theme-accent-text:   #1a1b26;
+
+  --theme-selection:     #283457;
+  --theme-selection-text:#7aa2f7;
+  --theme-scrollbar:     #33394c;
+
+  --theme-success:       #9ece6a;
+  --theme-warning:       #e0af68;
+  --theme-error:         #f7768e;
+
+  --theme-code-bg:       #16161e;
+  --theme-code-text:     #c0caf5;
+  --theme-code-inline-bg:#24283b;
+  --theme-code-inline-text:#7dcfff;
+
+  --theme-heading-1:     #c0caf5;
+  --theme-heading-2:     #a9b1d6;
+  --theme-heading-3:     #737aa2;
+
+  --toolbar-bg:          #1a1b26;
+  --toolbar-border:      #24283b;
+  --preview-bg:          #1a1b26;
+
+  --wikilink-father:     #bb9af7;
+  --wikilink-child:      #9ece6a;
+  --wikilink-brother:    #e0af68;
+  --wikilink-null:       #7aa2f7;
+}
+
+/* ── Theme: Solarized Dark ───────────────────────────── */
+[data-theme="solarized-dark"] {
+  --theme-bg-primary:    #002b36;
+  --theme-bg-secondary:  #073642;
+  --theme-bg-tertiary:   #0a3d4a;
+  --theme-bg-hover:      #0d4a59;
+
+  --theme-text-primary:  #fdf6e3;
+  --theme-text-secondary:#eee8d5;
+  --theme-text-muted:    #93a1a1;
+  --theme-text-faint:    #657b83;
+
+  --theme-border:        #0d4a59;
+  --theme-accent:        #268bd2;
+  --theme-accent-hover:  #2aa198;
+  --theme-accent-text:   #fdf6e3;
+
+  --theme-selection:     #073642;
+  --theme-selection-text:#268bd2;
+  --theme-scrollbar:     #586e75;
+
+  --theme-success:       #859900;
+  --theme-warning:       #b58900;
+  --theme-error:         #dc322f;
+
+  --theme-code-bg:       #00212b;
+  --theme-code-text:     #93a1a1;
+  --theme-code-inline-bg:#073642;
+  --theme-code-inline-text:#2aa198;
+
+  --theme-heading-1:     #fdf6e3;
+  --theme-heading-2:     #eee8d5;
+  --theme-heading-3:     #93a1a1;
+
+  --toolbar-bg:          #002b36;
+  --toolbar-border:      #073642;
+  --preview-bg:          #002b36;
+
+  --wikilink-father:     #6c71c4;
+  --wikilink-child:      #859900;
+  --wikilink-brother:    #b58900;
+  --wikilink-null:       #268bd2;
+}
+
+/* ── Theme: Gruvbox ──────────────────────────────────── */
+[data-theme="gruvbox"] {
+  --theme-bg-primary:    #282828;
+  --theme-bg-secondary:  #3c3836;
+  --theme-bg-tertiary:   #504945;
+  --theme-bg-hover:      #665c54;
+
+  --theme-text-primary:  #ebdbb2;
+  --theme-text-secondary:#d5c4a1;
+  --theme-text-muted:    #a89984;
+  --theme-text-faint:    #7c6f64;
+
+  --theme-border:        #504945;
+  --theme-accent:        #458588;
+  --theme-accent-hover:  #83a598;
+  --theme-accent-text:   #ebdbb2;
+
+  --theme-selection:     #3c3836;
+  --theme-selection-text:#83a598;
+  --theme-scrollbar:     #665c54;
+
+  --theme-success:       #b8bb26;
+  --theme-warning:       #fabd2f;
+  --theme-error:         #fb4934;
+
+  --theme-code-bg:       #1d2021;
+  --theme-code-text:     #ebdbb2;
+  --theme-code-inline-bg:#3c3836;
+  --theme-code-inline-text:#83a598;
+
+  --theme-heading-1:     #ebdbb2;
+  --theme-heading-2:     #d5c4a1;
+  --theme-heading-3:     #a89984;
+
+  --toolbar-bg:          #282828;
+  --toolbar-border:      #3c3836;
+  --preview-bg:          #282828;
+
+  --wikilink-father:     #d3869b;
+  --wikilink-child:      #b8bb26;
+  --wikilink-brother:    #fabd2f;
+  --wikilink-null:       #83a598;
+}
+
+/* ── Theme: Catppuccin Mocha ─────────────────────────── */
+[data-theme="catppuccin"] {
+  --theme-bg-primary:    #1e1e2e;
+  --theme-bg-secondary:  #313244;
+  --theme-bg-tertiary:   #45475a;
+  --theme-bg-hover:      #585b70;
+
+  --theme-text-primary:  #cdd6f4;
+  --theme-text-secondary:#bac2de;
+  --theme-text-muted:    #a6adc8;
+  --theme-text-faint:    #6c7086;
+
+  --theme-border:        #45475a;
+  --theme-accent:        #89b4fa;
+  --theme-accent-hover:  #b4befe;
+  --theme-accent-text:   #1e1e2e;
+
+  --theme-selection:     #313244;
+  --theme-selection-text:#89b4fa;
+  --theme-scrollbar:     #585b70;
+
+  --theme-success:       #a6e3a1;
+  --theme-warning:       #f9e2af;
+  --theme-error:         #f38ba8;
+
+  --theme-code-bg:       #181825;
+  --theme-code-text:     #cdd6f4;
+  --theme-code-inline-bg:#313244;
+  --theme-code-inline-text:#89dceb;
+
+  --theme-heading-1:     #cdd6f4;
+  --theme-heading-2:     #bac2de;
+  --theme-heading-3:     #a6adc8;
+
+  --toolbar-bg:          #1e1e2e;
+  --toolbar-border:      #313244;
+  --preview-bg:          #1e1e2e;
+
+  --wikilink-father:     #cba6f7;
+  --wikilink-child:      #a6e3a1;
+  --wikilink-brother:    #f9e2af;
+  --wikilink-null:       #89b4fa;
 }
 
 @layer base {
@@ -3059,6 +3367,91 @@
     .nm-ai-ops__grid {
       grid-template-columns: 1fr;
     }
+  }
+
+  /* ── Table Editor ── */
+  .table-editor-stepper {
+    display: flex;
+    width: 6.25rem;
+    height: 24px;
+    border: 1px solid var(--theme-border);
+    border-radius: 0.375rem;
+    background: var(--theme-bg-primary);
+    overflow: hidden;
+    box-sizing: border-box;
+  }
+  .table-editor-stepper input {
+    flex: 1;
+    min-width: 0;
+    width: 100%;
+    height: 24px;
+    border: 0;
+    background: transparent;
+    color: var(--theme-text-primary);
+    font-size: 0.875rem;
+    line-height: 1;
+    padding: 0 0.45rem;
+    text-align: center;
+    outline: none;
+    appearance: textfield;
+  }
+  .table-editor-stepper input::-webkit-outer-spin-button,
+  .table-editor-stepper input::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+  }
+  .table-editor-stepper:focus-within {
+    border-color: var(--theme-accent);
+    box-shadow: 0 0 0 1px var(--theme-accent);
+  }
+  .table-editor-stepper-buttons {
+    flex: none;
+    height: 100%;
+    width: 2.9rem;
+    display: flex;
+    flex-direction: row;
+    border-left: 1px solid var(--theme-border);
+    background: var(--theme-bg-tertiary);
+  }
+  .table-editor-stepper-btn {
+    flex: 1;
+    border: 0;
+    background: transparent;
+    color: var(--theme-text-muted);
+    font-size: 0.75rem;
+    line-height: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    user-select: none;
+  }
+  .table-editor-stepper-btn + .table-editor-stepper-btn {
+    border-left: 1px solid var(--theme-border);
+  }
+  .table-editor-stepper-btn:hover {
+    background: var(--theme-bg-hover);
+    color: var(--theme-text-primary);
+  }
+  .table-editor-grid {
+    border-collapse: collapse;
+    width: 100%;
+    min-width: 400px;
+  }
+  .table-editor-grid td {
+    border: 1px solid var(--theme-border);
+    padding: 0;
+    min-width: 100px;
+  }
+  .table-editor-grid tr:first-child td {
+    background: var(--theme-bg-tertiary);
+  }
+  .table-editor-grid input {
+    width: 100%;
+    min-width: 80px;
+  }
+  .table-editor-grid input:focus {
+    background: var(--theme-selection);
   }
 }
 

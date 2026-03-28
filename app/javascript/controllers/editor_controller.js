@@ -268,6 +268,19 @@ export default class extends Controller {
     this.element.addEventListener("autosave:statuschange", (e) => {
       this._onSaveStatus(e.detail)
     })
+
+    // Listen for table-editor insertion
+    this.element.addEventListener("table-editor:insert", (e) => {
+      this._insertTable(e.detail)
+    })
+
+    // Listen for emoji-picker selection
+    this.element.addEventListener("emoji-picker:selected", (e) => {
+      const cm = this._getCodeMirrorController()
+      if (!cm) return
+      cm.replaceSelection(e.detail.text)
+      cm.focus()
+    })
   }
 
   _bindAiStageState() {
@@ -282,6 +295,21 @@ export default class extends Controller {
 
   _onContentChange(content) {
     this._getPreviewController()?.update(content)
+  }
+
+  _insertTable({ markdown, editMode, startPos, endPos }) {
+    const cm = this._getCodeMirrorController()
+    if (!cm?.view) return
+
+    if (editMode) {
+      cm.view.dispatch({
+        changes: { from: startPos, to: endPos, insert: markdown },
+        selection: { anchor: startPos + markdown.length }
+      })
+    } else {
+      cm.replaceSelection(`\n${markdown}\n`)
+    }
+    cm.focus()
   }
 
   // ── Note navigation ──────────────────────────────────────

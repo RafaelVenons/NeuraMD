@@ -110,7 +110,7 @@
     <%# Divider %>
     <div class="w-px h-5 flex-shrink-0" style="background: var(--toolbar-border)"></div>
 
-    <%# Format buttons %>
+    <%# Format buttons — inline %>
     <div class="flex items-center gap-0.5 flex-shrink-0">
       <button title="Negrito (Ctrl+B)"
               class="toolbar-btn"
@@ -127,7 +127,22 @@
           <line x1="15" y1="4" x2="9" y2="20"/>
         </svg>
       </button>
-      <button title="Código (Ctrl+`)"
+      <button title="Tachado (Ctrl+Shift+S)"
+              class="toolbar-btn"
+              data-action="click->text-format#strikethrough">
+        <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M16 4H9a3 3 0 00-1 5.83"/><path d="M8 20h7a3 3 0 001-5.83"/>
+          <line x1="4" y1="12" x2="20" y2="12"/>
+        </svg>
+      </button>
+      <button title="Destaque (Ctrl+Shift+H)"
+              class="toolbar-btn"
+              data-action="click->text-format#highlight">
+        <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4L16.5 3.5z"/>
+        </svg>
+      </button>
+      <button title="Código inline (Ctrl+`)"
               class="toolbar-btn"
               data-action="click->text-format#inlineCode">
         <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -140,6 +155,77 @@
         <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
           <path d="M10 13a5 5 0 007.54.54l3-3a5 5 0 00-7.07-7.07l-1.72 1.71"/>
           <path d="M14 11a5 5 0 00-7.54-.54l-3 3a5 5 0 007.07 7.07l1.71-1.71"/>
+        </svg>
+      </button>
+    </div>
+
+    <%# Format buttons — block %>
+    <div class="flex items-center gap-0.5 flex-shrink-0">
+      <button title="Título H1"
+              class="toolbar-btn text-[10px] font-bold leading-none"
+              data-action="click->text-format#heading1">
+        H1
+      </button>
+      <button title="Título H2"
+              class="toolbar-btn text-[10px] font-bold leading-none"
+              data-action="click->text-format#heading2">
+        H2
+      </button>
+      <button title="Título H3"
+              class="toolbar-btn text-[10px] font-bold leading-none"
+              data-action="click->text-format#heading3">
+        H3
+      </button>
+      <button title="Lista com marcadores"
+              class="toolbar-btn"
+              data-action="click->text-format#bulletList">
+        <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <line x1="9" y1="6" x2="20" y2="6"/><line x1="9" y1="12" x2="20" y2="12"/><line x1="9" y1="18" x2="20" y2="18"/>
+          <circle cx="5" cy="6" r="1" fill="currentColor"/><circle cx="5" cy="12" r="1" fill="currentColor"/><circle cx="5" cy="18" r="1" fill="currentColor"/>
+        </svg>
+      </button>
+      <button title="Lista numerada"
+              class="toolbar-btn"
+              data-action="click->text-format#numberList">
+        <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <line x1="10" y1="6" x2="20" y2="6"/><line x1="10" y1="12" x2="20" y2="12"/><line x1="10" y1="18" x2="20" y2="18"/>
+          <text x="3" y="8" font-size="7" fill="currentColor" stroke="none" font-family="monospace">1</text>
+          <text x="3" y="14" font-size="7" fill="currentColor" stroke="none" font-family="monospace">2</text>
+          <text x="3" y="20" font-size="7" fill="currentColor" stroke="none" font-family="monospace">3</text>
+        </svg>
+      </button>
+      <button title="Citação"
+              class="toolbar-btn"
+              data-action="click->text-format#blockquote">
+        <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M3 21c3 0 7-1 7-8V5c0-1.25-.756-2.017-2-2H4c-1.25 0-2 .75-2 1.972V11c0 1.25.75 2 2 2 1 0 1 0 1 1v1c0 1-1 2-2 2s-1 .008-1 1.031V21z"/>
+          <path d="M15 21c3 0 7-1 7-8V5c0-1.25-.757-2.017-2-2h-4c-1.25 0-2 .75-2 1.972V11c0 1.25.75 2 2 2h.75c0 2.25.25 4-2.75 4v3z"/>
+        </svg>
+      </button>
+      <button title="Bloco de código"
+              class="toolbar-btn"
+              data-action="click->text-format#codeBlock">
+        <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <rect x="3" y="3" width="18" height="18" rx="2"/>
+          <polyline points="9 8 5 12 9 16"/><polyline points="15 8 19 12 15 16"/>
+        </svg>
+      </button>
+      <button title="Inserir tabela"
+              class="toolbar-btn"
+              data-action="click->table-editor#open">
+        <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <rect x="3" y="3" width="18" height="18" rx="2"/>
+          <line x1="3" y1="9" x2="21" y2="9"/><line x1="3" y1="15" x2="21" y2="15"/>
+          <line x1="9" y1="3" x2="9" y2="21"/><line x1="15" y1="3" x2="15" y2="21"/>
+        </svg>
+      </button>
+      <button title="Inserir emoji"
+              class="toolbar-btn"
+              data-action="click->emoji-picker#open">
+        <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="12" cy="12" r="10"/>
+          <path d="M8 14s1.5 2 4 2 4-2 4-2"/>
+          <line x1="9" y1="9" x2="9.01" y2="9"/><line x1="15" y1="9" x2="15.01" y2="9"/>
         </svg>
       </button>
     </div>
@@ -272,6 +358,26 @@
         <line x1="8" y1="12" x2="16" y2="12"/>
       </svg>
     </button>
+
+    <%# Theme picker %>
+    <div class="relative flex-shrink-0" data-controller="theme">
+      <button title="Tema"
+              class="toolbar-btn flex items-center gap-1"
+              data-action="click->theme#toggle">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
+          <circle cx="13.5" cy="6.5" r="0.5" fill="currentColor"/>
+          <circle cx="17.5" cy="10.5" r="0.5" fill="currentColor"/>
+          <circle cx="8.5" cy="7.5" r="0.5" fill="currentColor"/>
+          <circle cx="6.5" cy="12" r="0.5" fill="currentColor"/>
+          <path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.926 0 1.648-.746 1.648-1.688 0-.437-.18-.835-.437-1.125-.29-.289-.438-.652-.438-1.125a1.64 1.64 0 011.668-1.668h1.996c3.051 0 5.555-2.503 5.555-5.555C21.965 6.012 17.461 2 12 2z"/>
+        </svg>
+        <span class="text-xs hidden sm:inline" data-theme-target="currentTheme">Dark</span>
+      </button>
+      <div class="hidden absolute right-0 top-full mt-1 w-48 rounded-lg shadow-xl py-1 z-50"
+           style="background: var(--theme-bg-secondary); border: 1px solid var(--theme-border);"
+           data-theme-target="menu">
+      </div>
+    </div>
 
     <%# Divider %>
     <div class="w-px h-5 flex-shrink-0" style="background: var(--toolbar-border)"></div>
@@ -887,6 +993,173 @@ AI_ENABLED_PROVIDERS=ollama</pre>
 
     <%# Karaoke controller — injects word spans directly into the preview pane %>
     <div data-controller="karaoke" data-tts-target="karaokeContainer" class="hidden"></div>
+  </div>
+
+  <%# ── Emoji Picker Dialog ──────────────────────────────── %>
+  <div data-controller="emoji-picker"
+       data-emoji-picker-columns-value="10"
+       data-emoji-picker-emoticon-columns-value="5">
+    <dialog class="p-0 rounded-lg shadow-xl backdrop:bg-black/50 w-[500px] max-h-[70vh]"
+            style="background: var(--theme-bg-secondary); border: 1px solid var(--theme-border);"
+            data-emoji-picker-target="dialog">
+      <div class="flex flex-col h-full max-h-[70vh]">
+        <%# Header with tabs and search %>
+        <div class="flex-none p-3" style="border-bottom: 1px solid var(--theme-border);">
+          <div class="flex items-center justify-between mb-2">
+            <div class="flex gap-1" role="tablist">
+              <button type="button" role="tab"
+                      data-emoji-picker-target="tabEmoji"
+                      data-action="click->emoji-picker#switchToEmoji"
+                      class="px-3 py-1 text-sm rounded-md cursor-pointer"
+                      style="background: var(--theme-accent); color: var(--theme-accent-text);">
+                Emoji
+              </button>
+              <button type="button" role="tab"
+                      data-emoji-picker-target="tabEmoticons"
+                      data-action="click->emoji-picker#switchToEmoticons"
+                      class="px-3 py-1 text-sm rounded-md cursor-pointer"
+                      style="color: var(--theme-text-muted);">
+                Emoticons
+              </button>
+            </div>
+            <button type="button"
+                    class="p-1 rounded cursor-pointer"
+                    style="color: var(--theme-text-muted);"
+                    data-action="click->emoji-picker#close"
+                    title="Fechar">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
+                <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+              </svg>
+            </button>
+          </div>
+          <input type="text"
+                 data-emoji-picker-target="input"
+                 data-action="input->emoji-picker#onInput keydown->emoji-picker#onKeydown"
+                 class="w-full px-3 py-2 text-sm rounded-md focus:outline-none focus:ring-2"
+                 style="border: 1px solid var(--theme-border); background: var(--theme-bg-primary); color: var(--theme-text-primary); --tw-ring-color: var(--theme-accent);"
+                 placeholder="Buscar emoji..."
+                 autocomplete="off"
+                 spellcheck="false">
+        </div>
+        <%# Grid %>
+        <div class="flex-1 overflow-y-auto p-3 min-h-0">
+          <div data-emoji-picker-target="grid"
+               class="grid gap-1"
+               style="grid-template-columns: repeat(10, minmax(0, 1fr));">
+          </div>
+        </div>
+        <%# Preview footer %>
+        <div class="flex-none p-3" style="border-top: 1px solid var(--theme-border); background: var(--theme-bg-tertiary);">
+          <div data-emoji-picker-target="preview"
+               class="flex items-center justify-center gap-3 h-12"
+               style="color: var(--theme-text-primary);">
+          </div>
+        </div>
+      </div>
+    </dialog>
+  </div>
+
+  <%# ── Table Editor Dialog ─────────────────────────────── %>
+  <div data-controller="table-editor">
+    <dialog class="p-0 rounded-lg shadow-xl backdrop:bg-black/50 max-w-3xl"
+            style="background: var(--theme-bg-secondary); border: 1px solid var(--theme-border);"
+            data-table-editor-target="dialog"
+            tabindex="-1">
+      <div class="p-4" style="color: var(--theme-text-primary);">
+        <div class="flex items-center justify-between gap-3 mb-3 flex-wrap">
+          <h3 class="text-base font-semibold">Editor de Tabela</h3>
+          <div class="flex items-center gap-3 flex-wrap">
+            <div class="flex flex-col items-start gap-1">
+              <span class="text-xs uppercase tracking-wide font-semibold" style="color: var(--theme-text-muted);">Colunas</span>
+              <div class="table-editor-stepper">
+                <input type="number" min="1" step="1" value="3" inputmode="numeric"
+                       data-table-editor-target="columnCountInput"
+                       data-action="change->table-editor#setColumnCount"
+                       aria-label="Colunas">
+                <div class="table-editor-stepper-buttons">
+                  <button type="button" class="table-editor-stepper-btn"
+                          data-action="click->table-editor#decrementColumnCount" title="Remover coluna">-</button>
+                  <button type="button" class="table-editor-stepper-btn"
+                          data-action="click->table-editor#incrementColumnCount" title="Adicionar coluna">+</button>
+                </div>
+              </div>
+            </div>
+            <div class="flex flex-col items-start gap-1">
+              <span class="text-xs uppercase tracking-wide font-semibold" style="color: var(--theme-text-muted);">Linhas</span>
+              <div class="table-editor-stepper">
+                <input type="number" min="1" step="1" value="3" inputmode="numeric"
+                       data-table-editor-target="rowCountInput"
+                       data-action="change->table-editor#setRowCount"
+                       aria-label="Linhas">
+                <div class="table-editor-stepper-buttons">
+                  <button type="button" class="table-editor-stepper-btn"
+                          data-action="click->table-editor#decrementRowCount" title="Remover linha">-</button>
+                  <button type="button" class="table-editor-stepper-btn"
+                          data-action="click->table-editor#incrementRowCount" title="Adicionar linha">+</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <%# Cell Context Menu %>
+        <div class="fixed hidden rounded-lg shadow-lg py-1 min-w-[140px] z-[60]"
+             style="background: var(--theme-bg-secondary); border: 1px solid var(--theme-border); color: var(--theme-text-primary);"
+             data-table-editor-target="cellMenu">
+          <div class="px-2 py-1 text-xs font-semibold uppercase" style="color: var(--theme-text-muted);">Coluna</div>
+          <button type="button" data-action="click->table-editor#moveColumnLeft" data-table-editor-target="moveColLeftBtn"
+                  class="w-full px-3 py-1.5 text-left text-sm flex items-center gap-2" style="cursor:pointer;" onmouseover="this.style.background='var(--theme-bg-hover)'" onmouseout="this.style.background='transparent'">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/></svg>
+            Mover esquerda
+          </button>
+          <button type="button" data-action="click->table-editor#moveColumnRight" data-table-editor-target="moveColRightBtn"
+                  class="w-full px-3 py-1.5 text-left text-sm flex items-center gap-2" style="cursor:pointer;" onmouseover="this.style.background='var(--theme-bg-hover)'" onmouseout="this.style.background='transparent'">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
+            Mover direita
+          </button>
+          <button type="button" data-action="click->table-editor#deleteColumnAt" data-table-editor-target="deleteColBtn"
+                  class="w-full px-3 py-1.5 text-left text-sm flex items-center gap-2" style="color: var(--theme-error); cursor:pointer;" onmouseover="this.style.background='var(--theme-bg-hover)'" onmouseout="this.style.background='transparent'">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
+            Excluir coluna
+          </button>
+          <div class="my-1" style="border-top: 1px solid var(--theme-border);"></div>
+          <div class="px-2 py-1 text-xs font-semibold uppercase" style="color: var(--theme-text-muted);">Linha</div>
+          <button type="button" data-action="click->table-editor#moveRowUp" data-table-editor-target="moveRowUpBtn"
+                  class="w-full px-3 py-1.5 text-left text-sm flex items-center gap-2" style="cursor:pointer;" onmouseover="this.style.background='var(--theme-bg-hover)'" onmouseout="this.style.background='transparent'">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 15l7-7 7 7"/></svg>
+            Mover cima
+          </button>
+          <button type="button" data-action="click->table-editor#moveRowDown" data-table-editor-target="moveRowDownBtn"
+                  class="w-full px-3 py-1.5 text-left text-sm flex items-center gap-2" style="cursor:pointer;" onmouseover="this.style.background='var(--theme-bg-hover)'" onmouseout="this.style.background='transparent'">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
+            Mover baixo
+          </button>
+          <button type="button" data-action="click->table-editor#deleteRowAt" data-table-editor-target="deleteRowBtn"
+                  class="w-full px-3 py-1.5 text-left text-sm flex items-center gap-2" style="color: var(--theme-error); cursor:pointer;" onmouseover="this.style.background='var(--theme-bg-hover)'" onmouseout="this.style.background='transparent'">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
+            Excluir linha
+          </button>
+        </div>
+
+        <%# Table Grid %>
+        <div class="overflow-auto max-h-80 rounded-md" style="border: 1px solid var(--theme-border);" data-table-editor-target="grid"></div>
+
+        <div class="flex items-center justify-end mt-4 gap-2">
+          <button type="button"
+                  class="px-3 py-1.5 text-sm rounded cursor-pointer"
+                  style="border: 1px solid var(--theme-border); color: var(--theme-text-secondary);"
+                  data-action="click->table-editor#close">
+            Cancelar
+          </button>
+          <button type="button"
+                  class="px-3 py-1.5 text-sm rounded cursor-pointer"
+                  style="background: var(--theme-accent); color: var(--theme-accent-text);"
+                  data-action="click->table-editor#insert">
+            Inserir Tabela
+          </button>
+        </div>
+      </div>
+    </dialog>
   </div>
 
 </div>
