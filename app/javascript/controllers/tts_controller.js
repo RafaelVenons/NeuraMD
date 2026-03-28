@@ -15,7 +15,7 @@ export default class extends Controller {
   static targets = [
     "generateBtn", "dialog", "player", "audio", "statusLabel",
     "providerSelect", "voiceSelect", "languageSelect", "formatSelect",
-    "dialogOverlay", "spinner",
+    "dropdownWrapper", "spinner",
     "generateTab", "libraryTab", "generatePanel", "libraryPanel", "libraryList",
     "karaokeContainer", "karaokeToggle", "playerInfo",
     "staleNotice"
@@ -28,8 +28,17 @@ export default class extends Controller {
     this._staleAudio = null
     this._headRevisionId = null
     this._polling = null
+    this._dialogOpen = false
+    // Capture autoplay flag from sessionStorage (set by library card click)
+    this._wantsAutoplay = sessionStorage.getItem("tts-autoplay") === "1"
+    if (this._wantsAutoplay) sessionStorage.removeItem("tts-autoplay")
     this._boundKeydown = this._onKeydown.bind(this)
     this._boundEditorChange = this._onEditorChange.bind(this)
+    this._boundClickOutside = (e) => {
+      if (this.hasDropdownWrapperTarget && !this.dropdownWrapperTarget.contains(e.target)) {
+        this.closeDialog()
+      }
+    }
     document.addEventListener("keydown", this._boundKeydown)
     this.element.addEventListener("codemirror:change", this._boundEditorChange)
     this.fetchStatus()
@@ -38,6 +47,7 @@ export default class extends Controller {
   disconnect() {
     this.stopPolling()
     document.removeEventListener("keydown", this._boundKeydown)
+    document.removeEventListener("click", this._boundClickOutside)
     this.element.removeEventListener("codemirror:change", this._boundEditorChange)
   }
 
@@ -87,6 +97,7 @@ export default class extends Controller {
 
       if (this._activeAsset?.ready) {
         this.showPlayer(this._activeAsset.audio_url)
+        this._autoplayIfRequested()
         // If MFA alignment is still running, poll until it completes
         if (this._activeAsset.alignment_status === "pending") this.startPolling()
       } else if (this._activeAsset?.pending) {
@@ -107,15 +118,18 @@ export default class extends Controller {
 
   openDialog() {
     if (!this.hasDialogTarget) return
+    if (this._dialogOpen) { this.closeDialog(); return }
     this.populateDialog()
     this.switchToGenerate()
     this.dialogTarget.classList.remove("hidden")
-    if (this.hasDialogOverlayTarget) this.dialogOverlayTarget.classList.remove("hidden")
+    this._dialogOpen = true
+    setTimeout(() => document.addEventListener("click", this._boundClickOutside), 0)
   }
 
   closeDialog() {
     if (this.hasDialogTarget) this.dialogTarget.classList.add("hidden")
-    if (this.hasDialogOverlayTarget) this.dialogOverlayTarget.classList.add("hidden")
+    this._dialogOpen = false
+    document.removeEventListener("click", this._boundClickOutside)
   }
 
   populateDialog() {
@@ -193,18 +207,41 @@ export default class extends Controller {
     const duration = asset.duration_ms ? `${(asset.duration_ms / 1000).toFixed(1)}s` : ""
     const created = asset.created_at ? new Date(asset.created_at).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }) : ""
 
-    const audioEl = asset.ready && asset.audio_url
-      ? `<audio controls preload="none" class="w-full h-7 mt-1" style="max-height: 28px;" src="${this._escapeAttr(asset.audio_url)}"></audio>`
-      : asset.pending
-        ? `<p class="text-[10px] mt-1" style="color: var(--theme-accent);">Gerando...</p>`
-        : ""
-
-    const activateBtn = asset.ready && !isActive
-      ? `<button class="text-[10px] px-2 py-0.5 rounded mt-1" style="background: var(--theme-accent); color: white;" data-action="click->tts#activateAsset" data-asset-id="${this._escapeAttr(asset.id)}" data-audio-url="${this._escapeAttr(asset.audio_url)}">Usar</button>`
+    const statusBadge = asset.pending
+      ? `<span class="text-[10px]" style="color: var(--theme-accent);">Gerando...</span>`
       : isActive
-        ? `<span class="text-[10px] px-2 py-0.5 rounded mt-1 inline-block" style="background: var(--theme-accent-dim, rgba(99,102,241,0.2)); color: var(--theme-accent);">Ativo</span>`
+        ? `<span class="text-[10px] px-2 py-0.5 rounded inline-block" style="background: var(--theme-accent-dim, rgba(99,102,241,0.2)); color: var(--theme-accent);">Ativo</span>`
         : ""
 
+    // Ready cards with a revision are clickable links to the revision page (autoplay)
+    if (asset.ready && asset.revision_id) {
+      const url = this._revisionUrl(asset.revision_id)
+      return `
+        <a href="${url}" class="block rounded-lg border ${activeBorder} p-2.5 cursor-pointer no-underline transition-colors"
+           style="background: var(--theme-bg-tertiary); text-decoration: none;"
+           data-action="click->tts#navigateToRevision" data-turbo-prefetch="false"
+           onmouseover="this.style.background='var(--theme-bg-hover)'"
+           onmouseout="this.style.background='var(--theme-bg-tertiary)'">
+          <div class="flex items-center justify-between gap-2">
+            <div class="flex flex-wrap gap-1">
+              <span class="inline-block rounded px-1.5 py-0.5 text-[10px]" style="background: var(--theme-bg-secondary); color: var(--theme-text-muted);">${this._escapeHtml(asset.provider)}</span>
+              <span class="inline-block rounded px-1.5 py-0.5 text-[10px]" style="background: var(--theme-bg-secondary); color: var(--theme-text-muted);">${this._escapeHtml(asset.voice)}</span>
+              <span class="inline-block rounded px-1.5 py-0.5 text-[10px]" style="background: var(--theme-bg-secondary); color: var(--theme-text-muted);">${this._escapeHtml(asset.language)}</span>
+            </div>
+            <span class="text-[10px] flex-shrink-0" style="color: var(--theme-text-faint);">${this._escapeHtml(created)}</span>
+          </div>
+          <div class="flex items-center justify-between mt-1">
+            <span class="text-[10px]" style="color: var(--theme-text-muted);">${this._escapeHtml(asset.format)} ${duration ? `· ${this._escapeHtml(duration)}` : ""}</span>
+            <span class="text-[10px] inline-flex items-center gap-1" style="color: var(--theme-accent);">
+              <svg class="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+              Ouvir
+            </span>
+          </div>
+        </a>
+      `
+    }
+
+    // Pending / non-ready cards are not clickable
     return `
       <div class="rounded-lg border ${activeBorder} p-2.5" style="background: var(--theme-bg-tertiary);">
         <div class="flex items-center justify-between gap-2">
@@ -217,22 +254,22 @@ export default class extends Controller {
         </div>
         <div class="flex items-center justify-between mt-1">
           <span class="text-[10px]" style="color: var(--theme-text-muted);">${this._escapeHtml(asset.format)} ${duration ? `· ${this._escapeHtml(duration)}` : ""}</span>
-          ${activateBtn}
+          ${statusBadge}
         </div>
-        ${audioEl}
       </div>
     `
   }
 
-  activateAsset(event) {
-    const btn = event.currentTarget
-    const audioUrl = btn.dataset.audioUrl
-    const assetId = btn.dataset.assetId
-    if (!audioUrl) return
-
-    this._activeAsset = { id: assetId, audio_url: audioUrl, ready: true }
-    this.showPlayer(audioUrl)
+  navigateToRevision(event) {
+    sessionStorage.setItem("tts-autoplay", "1")
     this.closeDialog()
+  }
+
+  _revisionUrl(revisionId) {
+    // Extract slug from libraryUrlValue: /notes/:slug/tts_library
+    const match = this.libraryUrlValue.match(/\/notes\/([^/]+)\/tts_library/)
+    const slug = match ? match[1] : ""
+    return `/notes/${slug}/revisions/${revisionId}`
   }
 
   // ── Provider / Voice ──────────────────────────────
@@ -514,6 +551,27 @@ export default class extends Controller {
     this._activeAsset = this._staleAudio.asset
     this._hideStaleNotice()
     this.showPlayer(this._staleAudio.asset.audio_url)
+  }
+
+  // ── Autoplay ────────────────────────────────────────
+
+  _autoplayIfRequested() {
+    if (!this._wantsAutoplay) return
+    if (!this.hasAudioTarget) return
+    this._wantsAutoplay = false
+
+    const audio = this.audioTarget
+    const tryPlay = () => {
+      audio.play().catch(() => {
+        // Browser may block autoplay without prior user gesture
+      })
+    }
+
+    if (audio.readyState >= 2) {
+      tryPlay()
+    } else {
+      audio.addEventListener("canplay", tryPlay, { once: true })
+    }
   }
 
   // ── Helpers ─────────────────────────────────────────

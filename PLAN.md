@@ -1545,6 +1545,22 @@ Portar e padronizar do FrankMD:
 
 - **Entrega:** editor com a fluencia e polimento do FrankMD, features exclusivas do NeuraMD preservadas
 
+#### 7.12 — TTS UX Refinamentos
+
+**Dialog "Criar Audio" como Dropdown padrao:**
+- [ ] O dialog de TTS deve seguir o mesmo padrao visual de dropdown dos outros recursos (IA, tags, etc.)
+- [ ] Consistencia de interacao: abrir, selecionar, fechar — sem modal pesado
+
+**Aba Biblioteca — navegar para a revisao ao inves de reproduzir inline:**
+- [ ] Ao clicar em um item da biblioteca, fechar o dialog e navegar para a revisao da nota associada ao audio
+- [ ] A reproducao do audio acontece na pagina da revisao (player embutido), nao dentro do dialog
+- [ ] Simplifica o dialog: biblioteca vira lista de links para revisoes, sem mini-players
+
+**Karaoke click-to-seek sem sublinhado no preview:**
+- [ ] Manter funcionalidade de clicar na palavra e pular para o segundo correto do audio
+- [ ] Remover o sublinhado visual (underline/border-bottom) das palavras no preview durante karaoke
+- [ ] Karaoke ativo deve usar apenas highlight de fundo (background), sem decoracao de texto adicional
+
 ### Fase 8 — iPad (futuro)
 - [ ] API REST estabilizada
 - [ ] Endpoints para assets e revisões
