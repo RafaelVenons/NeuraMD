@@ -295,9 +295,9 @@ export default class extends Controller {
       }
     })
 
-    // Scroll first active span into view
+    // Keep active word centered in the scrollable preview pane
     if (activeGroup && activeGroup.indices.length > 0) {
-      this._spans[activeGroup.indices[0]]?.scrollIntoView({ behavior: "smooth", block: "nearest" })
+      this._scrollToCenter(this._spans[activeGroup.indices[0]])
     }
   }
 
@@ -315,6 +315,40 @@ export default class extends Controller {
       audio.currentTime = start
       if (audio.paused) audio.play()
     }
+  }
+
+  // ── Scroll tracking ─────────────────────────────────
+  // Keeps the highlighted word near the vertical center of the scrollable
+  // preview pane. Does NOT scroll when the word is already near the top or
+  // bottom extremes (natural start/end of content).
+
+  _scrollToCenter(span) {
+    if (!span) return
+    // The scrollable container is the .preview-prose-wrapper (overflow-y: auto),
+    // which is the direct parent of the preview output element.
+    const preview = this._previewElement()
+    const container = preview?.closest(".preview-prose-wrapper") || preview?.parentElement
+    if (!container) return
+
+    const containerRect = container.getBoundingClientRect()
+    const spanRect = span.getBoundingClientRect()
+
+    // Position of span center relative to container viewport
+    const spanCenter = spanRect.top + spanRect.height / 2
+    const containerCenter = containerRect.top + containerRect.height / 2
+    const offset = spanCenter - containerCenter
+
+    // Skip if already close to center (within 20% of container height)
+    if (Math.abs(offset) < containerRect.height * 0.2) return
+
+    // Skip if at scroll extremes — don't force-scroll past natural bounds
+    const atTop = container.scrollTop <= 0
+    const atBottom = container.scrollTop + container.clientHeight >= container.scrollHeight - 1
+
+    if (atTop && offset < 0) return  // word above center but already at top
+    if (atBottom && offset > 0) return  // word below center but already at bottom
+
+    container.scrollBy({ top: offset, behavior: "smooth" })
   }
 
   // ── Element references ───────────────────────────────
