@@ -72,6 +72,64 @@ RSpec.describe Mfa::AlignService do
       expect(words.map { |w| w["word"] }).to eq(%w[hello world])
     end
 
+    context "when AiRequest has original text" do
+      let!(:ai_request) do
+        create(:ai_request,
+          note_revision: note.head_revision,
+          capability: "tts",
+          input_text: "Hello World!",
+          metadata: {"tts_asset_id" => asset.id.to_s}
+        )
+      end
+
+      it "preserves original casing and punctuation in alignment words" do
+        described_class.call(asset)
+
+        asset.reload
+        words = asset.alignment_data["words"]
+        expect(words.map { |w| w["word"] }).to eq(%w[Hello World!])
+      end
+    end
+
+    context "when MFA splits compound words" do
+      let(:mfa_output_json) do
+        {
+          "tiers" => {
+            "words" => {
+              "type" => "words",
+              "entries" => [
+                [0.0, 0.3, "saude"],
+                [0.3, 0.5, "e"],
+                [0.5, 0.7, "bem"],
+                [0.7, 1.0, "estar"]
+              ]
+            }
+          }
+        }
+      end
+
+      let!(:ai_request) do
+        create(:ai_request,
+          note_revision: note.head_revision,
+          capability: "tts",
+          input_text: "saúde e bem-estar",
+          metadata: {"tts_asset_id" => asset.id.to_s}
+        )
+      end
+
+      it "merges split parts back into the original compound word" do
+        described_class.call(asset)
+
+        asset.reload
+        words = asset.alignment_data["words"]
+        expect(words.map { |w| w["word"] }).to eq(%w[saúde e bem-estar])
+        # Merged word should span the full timing range
+        merged = words.find { |w| w["word"] == "bem-estar" }
+        expect(merged["start"]).to eq(0.5)
+        expect(merged["end"]).to eq(1.0)
+      end
+    end
+
     it "saves alignment JSON to shared filesystem" do
       json_dest = File.join(described_class::ALIGNMENT_ROOT, "json", "#{asset.id}.json")
 

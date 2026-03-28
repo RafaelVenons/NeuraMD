@@ -76,13 +76,18 @@ module Tts
 
       # Minimal cleanup — text arrives pre-rendered from the preview pane
       # (innerText), so markdown/wikilink syntax is already stripped.
-      # We only normalize whitespace for consistent hashing and TTS input.
+      # We normalize whitespace and convert line breaks to sentence breaks
+      # so TTS providers (Kokoro etc.) produce natural pauses between
+      # headings, paragraphs, and list items.
       def strip_markup(text)
         text = text.to_s
-        # Collapse runs of whitespace (preserve single newlines for paragraph structure)
-        text = text.gsub(/[^\S\n]+/, " ")        # spaces/tabs → single space
-        text = text.gsub(/\n{3,}/, "\n\n")        # 3+ newlines → double
-        text = text.gsub(/^\s+|\s+$/, "")         # trim
+        text = text.gsub(/[^\S\n]+/, " ")                   # spaces/tabs → single space
+        text = text.gsub(/\n{3,}/, "\n\n")                   # 3+ newlines → double
+        # Convert line breaks to sentence breaks for natural TTS pauses.
+        # Add period only when line doesn't already end with punctuation.
+        text = text.gsub(/([^.!?:;\n])\s*\n+\s*/) { "#{$1}. " }
+        text = text.gsub(/([.!?:;])\s*\n+\s*/) { "#{$1} " }
+        text = text.strip
         text
       end
     end

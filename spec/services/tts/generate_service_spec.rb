@@ -101,6 +101,19 @@ RSpec.describe Tts::GenerateService do
       expect(result[:ai_request].input_text).to eq("Texto com espaços")
     end
 
+    it "adds period after headings for TTS pause (innerText line breaks)" do
+      allow(Tts::GenerateJob).to receive(:perform_later)
+      # innerText from preview: heading has \n before paragraph
+      result = described_class.call(**params.merge(text: "Titulo\n\nParagrafo com texto."))
+      expect(result[:ai_request].input_text).to eq("Titulo. Paragrafo com texto.")
+    end
+
+    it "preserves existing punctuation at line breaks" do
+      allow(Tts::GenerateJob).to receive(:perform_later)
+      result = described_class.call(**params.merge(text: "Frase um.\n\nFrase dois."))
+      expect(result[:ai_request].input_text).to eq("Frase um. Frase dois.")
+    end
+
     it "defaults voice to first available when blank" do
       allow(Tts::GenerateJob).to receive(:perform_later)
       allow(Tts::ProviderRegistry).to receive(:voices_for).with("kokoro", language: "en-US").and_return(%w[af_heart bf_emma])

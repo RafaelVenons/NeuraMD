@@ -134,8 +134,80 @@ module Mfa
         }
       end
 
+      # Map MFA words (lowercase, no punctuation) back to original words
+      # so karaoke preserves casing and punctuation from the preview text.
+      original_words = tts_input_text.split(/\s+/)
+      if words.length == original_words.length
+        words.each_with_index { |w, i| w[:word] = original_words[i] }
+      elsif original_words.any?
+        remap_words_to_original(words, original_words)
+      end
+
       duration_s = words.any? ? words.last[:end] : 0
       {words: words, duration_s: duration_s.round(3)}
+    end
+
+    # Sequential fuzzy matching when MFA word count differs from original.
+    # MFA may skip, merge, or split words. Handles:
+    # - Direct match: MFA "arroz" ↔ original "arroz"
+    # - Split compound: MFA ["bem","estar"] ↔ original "bem-estar"
+    def remap_words_to_original(mfa_words, original_words)
+      oi = 0
+      mi = 0
+      while mi < mfa_words.length && oi < original_words.length
+        w = mfa_words[mi]
+        mfa_norm = normalize_word(w[:word])
+        orig_norm = normalize_word(original_words[oi])
+
+        if orig_norm == mfa_norm
+          # Direct match
+          w[:word] = original_words[oi]
+          oi += 1
+          mi += 1
+        elsif orig_norm.start_with?(mfa_norm) && mi + 1 < mfa_words.length
+          # MFA split a compound word (e.g., "bem-estar" → "bem" + "estar")
+          # Check if consecutive MFA words form the original word
+          combined = mfa_norm
+          lookahead = mi + 1
+          while lookahead < mfa_words.length && combined.length < orig_norm.length
+            combined += normalize_word(mfa_words[lookahead][:word])
+            lookahead += 1
+          end
+          if combined == orig_norm
+            # Merge: assign original word to first MFA entry, mark rest for removal
+            w[:word] = original_words[oi]
+            # Extend first word's timing to cover all parts
+            w[:end] = mfa_words[lookahead - 1][:end]
+            # Mark split parts for removal
+            (mi + 1...lookahead).each { |j| mfa_words[j][:_remove] = true }
+            mi = lookahead
+            oi += 1
+          else
+            # No match — skip this MFA word
+            mi += 1
+          end
+        else
+          # Try advancing original to find a match
+          found = false
+          (oi + 1...[oi + 5, original_words.length].min).each do |try_oi|
+            if normalize_word(original_words[try_oi]) == mfa_norm
+              w[:word] = original_words[try_oi]
+              oi = try_oi + 1
+              mi += 1
+              found = true
+              break
+            end
+          end
+          mi += 1 unless found
+        end
+      end
+
+      # Remove merged split parts
+      mfa_words.reject! { |w| w.delete(:_remove) }
+    end
+
+    def normalize_word(word)
+      word.unicode_normalize(:nfkd).gsub(/[^\p{L}\p{N}]/, "").downcase
     end
 
     def store_alignment(data)
@@ -176,18 +248,22 @@ module Mfa
     end
 
     def tts_input_text
-      # The AiRequest stores the cleaned text that was sent to the TTS provider
-      ai_request = AiRequest.find_by(
-        "metadata->>'tts_asset_id' = ?", @asset.id.to_s
-      )
-      text = ai_request&.input_text.to_s.strip
-      return text if text.present?
-
-      # Fallback: strip markdown from revision content
-      @asset.note_revision&.content_markdown.to_s
-        .gsub(/\[\[([^\]|]+)\|[^\]]*\]\]/, '\1')
-        .gsub(/[#*_`~\[\]()>]/, "")
-        .strip
+      @tts_input_text ||= begin
+        # The AiRequest stores the cleaned text (preview plaintext) sent to TTS
+        ai_request = AiRequest.find_by(
+          "metadata->>'tts_asset_id' = ?", @asset.id.to_s
+        )
+        text = ai_request&.input_text.to_s.strip
+        if text.present?
+          text
+        else
+          # Fallback: basic cleanup of revision content
+          @asset.note_revision&.content_markdown.to_s
+            .gsub(/\[\[([^\]|]+)\|[^\]]*\]\]/, '\1')
+            .gsub(/[#*_`~\[\]()>]/, "")
+            .strip
+        end
+      end
     end
 
     def convert_to_wav(src, dst)
