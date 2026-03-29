@@ -192,6 +192,33 @@ RSpec.describe "Wiki-link editor", type: :system do
       expect(visible_editor_text).not_to include("]]")
     end
 
+    it "toggles typewriter mode with Ctrl+\\ and updates the toolbar state" do
+      editor.click
+      editor.send_keys([:control, "\\"])
+
+      expect(page.evaluate_script("document.body.classList.contains('typewriter-mode')")).to be(true)
+      expect(find("[data-editor-target='typewriterBtn']")["aria-pressed"]).to eq("true")
+
+      editor.send_keys([:control, "\\"])
+
+      expect(page.evaluate_script("document.body.classList.contains('typewriter-mode')")).to be(false)
+      expect(find("[data-editor-target='typewriterBtn']")["aria-pressed"]).to eq("false")
+    end
+
+    it "keeps broken wikilinks visually broken in typewriter mode without exposing raw payload" do
+      type_in_editor("[[Quebrado|00000000-0000-0000-0000-000000000000]] ")
+      editor.send_keys(:escape)
+
+      find("[data-editor-target='typewriterBtn']").click
+
+      visible_editor_text = page.evaluate_script("document.querySelector('.cm-content').innerText")
+      expect(visible_editor_text).to include("Quebrado")
+      expect(visible_editor_text).not_to include("00000000-0000-0000-0000-000000000000")
+      expect(visible_editor_text).not_to include("[[")
+      expect(visible_editor_text).not_to include("]]")
+      expect(page).to have_css(".cm-content .wikilink-broken", text: "Quebrado", wait: 5)
+    end
+
     it "turns a completed promise wikilink into creation actions" do
       type_in_editor("[[Nota futura]]")
 

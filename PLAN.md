@@ -1552,7 +1552,7 @@ sincronizacao coerente do preview e sem degradar a experiencia de selecao, links
   - permitir revelar/editar a forma completa quando necessario
   - nunca corromper o UUID estrutural
 - [ ] O comportamento visual do typewriter para wikilinks deve ser consistente com a regra global de preservacao estrutural de links
-- [ ] Links quebrados em typewriter devem ser distinguiveis visualmente, tal como no preview
+- [x] Links quebrados em typewriter devem ser distinguiveis visualmente, tal como no preview
 
 **Regra de escopo para a primeira entrega:**
 - [x] Primeira entrega aceita "renderizacao hibrida" apenas no typewriter mode
@@ -1566,7 +1566,7 @@ sincronizacao coerente do preview e sem degradar a experiencia de selecao, links
 
 **Persistencia e atalhos:**
 - [x] Persistir estado em `localStorage` no minimo; opcionalmente espelhar em config backend depois
-- [ ] Manter atalho `Ctrl+\` coerente com help/toolbar
+- [x] Manter atalho `Ctrl+\` coerente com help/toolbar
 - [x] Estado do botao da toolbar deve refletir o estado real da extensao, nao apenas uma classe CSS
 
 **Matriz minima de testes inspirada no FrankMD:**
@@ -1584,7 +1584,7 @@ sincronizacao coerente do preview e sem degradar a experiencia de selecao, links
 - [ ] Tests de wikilink em typewriter:
   - `[[Titulo|uuid]]` exibe so o texto visivel
   - `[[Titulo|f:uuid]]` / `c:` / `b:` preservam semantica visual
-  - link quebrado aparece como quebrado
+  - [x] link quebrado aparece como quebrado
   - sair do typewriter devolve exibicao crua do markdown, sem perda estrutural
 - [ ] System/Playwright:
   - ativar typewriter e digitar em documento longo
