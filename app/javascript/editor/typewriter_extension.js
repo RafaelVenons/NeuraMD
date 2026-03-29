@@ -248,6 +248,8 @@ function buildDecorations(view) {
     const validationCache = view.state.field(validationState)
     const builder = new RangeSetBuilder()
 
+    buildStructuralMarkdownDecorations(doc, selection, builder)
+
     for (const link of extractWikilinks(doc)) {
       const overlapsSelection = rangesOverlap(link.from, link.to, selection.from, selection.to) ||
         (selection.empty && selection.head > link.from && selection.head < link.to)
@@ -269,6 +271,38 @@ function buildDecorations(view) {
     }
 
   return builder.finish()
+}
+
+function buildStructuralMarkdownDecorations(doc, selection, builder) {
+  const lines = doc.split("\n")
+  let offset = 0
+
+  lines.forEach((line) => {
+    const headingMatch = line.match(/^(\s{0,3}#{1,6}\s+)/)
+    if (headingMatch) {
+      addHiddenSyntaxRange(builder, offset, offset + headingMatch[1].length, selection)
+    }
+
+    const quoteMatch = line.match(/^(\s*>+\s?)/)
+    if (quoteMatch) {
+      addHiddenSyntaxRange(builder, offset, offset + quoteMatch[1].length, selection)
+    }
+
+    const listMatch = line.match(/^(\s*(?:[-*+]\s+|\d+\.\s+))/)
+    if (listMatch) {
+      addHiddenSyntaxRange(builder, offset, offset + listMatch[1].length, selection)
+    }
+
+    offset += line.length + 1
+  })
+}
+
+function addHiddenSyntaxRange(builder, from, to, selection) {
+  if (to <= from) return
+  const overlapsSelection = rangesOverlap(from, to, selection.from, selection.to) ||
+    (selection.empty && selection.head > from && selection.head < to)
+  if (overlapsSelection) return
+  builder.add(from, to, hiddenSyntaxDecoration)
 }
 
 function extractWikilinks(doc) {

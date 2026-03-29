@@ -215,6 +215,18 @@ RSpec.describe "Wiki-link editor", type: :system do
       expect(page.evaluate_script("getComputedStyle(document.getElementById('preview-pane')).position")).to eq("absolute")
     end
 
+    it "hides heading and list prefixes in visible editor text while typewriter is active" do
+      type_in_editor("# Titulo\n- item 1\n> citacao")
+      editor.send_keys([:control, "\\"])
+
+      visible_editor_text = page.evaluate_script("document.querySelector('.cm-content').innerText")
+      expect(visible_editor_text).to include("Titulo")
+      expect(visible_editor_text).to include("item 1")
+      expect(visible_editor_text).to include("citacao")
+      expect(visible_editor_text).not_to include("# Titulo")
+      expect(visible_editor_text).not_to include("- item 1")
+    end
+
     it "keeps broken wikilinks visually broken in typewriter mode without exposing raw payload" do
       type_in_editor("[[Quebrado|00000000-0000-0000-0000-000000000000]] ")
       editor.send_keys(:escape)
