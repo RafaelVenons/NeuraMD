@@ -1884,7 +1884,7 @@
   }
   body.typewriter-mode #editor-pane {
     position: relative;
-    z-index: 2;
+    z-index: 5;
     flex: 1 1 auto;
     align-items: center;
     justify-content: stretch;
@@ -1958,8 +1958,11 @@
     background: color-mix(in srgb, var(--theme-accent) 22%, transparent) !important;
   }
   body.typewriter-mode .cm-editor .cm-cursor {
-    border-left-color: var(--theme-accent-hover);
-    border-left-width: 2px;
+    border-left-color: var(--theme-accent-hover) !important;
+    border-left-width: 2px !important;
+    opacity: 1 !important;
+    visibility: visible !important;
+    animation: none !important;
     filter: drop-shadow(0 0 6px color-mix(in srgb, var(--theme-accent-hover) 45%, transparent));
   }
   body.typewriter-mode .cm-editor .typewriter-inline-code {
