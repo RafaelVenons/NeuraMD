@@ -236,6 +236,16 @@ RSpec.describe "Wiki-link editor", type: :system do
       expect(visible_editor_text).not_to include("> citacao")
     end
 
+    it "hides code fence lines while keeping code content visible in typewriter mode" do
+      type_in_editor("```ruby\nputs 'oi'\n```")
+      editor.send_keys([:control, "\\"])
+
+      visible_editor_text = page.evaluate_script("document.querySelector('.cm-content').innerText")
+      expect(visible_editor_text).to include("puts 'oi'")
+      expect(visible_editor_text).not_to include("```ruby")
+      expect(visible_editor_text).not_to include("```")
+    end
+
     it "keeps broken wikilinks visually broken in typewriter mode without exposing raw payload" do
       type_in_editor("[[Quebrado|00000000-0000-0000-0000-000000000000]] ")
       editor.send_keys(:escape)

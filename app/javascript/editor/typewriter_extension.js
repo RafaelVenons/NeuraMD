@@ -280,6 +280,7 @@ function buildStructuralMarkdownDecorations(doc, selection, builder) {
 
   lines.forEach((line) => {
     if (/^\s*```/.test(line)) {
+      addHiddenSyntaxRange(builder, offset, offset + line.length, selection)
       inFence = !inFence
       offset += line.length + 1
       return
