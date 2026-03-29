@@ -578,8 +578,8 @@ export default class extends Controller {
       this.acceptButtonTarget.textContent = "Criando nota..."
 
       try {
+        await this._persistQueueResolution(this.lastCompletedRequest?.id)
         await this._createTranslatedNote(correctedText)
-        this._resolveQueueRequest(this.lastCompletedRequest?.id)
       } catch (error) {
         window.alert(error.message || "Falha ao criar nota traduzida.")
       } finally {
@@ -611,7 +611,7 @@ export default class extends Controller {
       bubbles: true
     })
 
-    this._resolveQueueRequest(this.lastCompletedRequest?.id)
+    this._persistQueueResolution(this.lastCompletedRequest?.id)
     editor.focus()
     this._hideWorkspace()
   }
@@ -851,16 +851,9 @@ export default class extends Controller {
       this._updateProcessingState(data)
 
       if (data.status === "succeeded") {
-        this.lastCompletedRequest = {
-          id: data.id || requestId,
-          capability: data.capability,
-          provider: data.provider,
-          model: data.model,
-          targetLanguage: data.target_language || this.selectedTargetLanguage()
-        }
-        this._showProposal(data.corrected)
         this._stopPolling()
         this.currentRequestId = null
+        this._hideWorkspace()
         this._clearActiveTrigger()
         this.refreshHistory()
         this.refreshQueue()
@@ -998,16 +991,11 @@ export default class extends Controller {
     this._updateProcessingState(request)
 
     if (request.status === "succeeded") {
-      this.lastCompletedRequest = {
-        id: request.id,
-        capability: request.capability,
-        provider: request.provider,
-        model: request.model,
-        targetLanguage: request.target_language || this.selectedTargetLanguage()
-      }
       this.currentRequestId = null
-      this._showProposal(request.corrected)
+      this._hideWorkspace()
       this._clearActiveTrigger()
+      // Don't auto-open proposal — let the user click the green card in the queue
+      this._renderQueue()
       return
     }
 
@@ -1992,6 +1980,7 @@ export default class extends Controller {
   async _openTranslateRequest(request) {
     if (request.translated_note_slug) {
       this._clearPendingCompletedRequestReview()
+      await this._persistQueueResolution(request.id)
       await this._navigateToAiRequestPath(`/notes/${request.translated_note_slug}`)
       this._hideWorkspace()
       return
@@ -2009,8 +1998,24 @@ export default class extends Controller {
 
     this._clearPendingCompletedRequestReview()
     this._ensurePreviewVisible()
-    this.pendingApplyMode = mode
-    this.pendingOriginalText = request.input_text || this._editor().getValue()
+
+    const documentMarkdown = this._editor().getValue()
+    const inputText = request.input_text || documentMarkdown
+
+    // Detect selection mode: input_text is a strict subset of the document
+    if (mode === "document" && inputText !== documentMarkdown && documentMarkdown.includes(inputText)) {
+      const from = documentMarkdown.indexOf(inputText)
+      const to = from + inputText.length
+      this.pendingApplyMode = "selection"
+      this.pendingOriginalText = documentMarkdown
+      this.pendingMenu = this.pendingMenu || {}
+      this.pendingMenu.documentMarkdown = documentMarkdown
+      this.pendingMenu.selectionRange = { from, to }
+    } else {
+      this.pendingApplyMode = mode
+      this.pendingOriginalText = inputText
+    }
+
     this.lastCompletedRequest = {
       id: request.id,
       capability: request.capability,

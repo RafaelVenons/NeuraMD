@@ -1,0 +1,159 @@
+#!/usr/bin/env bash
+# Distributed RSpec: splits test suite between local (system/JS) and AIrch (unit/request/service)
+# Both run in parallel; results aggregated at the end.
+#
+# Usage:
+#   bin/rspec-distributed              # full suite, auto-sync + parallel
+#   bin/rspec-distributed --no-sync    # skip rsync (AIrch already up to date)
+#   bin/rspec-distributed --local-only # only run local specs
+#   bin/rspec-distributed --airch-only # only run AIrch specs
+
+set -euo pipefail
+
+REMOTE="rafael@AIrch.local"
+REMOTE_DIR="~/NeuraMD"
+SHIMS="export PATH=~/.local/share/mise/shims:~/.local/bin:\$PATH"
+
+# Spec partitions
+LOCAL_SPECS=("spec/system/" "spec/javascript/")
+AIRCH_SPECS=("spec/requests/" "spec/services/" "spec/models/" "spec/jobs/" "spec/i18n/")
+
+# Temp files for output capture
+LOCAL_OUT=$(mktemp /tmp/rspec-local.XXXXXX)
+AIRCH_OUT=$(mktemp /tmp/rspec-airch.XXXXXX)
+cleanup() { rm -f "$LOCAL_OUT" "$AIRCH_OUT"; }
+trap cleanup EXIT
+
+# Parse flags
+SYNC=true
+RUN_LOCAL=true
+RUN_AIRCH=true
+
+for arg in "$@"; do
+  case "$arg" in
+    --no-sync)    SYNC=false ;;
+    --local-only) RUN_AIRCH=false ;;
+    --airch-only) RUN_LOCAL=false ;;
+    *)            echo "Unknown flag: $arg"; exit 1 ;;
+  esac
+done
+
+# ── Sync to AIrch ──────────────────────────────────────────────
+sync_to_airch() {
+  echo ":: Syncing code to AIrch..."
+  rsync -az --delete \
+    --exclude='.git' \
+    --exclude='tmp/' \
+    --exclude='log/' \
+    --exclude='node_modules/' \
+    --exclude='storage/' \
+    --exclude='vendor/bundle' \
+    /home/venom/projects/NeuraMD/ \
+    "${REMOTE}:${REMOTE_DIR}/"
+
+  echo ":: Ensuring AIrch dependencies..."
+  ssh "$REMOTE" "${SHIMS} && cd ${REMOTE_DIR} && bundle install --quiet 2>&1 && RAILS_ENV=test bin/rails db:migrate 2>&1" | tail -3
+}
+
+# ── Run specs on AIrch ─────────────────────────────────────────
+run_airch() {
+  echo ":: [AIrch] Running: ${AIRCH_SPECS[*]}"
+  ssh "$REMOTE" "${SHIMS} && cd ${REMOTE_DIR} && bundle exec rspec ${AIRCH_SPECS[*]} --format progress --format documentation --out /tmp/rspec-airch-doc.txt 2>&1" \
+    > "$AIRCH_OUT" 2>&1
+  return $?
+}
+
+# ── Run specs locally ──────────────────────────────────────────
+run_local() {
+  echo ":: [Local] Running: ${LOCAL_SPECS[*]}"
+  bundle exec rspec "${LOCAL_SPECS[@]}" --format progress \
+    > "$LOCAL_OUT" 2>&1
+  return $?
+}
+
+# ── Main ───────────────────────────────────────────────────────
+START_TIME=$SECONDS
+
+if $SYNC && $RUN_AIRCH; then
+  sync_to_airch
+fi
+
+LOCAL_EXIT=0
+AIRCH_EXIT=0
+
+if $RUN_LOCAL && $RUN_AIRCH; then
+  # Run both in parallel
+  run_airch &
+  AIRCH_PID=$!
+
+  run_local &
+  LOCAL_PID=$!
+
+  # Wait for both
+  wait $LOCAL_PID || LOCAL_EXIT=$?
+  wait $AIRCH_PID || AIRCH_EXIT=$?
+
+elif $RUN_LOCAL; then
+  run_local || LOCAL_EXIT=$?
+
+elif $RUN_AIRCH; then
+  run_airch || AIRCH_EXIT=$?
+fi
+
+ELAPSED=$(( SECONDS - START_TIME ))
+
+# ── Results ────────────────────────────────────────────────────
+echo ""
+echo "================================================================"
+echo "  Distributed RSpec Results (${ELAPSED}s total)"
+echo "================================================================"
+
+if $RUN_LOCAL; then
+  echo ""
+  echo "--- LOCAL (system + javascript) ---"
+  # Show summary line (last few lines with example counts)
+  tail -5 "$LOCAL_OUT" | grep -E "examples|Finished|failures" || tail -3 "$LOCAL_OUT"
+  if [[ $LOCAL_EXIT -ne 0 ]]; then
+    echo "  EXIT: FAILED ($LOCAL_EXIT)"
+    echo ""
+    echo "  Failed examples:"
+    grep -E "rspec \./spec" "$LOCAL_OUT" || true
+  else
+    echo "  EXIT: PASSED"
+  fi
+fi
+
+if $RUN_AIRCH; then
+  echo ""
+  echo "--- AIRCH (requests + services + models + jobs + i18n) ---"
+  tail -5 "$AIRCH_OUT" | grep -E "examples|Finished|failures" || tail -3 "$AIRCH_OUT"
+  if [[ $AIRCH_EXIT -ne 0 ]]; then
+    echo "  EXIT: FAILED ($AIRCH_EXIT)"
+    echo ""
+    echo "  Failed examples:"
+    grep -E "rspec \./spec" "$AIRCH_OUT" || true
+  else
+    echo "  EXIT: PASSED"
+  fi
+fi
+
+echo ""
+echo "================================================================"
+
+# Full output available in temp files
+if [[ $LOCAL_EXIT -ne 0 ]] && $RUN_LOCAL; then
+  echo "Full local output:  $LOCAL_OUT"
+  trap - EXIT  # Don't clean up if there are failures
+fi
+if [[ $AIRCH_EXIT -ne 0 ]] && $RUN_AIRCH; then
+  echo "Full AIrch output:  $AIRCH_OUT"
+  trap - EXIT
+fi
+
+# Exit with failure if either failed
+if [[ $LOCAL_EXIT -ne 0 ]] || [[ $AIRCH_EXIT -ne 0 ]]; then
+  exit 1
+fi
+
+echo "All specs passed!"
+exit 0

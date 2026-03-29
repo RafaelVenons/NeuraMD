@@ -25,7 +25,7 @@ done
 
 # Default: run all non-system specs if no path specified
 if [[ ${#SPEC_ARGS[@]} -eq 0 ]]; then
-  SPEC_ARGS=("spec/requests/" "spec/services/" "spec/models/" "spec/jobs/")
+  SPEC_ARGS=("spec/requests/" "spec/services/" "spec/models/" "spec/jobs/" "spec/i18n/")
 fi
 
 # Sync code to AIrch

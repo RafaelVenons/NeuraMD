@@ -110,7 +110,20 @@ RSpec.describe "AI review", type: :system do
     end
   end
 
+  def open_completed_queue_card(wait: 8)
+    expect(page).to have_css("[data-queue-status='succeeded']", wait:)
+    find("[data-queue-status='succeeded']").click
+  end
+
   def expect_ai_workspace(text:, wait: 5)
+    # With the new queue-first flow, succeeded requests show as green cards
+    # instead of auto-opening. Click the card if workspace is still hidden.
+    unless page.has_css?("[data-ai-review-target='workspace']:not(.hidden)", wait: 2)
+      if page.has_css?("[data-queue-status='succeeded']", wait:)
+        find("[data-queue-status='succeeded']").click
+      end
+    end
+
     expect(page).to have_css("[data-ai-review-target='workspace']:not(.hidden)", wait:)
     if page.has_css?("[data-ai-review-target='proposalDiff']", visible: :visible, wait:)
       visible_text = find("[data-ai-review-target='proposalDiff']", visible: :visible, wait:).text.gsub(/\n+/, "\n")
@@ -1070,6 +1083,7 @@ RSpec.describe "AI review", type: :system do
     end
 
     choose_ai_option("Revisar gramática com IA")
+    wait_until(timeout: 10) { request.present? }
 
     expect(page).to have_css("[data-request-id='#{request.id}']", wait: 5)
     find("[data-request-id='#{request.id}'][data-queue-action='cancel']", wait: 5).click
@@ -1102,6 +1116,7 @@ RSpec.describe "AI review", type: :system do
     end
 
     choose_ai_option("Revisar gramática com IA")
+    wait_until(timeout: 10) { request.present? }
 
     expect(page).to have_css("[data-request-id='#{request.id}']", wait: 5)
     find("[data-request-id='#{request.id}'][data-queue-action='cancel']", wait: 5).click
