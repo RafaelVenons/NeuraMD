@@ -98,6 +98,11 @@ export default class extends Controller {
     this._syncEditorWidthMode()
   }
 
+  toggleTypewriter(event) {
+    event?.preventDefault()
+    this._toggleTypewriter()
+  }
+
   enterAiReviewFocusMode() {
     if (this._aiReviewFocusMode) return
 
@@ -254,6 +259,13 @@ export default class extends Controller {
       this._syncPrimaryAction()
     })
 
+    this.element.addEventListener("codemirror:selectionchange", (e) => {
+      if (!e.detail?.typewriterMode || !e.detail?.typewriter) return
+      const preview = this._getPreviewController()
+      preview?.setTypewriterMode(true)
+      preview?.syncToTypewriter(e.detail.typewriter.currentLine, e.detail.typewriter.totalLines)
+    })
+
     // Listen for CodeMirror scroll events
     this.element.addEventListener("codemirror:scroll", (e) => {
       this._syncScrollEditorToPreview(e.detail.ratio)
@@ -280,6 +292,16 @@ export default class extends Controller {
       if (!cm) return
       cm.replaceSelection(e.detail.text)
       cm.focus()
+    })
+
+    this.element.addEventListener("typewriter:toggled", (e) => {
+      const enabled = !!e.detail?.enabled
+      const preview = this._getPreviewController()
+      preview?.setTypewriterMode(enabled)
+      if (!enabled) return
+      const sync = this._getCodemirrorController()?.getTypewriterSyncData()
+      if (!sync) return
+      preview?.syncToTypewriter(sync.currentLine, sync.totalLines)
     })
   }
 
@@ -458,6 +480,7 @@ export default class extends Controller {
   // ── Scroll sync ──────────────────────────────────────────
   _syncScrollEditorToPreview(ratio) {
     if (this._scrollSyncLock) return
+    if (this._getCodemirrorController()?.isTypewriterMode()) return
     this._scrollSyncLock = true
     this._getPreviewController()?.setScrollRatio(ratio)
     clearTimeout(this._scrollCooldown)
@@ -466,6 +489,7 @@ export default class extends Controller {
 
   _syncScrollPreviewToEditor(ratio) {
     if (this._scrollSyncLock) return
+    if (this._getCodemirrorController()?.isTypewriterMode()) return
     this._scrollSyncLock = true
     this._getCodemirrorController()?.setScrollRatio(ratio)
     clearTimeout(this._scrollCooldown)

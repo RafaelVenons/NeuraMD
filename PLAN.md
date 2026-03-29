@@ -1472,18 +1472,127 @@ Esse padrão evita drift entre caminhos internos dos serviços.
 
 #### 7.6 — Typewriter Mode Melhorado
 
-O typewriter mode atual e apenas CSS (40vh padding). O FrankMD tem uma implementacao mais sofisticada:
+O typewriter mode atual no NeuraMD e superficial: apenas aplica `padding-top/bottom: 40vh` no `.cm-scroller`.
+Isso nao reproduz o comportamento do FrankMD. O objetivo correto nao e "empurrar o texto para o meio", e sim
+**manter a linha/cursor de escrita em uma faixa visual estavel, preferencialmente no centro da viewport**, com
+sincronizacao coerente do preview e sem degradar a experiencia de selecao, links ou IME.
 
-- [ ] Cursor sempre centralizado verticalmente durante digitacao (nao so padding)
-- [ ] CodeMirror extension dedicada: `codemirror_typewriter.js` com scroll automatico
-- [ ] Preview sync: preview acompanha posicao do cursor no typewriter mode
-- [ ] Debounce para evitar jitter durante digitacao rapida
-- [ ] Portar `typewriter_utils.js` e `codemirror_typewriter.js` do FrankMD
-- [ ] **Modo hibrido (visao futura):** ocultar UUIDs dos wikilinks no editor mantendo-os no arquivo original
-  - Exibir `[[Display Text]]` no editor, armazenar `[[Display Text|uuid]]` no markdown
-  - CodeMirror decoration/widget que substitui visualmente o `|uuid` por nada
-  - Clicar no link mostra UUID em tooltip ou expande inline para edicao
-  - NAO alterar o markdown subjacente — apenas camada visual
+**Referencia tecnica principal no FrankMD:**
+- `app/javascript/controllers/typewriter_controller.js`
+- `app/javascript/lib/codemirror_typewriter.js`
+- `app/javascript/lib/typewriter_utils.js`
+- `app/javascript/controllers/preview_controller.js`
+- `app/assets/tailwind/components/codemirror.css`
+- `app/assets/tailwind/components/editor.css`
+
+**Objetivo funcional do Typewriter Mode:**
+- [ ] Cursor deve permanecer aproximadamente em 50% da area visivel do editor durante digitacao normal
+- [ ] Reduzir movimento ocular e scroll manual em sessoes longas de escrita
+- [ ] Preservar fluidez de escrita com markdown, wikilinks, CJK/IME e selecao de texto
+- [ ] Nao transformar o editor em preview falso; o documento continua sendo markdown editavel
+
+**Arquitetura desejada herdada do FrankMD:**
+- [x] `typewriter_controller.js` vira orquestrador de UI/estado, nao implementacao de scroll
+- [x] Estado `enabled` deve ser persistido e refletido no botao (`aria-pressed`, classe ativa, shortcut)
+- [x] CodeMirror recebe extensao dedicada `codemirror_typewriter.js`
+- [ ] Extensao deve expor efeitos/estado equivalentes a:
+  - `setTypewriterMode`
+  - `setIsSelecting`
+  - `typewriterState`
+- [x] `codemirror_controller.js` deve fornecer API publica equivalente a:
+  - `setTypewriterMode(enabled)`
+  - `toggleTypewriterMode()`
+  - `isTypewriterMode()`
+  - `getTypewriterSyncData()`
+  - `maintainTypewriterScroll()`
+- [ ] `typewriter_utils.js` deve concentrar calculos puros e testaveis:
+  - `calculateTypewriterScroll`
+  - `getTypewriterSyncData`
+  - `calculateTypewriterSyncRatio`
+
+**Comportamento do editor:**
+- [x] Ao ativar o modo, recentrar imediatamente o cursor atual
+- [x] Em `selectionSet` ou `docChanged`, recentrar de novo quando houver apenas cursor simples
+- [x] Durante drag-selection com mouse, desativar recentralizacao temporariamente para evitar jitter
+- [ ] Enquanto existir selecao real (`anchor != head`), nao auto-scrollar
+- [x] Usar `coordsAtPos` + `scrollDOM.clientHeight` para calcular o `scrollTop` alvo
+- [x] Fazer clamp no intervalo valido do scroller
+- [x] Usar `setTimeout(..., 0)` ou equivalente apenas para deixar o scroll ocorrer apos o proprio ajuste do CodeMirror, como no FrankMD
+- [x] Nao depender de `40vh` hardcoded como implementacao principal
+
+**Padding e layout visual:**
+- [x] `padding-bottom` do scroller deve ser calculado dinamicamente a partir da altura visivel real do editor
+- [x] Ao desativar o modo, limpar TODO padding inline residual
+- [ ] O container do editor deve cooperar com centragem horizontal, seguindo a direcao do FrankMD:
+  - wrapper pode centralizar o corpo do editor
+  - body/editor devem respeitar largura maxima coerente
+  - `.cm-content` nao deve manter margens/paddings conflitantes
+- [ ] O layout nao pode reintroduzir scroll fantasma nem conflito com stats bar/footer
+
+**Sincronizacao com preview:**
+- [x] Preview deve receber estado explicito de typewriter mode
+- [x] Preview deve acompanhar a linha atual do cursor em vez de apenas proporcao bruta de scroll
+- [x] A sincronizacao deve considerar padding extra do modo typewriter no preview
+- [x] Preview so deve animar quando a diferenca superar um threshold minimo para evitar jitter
+- [x] Usar double `requestAnimationFrame` ou estrategia equivalente quando necessario para esperar layout/render
+
+**Wikilinks no typewriter: exigencia especial do NeuraMD**
+- [x] No typewriter mode, wikilinks `[[Titulo|uuid]]`, `[[Titulo|f:uuid]]`, `[[Titulo|c:uuid]]`, `[[Titulo|b:uuid]]` devem ser exibidos visualmente igual ao preview
+- [ ] "Igual ao preview" significa:
+  - [x] mostrar apenas o texto visivel do link
+  - [x] aplicar a mesma semantica visual de links validos/quebrados
+  - [x] respeitar `f:`, `c:` e `b:` na aparencia quando houver convencao visual correspondente
+- [x] O markdown subjacente NAO pode ser alterado; `|uuid` e `|role:uuid` continuam existindo no documento real
+- [x] A ocultacao de UUID/role deve ser feita por camada visual do CodeMirror:
+  - decorations
+  - widgets
+  - replacement ranges
+- [ ] Clique/hover/foco no wikilink em typewriter deve preservar editabilidade:
+  - permitir navegar para a nota quando isso ja fizer parte do contrato do editor
+  - permitir revelar/editar a forma completa quando necessario
+  - nunca corromper o UUID estrutural
+- [ ] O comportamento visual do typewriter para wikilinks deve ser consistente com a regra global de preservacao estrutural de links
+- [ ] Links quebrados em typewriter devem ser distinguiveis visualmente, tal como no preview
+
+**Regra de escopo para a primeira entrega:**
+- [x] Primeira entrega aceita "renderizacao hibrida" apenas no typewriter mode
+- [ ] Fora do typewriter, o editor pode continuar mostrando markdown cru temporariamente
+- [ ] Nao implementar "preview falso completo" de markdown no editor; o foco inicial e wikilinks
+
+**Interacao com IME e idiomas CJK:**
+- [ ] Auto-scroll nao pode interferir com composicao de texto via IME
+- [ ] Testar com Mandarim/Japones/Coreano, especialmente durante composicao inline
+- [ ] Nao recentralizar agressivamente no meio de composicao ainda nao confirmada
+
+**Persistencia e atalhos:**
+- [x] Persistir estado em `localStorage` no minimo; opcionalmente espelhar em config backend depois
+- [ ] Manter atalho `Ctrl+\` coerente com help/toolbar
+- [x] Estado do botao da toolbar deve refletir o estado real da extensao, nao apenas uma classe CSS
+
+**Matriz minima de testes inspirada no FrankMD:**
+- [ ] Unit tests para `typewriter_utils.js`
+- [ ] Tests do controller Stimulus:
+  - toggle liga/desliga corretamente
+  - `aria-pressed` e classe ativa atualizam
+  - delega para o `codemirror_controller`
+- [ ] Tests da extensao CodeMirror:
+  - adiciona/remove classe `typewriter-mode`
+  - adiciona/remove padding dinamico
+  - recentraliza ao mover cursor
+  - nao recentraliza durante selecao com mouse
+- [ ] Tests de preview sync em typewriter mode
+- [ ] Tests de wikilink em typewriter:
+  - `[[Titulo|uuid]]` exibe so o texto visivel
+  - `[[Titulo|f:uuid]]` / `c:` / `b:` preservam semantica visual
+  - link quebrado aparece como quebrado
+  - sair do typewriter devolve exibicao crua do markdown, sem perda estrutural
+- [ ] System/Playwright:
+  - ativar typewriter e digitar em documento longo
+  - cursor permanece aproximadamente centralizado
+  - preview acompanha
+  - wikilinks aparecem como no preview
+  - desativar typewriter restaura layout e exibicao normal sem residual
+- [x] System spec inicial no NeuraMD cobre exibicao visivel de wikilink em typewriter sem expor UUID no texto renderizado
 
 #### 7.7 — Internacionalizacao (i18n)
 

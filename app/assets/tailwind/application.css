@@ -1841,10 +1841,23 @@
     bottom: 9rem;
   }
 
-  /* ── Typewriter mode: keep cursor vertically centered ── */
-  #codemirror-host.typewriter-mode .cm-scroller {
-    padding-top: 40vh;
-    padding-bottom: 40vh;
+  /* ── Typewriter mode ── */
+  body.typewriter-mode #editor-pane {
+    align-items: center;
+  }
+  body.typewriter-mode #codemirror-host {
+    width: 100%;
+    max-width: calc(72ch + 4rem);
+  }
+  .cm-editor.typewriter-mode .cm-scroller {
+    width: 100%;
+  }
+  .cm-editor.typewriter-mode .cm-content {
+    max-width: 100%;
+    margin: 0;
+  }
+  .preview-typewriter-mode {
+    padding-bottom: 50vh !important;
   }
 
   /* ── Stats bar ── */

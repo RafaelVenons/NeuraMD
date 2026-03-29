@@ -15,6 +15,9 @@ export default class extends Controller {
     this._scrollCooldown = null
     this._wikilinkState = new Map()
     this._renderVersion = 0
+    this._scrollSource = null
+    this.lastScrollTarget = null
+    this.scrollThreshold = 12
   }
 
   disconnect() {
@@ -30,6 +33,7 @@ export default class extends Controller {
   // Set scroll position from ratio (0-1)
   setScrollRatio(ratio) {
     if (this._isScrolling) return
+    if (this._scrollSource === "editor-typewriter") return
     const el = this._scrollContainer()
     const max = el.scrollHeight - el.clientHeight
     if (max > 0) el.scrollTop = max * ratio
@@ -48,6 +52,7 @@ export default class extends Controller {
   // Handle preview scroll → sync back to editor
   scroll() {
     if (this._isScrolling) return
+    if (this._scrollSource === "editor-typewriter") return
     this._isScrolling = true
 
     this.dispatch("scroll", {
@@ -57,6 +62,44 @@ export default class extends Controller {
 
     clearTimeout(this._scrollCooldown)
     this._scrollCooldown = setTimeout(() => { this._isScrolling = false }, 400)
+  }
+
+  setTypewriterMode(enabled) {
+    this.outputTarget.classList.toggle("preview-typewriter-mode", enabled)
+    if (!enabled) {
+      this._scrollSource = null
+      this.lastScrollTarget = null
+    }
+  }
+
+  syncToTypewriter(currentLine, totalLines) {
+    if (!this.hasOutputTarget || totalLines <= 1) return
+    if (this._scrollSource === "preview") return
+
+    this._scrollSource = "editor-typewriter"
+
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        const container = this._scrollContainer()
+        const lineRatio = Math.max(0, Math.min(1, (currentLine - 1) / (totalLines - 1)))
+        const style = window.getComputedStyle(this.outputTarget)
+        const paddingBottom = parseFloat(style.paddingBottom) || 0
+        const actualContentHeight = Math.max(0, this.outputTarget.scrollHeight - paddingBottom)
+        const contentPosition = lineRatio * actualContentHeight
+        const targetY = container.clientHeight * 0.5
+        const desiredScroll = Math.max(0, contentPosition - targetY)
+
+        if (this.lastScrollTarget == null || Math.abs(desiredScroll - this.lastScrollTarget) > this.scrollThreshold) {
+          this.lastScrollTarget = desiredScroll
+          container.scrollTo({ top: desiredScroll, behavior: "smooth" })
+        }
+
+        clearTimeout(this._scrollCooldown)
+        this._scrollCooldown = setTimeout(() => {
+          this._scrollSource = null
+        }, 250)
+      })
+    })
   }
 
   _render(content) {

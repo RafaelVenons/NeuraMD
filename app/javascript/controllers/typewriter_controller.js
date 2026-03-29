@@ -5,35 +5,32 @@ export default class extends Controller {
 
   connect() {
     this._enabled = localStorage.getItem("neuramd:typewriter") === "true"
-    if (this._enabled) this._apply()
+    this._apply()
+    setTimeout(() => this._syncCodemirror(), 0)
+    setTimeout(() => this.dispatch("toggled", { detail: { enabled: this._enabled } }), 0)
   }
 
   toggle() {
     this._enabled = !this._enabled
     localStorage.setItem("neuramd:typewriter", String(this._enabled))
-    if (this._enabled) {
-      this._apply()
-    } else {
-      this._remove()
-    }
-
-    // Update toolbar button state
-    const btn = document.querySelector("[data-editor-target='typewriterBtn']")
-    btn?.classList.toggle("toolbar-btn--active", this._enabled)
+    this._apply()
+    this._syncCodemirror()
+    this.dispatch("toggled", { detail: { enabled: this._enabled } })
   }
 
   _apply() {
-    const host = document.getElementById("codemirror-host")
-    if (!host) return
-    host.classList.add("typewriter-mode")
-
-    // Listen for changes to keep cursor centered
-    this._scrollHandler = () => {} // scroll is handled by CSS
+    document.body.classList.toggle("typewriter-mode", this._enabled)
+    const btn = document.querySelector("[data-editor-target='typewriterBtn']")
+    btn?.classList.toggle("toolbar-btn--active", this._enabled)
+    btn?.setAttribute("aria-pressed", String(this._enabled))
   }
 
-  _remove() {
-    const host = document.getElementById("codemirror-host")
-    if (!host) return
-    host.classList.remove("typewriter-mode")
+  _syncCodemirror() {
+    const controller = this._codemirrorController()
+    controller?.setTypewriterMode(this._enabled)
+  }
+
+  _codemirrorController() {
+    return this.application.getControllerForElementAndIdentifier(this.element, "codemirror")
   }
 }

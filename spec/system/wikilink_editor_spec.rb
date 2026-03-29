@@ -179,6 +179,19 @@ RSpec.describe "Wiki-link editor", type: :system do
       end
     end
 
+    it "shows wikilinks in typewriter mode using preview-like visible text" do
+      type_in_editor("[[#{target_title}|#{target.id}]] ")
+      editor.send_keys(:escape)
+
+      find("[data-editor-target='typewriterBtn']").click
+
+      visible_editor_text = page.evaluate_script("document.querySelector('.cm-content').innerText")
+      expect(visible_editor_text).to include(target_title)
+      expect(visible_editor_text).not_to include(target.id)
+      expect(visible_editor_text).not_to include("[[")
+      expect(visible_editor_text).not_to include("]]")
+    end
+
     it "turns a completed promise wikilink into creation actions" do
       type_in_editor("[[Nota futura]]")
 

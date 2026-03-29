@@ -11,6 +11,14 @@ import { languages } from "@codemirror/language-data"
 import { searchKeymap } from "@codemirror/search"
 import { oneDark } from "@codemirror/theme-one-dark"
 import { aiDiffExtension, clearAiDiffEffect, setAiDiffEffect } from "editor/ai_diff_extension"
+import {
+  createTypewriterExtension,
+  getTypewriterSyncData,
+  isTypewriterEnabled,
+  maintainTypewriterScroll,
+  setTypewriterSelecting,
+  toggleTypewriter
+} from "editor/typewriter_extension"
 import { wikilinkBrokenExtension } from "editor/wikilink_broken_extension"
 
 export default class extends Controller {
@@ -63,6 +71,7 @@ export default class extends Controller {
         this._themeCompartment.of(oneDark),
         this._aiDiffCompartment.of(aiDiffExtension()),
         this._readOnlyCompartment.of(EditorState.readOnly.of(false)),
+        ...createTypewriterExtension(localStorage.getItem("neuramd:typewriter") === "true"),
         keymap.of([
           ...defaultKeymap,
           ...historyKeymap,
@@ -91,6 +100,7 @@ export default class extends Controller {
       if (!this._aiStageActive && this._aiDiffVisible) this.clearAiDiff()
     }
     this.element.addEventListener("ai-review:stagechange", this._onAiStageChange)
+    this._setupMouseTracking()
 
     // Notify other controllers editor is ready (bubbles to editor_controller)
     this.dispatch("ready", { detail: { editor: this } })
@@ -105,6 +115,12 @@ export default class extends Controller {
 
   disconnect() {
     this.element.removeEventListener("ai-review:stagechange", this._onAiStageChange)
+    if (this._view?.scrollDOM && this._mouseDownHandler) {
+      this._view.scrollDOM.removeEventListener("mousedown", this._mouseDownHandler)
+    }
+    if (this._mouseUpHandler) {
+      document.removeEventListener("mouseup", this._mouseUpHandler)
+    }
     this._view?.destroy()
     this._view = null
   }
@@ -189,6 +205,31 @@ export default class extends Controller {
     return { line: line.number, col: pos - line.from + 1 }
   }
 
+  setTypewriterMode(enabled) {
+    if (!this._view) return
+    toggleTypewriter(this._view, enabled)
+    this._dispatchSelectionChange()
+  }
+
+  toggleTypewriterMode() {
+    const nextState = !this.isTypewriterMode()
+    this.setTypewriterMode(nextState)
+    return nextState
+  }
+
+  isTypewriterMode() {
+    return isTypewriterEnabled(this._view)
+  }
+
+  getTypewriterSyncData() {
+    return getTypewriterSyncData(this._view)
+  }
+
+  maintainTypewriterScroll() {
+    if (!this._view || !this.isTypewriterMode()) return
+    maintainTypewriterScroll(this._view)
+  }
+
   jumpToLine(lineNum) {
     if (!this._view) return
     const doc = this._view.state.doc
@@ -244,8 +285,16 @@ export default class extends Controller {
   _dispatchSelectionChange() {
     const pos       = this.getCursorPosition()
     const cursorPos = this._view?.state.selection.main.head ?? 0
+    const typewriter = this.isTypewriterMode() ? this.getTypewriterSyncData() : null
     this.dispatch("selectionchange", {
-      detail: { ...pos, cursorPos, value: this.getValue(), isComposing: this.isComposing() },
+      detail: {
+        ...pos,
+        cursorPos,
+        value: this.getValue(),
+        isComposing: this.isComposing(),
+        typewriterMode: !!typewriter,
+        typewriter
+      },
       bubbles: true
     })
   }
@@ -263,5 +312,25 @@ export default class extends Controller {
       detail: { isComposing: this.isComposing() },
       bubbles: true
     })
+  }
+
+  _setupMouseTracking() {
+    if (!this._view) return
+
+    const onMouseDown = (event) => {
+      if (event.button !== 0) return
+      setTypewriterSelecting(this._view, true)
+    }
+
+    const onMouseUp = () => {
+      if (!this._view) return
+      setTypewriterSelecting(this._view, false)
+      setTimeout(() => this._dispatchSelectionChange(), 0)
+    }
+
+    this._mouseDownHandler = onMouseDown
+    this._mouseUpHandler = onMouseUp
+    this._view.scrollDOM.addEventListener("mousedown", onMouseDown)
+    document.addEventListener("mouseup", onMouseUp)
   }
 }
