@@ -211,6 +211,7 @@ RSpec.describe "Wiki-link editor", type: :system do
 
       expect(page.evaluate_script("getComputedStyle(document.getElementById('editor-toolbar')).display")).to eq("none")
       expect(page.evaluate_script("getComputedStyle(document.getElementById('tag-sidebar')).display")).to eq("none")
+      expect(page.evaluate_script("getComputedStyle(document.querySelector('.cm-gutters')).display")).to eq("none")
       expect(page).to have_css(".typewriter-exit-btn", text: "Normal", visible: :visible, wait: 5)
       expect(page.evaluate_script("getComputedStyle(document.getElementById('preview-pane')).position")).to eq("absolute")
     end
@@ -223,6 +224,7 @@ RSpec.describe "Wiki-link editor", type: :system do
 
       expect(page.evaluate_script("document.body.classList.contains('typewriter-mode')")).to be(false)
       expect(page.evaluate_script("getComputedStyle(document.getElementById('editor-toolbar')).display")).not_to eq("none")
+      expect(page.evaluate_script("getComputedStyle(document.querySelector('.cm-gutters')).display")).not_to eq("none")
       expect(find("[data-editor-target='typewriterBtn']", visible: false)["aria-pressed"]).to eq("false")
     end
 

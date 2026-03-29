@@ -1941,7 +1941,7 @@
     z-index: 6;
   }
   body.typewriter-mode .cm-editor .cm-gutters {
-    opacity: 0.1;
+    display: none !important;
     background: transparent;
     border-right-color: transparent;
   }
