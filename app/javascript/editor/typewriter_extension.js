@@ -1,5 +1,5 @@
 import { RangeSetBuilder, StateEffect, StateField } from "@codemirror/state"
-import { Decoration, EditorView, ViewPlugin } from "@codemirror/view"
+import { Decoration, EditorView, ViewPlugin, WidgetType } from "@codemirror/view"
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 const RESOLVED_WIKILINK_RE = /\[\[([^\]|]+)\|(?:([a-z]+):)?([^\]]+)\]\]/gi
@@ -63,6 +63,24 @@ const validationState = StateField.define({
 })
 
 const hiddenSyntaxDecoration = Decoration.replace({})
+
+class ListMarkerWidget extends WidgetType {
+  constructor(marker) {
+    super()
+    this.marker = marker
+  }
+
+  eq(other) {
+    return other.marker === this.marker
+  }
+
+  toDOM() {
+    const element = document.createElement("span")
+    element.className = "typewriter-list-bullet"
+    element.textContent = `${this.marker} `
+    return element
+  }
+}
 
 class TypewriterPlugin {
   constructor(view) {
@@ -311,17 +329,24 @@ function buildStructuralMarkdownDecorations(doc, selection, builder) {
 
     const headingMatch = line.match(/^(\s{0,3}#{1,6}\s+)/)
     if (headingMatch) {
-      addHiddenSyntaxRange(builder, offset, offset + headingMatch[1].length, selection)
+      const contentFrom = offset + headingMatch[1].length
+      addHiddenSyntaxRange(builder, offset, contentFrom, selection)
+      addVisibleContentMark(builder, contentFrom, offset + line.length, `typewriter-block-heading typewriter-block-heading-${headingMatch[1].trim().length}`)
     }
 
     const quoteMatch = line.match(/^(\s*>+\s?)/)
     if (quoteMatch) {
-      addHiddenSyntaxRange(builder, offset, offset + quoteMatch[1].length, selection)
+      const contentFrom = offset + quoteMatch[1].length
+      addHiddenSyntaxRange(builder, offset, contentFrom, selection)
+      addVisibleContentMark(builder, contentFrom, offset + line.length, "typewriter-block-quote")
     }
 
     const listMatch = line.match(/^(\s*(?:[-*+]\s+|\d+\.\s+))/)
     if (listMatch) {
-      addHiddenSyntaxRange(builder, offset, offset + listMatch[1].length, selection)
+      const contentFrom = offset + listMatch[1].length
+      const marker = extractListMarker(listMatch[1])
+      addListMarkerDecoration(builder, offset, contentFrom, selection, marker)
+      addVisibleContentMark(builder, contentFrom, offset + line.length, "typewriter-block-list")
     }
 
     offset += line.length + 1
@@ -361,6 +386,25 @@ function addHiddenSyntaxRange(builder, from, to, selection) {
     (selection.empty && selection.head > from && selection.head < to)
   if (overlapsSelection) return
   builder.add(from, to, hiddenSyntaxDecoration)
+}
+
+function addListMarkerDecoration(builder, from, to, selection, marker) {
+  if (to <= from) return
+  const overlapsSelection = rangesOverlap(from, to, selection.from, selection.to) ||
+    (selection.empty && selection.head > from && selection.head < to)
+  if (overlapsSelection) return
+  builder.add(from, to, Decoration.replace({
+    widget: new ListMarkerWidget(marker),
+    inclusive: false
+  }))
+}
+
+function addVisibleContentMark(builder, from, to, className) {
+  if (to <= from) return
+  builder.add(from, to, Decoration.mark({
+    tagName: "span",
+    class: className
+  }))
 }
 
 function collectFencedRanges(doc) {
@@ -438,4 +482,10 @@ function rangeOverlapsAny(from, to, ranges) {
 function selectionTouchesRange(selection, from, to) {
   return rangesOverlap(from, to, selection.from, selection.to) ||
     (selection.empty && selection.head > from && selection.head < to)
+}
+
+function extractListMarker(prefix) {
+  const orderedMatch = prefix.match(/(\d+\.)/)
+  if (orderedMatch) return orderedMatch[1]
+  return "•"
 }

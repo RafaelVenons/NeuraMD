@@ -236,6 +236,15 @@ RSpec.describe "Wiki-link editor", type: :system do
       expect(visible_editor_text).not_to include("> citacao")
     end
 
+    it "wraps structural line content with preview-like classes in typewriter mode" do
+      type_in_editor("## Titulo\n\n> citacao\n\n- item")
+      editor.send_keys([:control, "\\"])
+      editor.send_keys(:up, :up)
+
+      expect(page).to have_css(".cm-content .typewriter-block-heading-2", text: "Titulo", wait: 5)
+      expect(page).to have_css(".cm-content .typewriter-block-quote", text: "citacao", wait: 5)
+    end
+
     it "hides code fence lines while keeping code content visible in typewriter mode" do
       type_in_editor("```ruby\nputs 'oi'\n```")
       editor.send_keys([:control, "\\"])
