@@ -1936,6 +1936,52 @@ spec/
 6. Rodar suite completa — nenhuma regressão
 ```
 
+### 16.5 Procedimento de Commit, Dependências e CI
+
+**Nenhum commit de feature/fix fecha só com o teste do caminho feliz principal.**
+Antes de commitar, avaliar a malha mínima de dependências usando:
+- links estruturais (`f:`, `c:`, `b:`) das notas afetadas
+- controllers/services/views tocados diretamente
+- fluxos vizinhos que compartilham o mesmo estado, shell, preview, fila, grafo ou criptografia
+
+**Regra operacional para escolher testes mínimos por mudança:**
+1. testar a feature ou bug principal que motivou a mudança
+2. testar ao menos uma dependência imediata do fluxo
+3. testar ao menos uma navegação/regressão lateral guiada pelos links do acervo de notas
+4. quando houver browser real, validar também no Playwright se o fluxo for crítico ou já tiver histórico de regressão
+
+**Exemplos práticos:**
+- mudança em nota/importação/navegação:
+  - request spec de `GET /notes/:slug` ou equivalente
+  - system/E2E abrindo nota real e navegando para outra nota relacionada
+- mudança em editor/typewriter/wikilink:
+  - spec do comportamento principal
+  - spec de navegação/edição vizinha
+  - Playwright ou system spec para o fluxo real no browser
+- mudança em criptografia/configuração de ambiente:
+  - validar leitura sem `ENV` manual quando essa for a promessa do setup
+  - validar request/browser para garantir que a página sobe de ponta a ponta
+- mudança em IA/queue/shell:
+  - testar request/service do contrato
+  - testar shell persistente ou navegação relacionada
+  - validar Playwright para fluxo assíncrono crítico
+
+**Checklist obrigatório antes de commit:**
+- teste principal da feature/fix passando
+- testes mínimos de dependência/regressão passando
+- se a mudança tocar browser real, pelo menos um teste de navegador cobrindo o fluxo afetado
+- sem quebrar leitura de notas, navegação entre notas ou shell persistente quando esses itens forem dependências do fluxo
+
+**Checklist obrigatório antes de push:**
+- branch local com os testes pertinentes já verdes
+- CI do GitHub acompanhada até estado `success`
+- só considerar o trabalho concluído depois da validação remota da CI quando houver push
+
+**Diretriz de granularidade de commit:**
+- commits devem agrupar implementação + teste(s) pertinente(s) da mesma unidade de mudança
+- não empurrar commit só com código se a feature exige cobertura nova
+- quando possível, o nome do commit deve refletir o comportamento garantido pelo teste
+
 **Nunca corrigir um bug sem antes ter um teste que o reproduz.**
 
 #### Testes Cuprite — gotchas e boas práticas
