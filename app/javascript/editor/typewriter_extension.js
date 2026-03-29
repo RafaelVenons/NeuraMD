@@ -276,8 +276,20 @@ function buildDecorations(view) {
 function buildStructuralMarkdownDecorations(doc, selection, builder) {
   const lines = doc.split("\n")
   let offset = 0
+  let inFence = false
 
   lines.forEach((line) => {
+    if (/^\s*```/.test(line)) {
+      inFence = !inFence
+      offset += line.length + 1
+      return
+    }
+
+    if (inFence) {
+      offset += line.length + 1
+      return
+    }
+
     const headingMatch = line.match(/^(\s{0,3}#{1,6}\s+)/)
     if (headingMatch) {
       addHiddenSyntaxRange(builder, offset, offset + headingMatch[1].length, selection)

@@ -1529,7 +1529,7 @@ sincronizacao coerente do preview e sem degradar a experiencia de selecao, links
   - `.cm-content` nao deve manter margens/paddings conflitantes
 - [ ] O layout nao pode reintroduzir scroll fantasma nem conflito com stats bar/footer
 - [x] Primeira camada de focus mode: ocultar chrome secundario e sobrepor preview a area principal de escrita
-- [x] Primeira camada de limpeza do markdown cru: ocultar prefixos estruturais seguros (heading/lista) no texto visivel do editor em typewriter
+- [x] Primeira camada de limpeza do markdown cru: ocultar prefixos estruturais seguros (heading/lista/blockquote) no texto visivel do editor em typewriter
 
 **Sincronizacao com preview:**
 - [x] Preview deve receber estado explicito de typewriter mode
@@ -1597,7 +1597,7 @@ sincronizacao coerente do preview e sem degradar a experiencia de selecao, links
   - desativar typewriter restaura layout e exibicao normal sem residual
 - [x] System spec inicial no NeuraMD cobre exibicao visivel de wikilink em typewriter sem expor UUID no texto renderizado
 - [x] System spec inicial cobre layout enxuto do typewriter (toolbar/sidebar ocultos e preview sobreposto)
-- [x] System spec inicial cobre ocultacao de prefixos estruturais de heading/lista no texto visivel do typewriter
+- [x] System spec inicial cobre ocultacao de prefixos estruturais de heading/lista/blockquote no texto visivel do typewriter
 
 #### 7.7 — Internacionalizacao (i18n)
 

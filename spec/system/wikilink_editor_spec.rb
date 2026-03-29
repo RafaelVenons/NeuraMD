@@ -227,6 +227,15 @@ RSpec.describe "Wiki-link editor", type: :system do
       expect(visible_editor_text).not_to include("- item 1")
     end
 
+    it "hides blockquote prefixes in visible editor text while typewriter is active" do
+      type_in_editor("> citacao")
+      editor.send_keys([:control, "\\"])
+
+      visible_editor_text = page.evaluate_script("document.querySelector('.cm-content').innerText")
+      expect(visible_editor_text).to include("citacao")
+      expect(visible_editor_text).not_to include("> citacao")
+    end
+
     it "keeps broken wikilinks visually broken in typewriter mode without exposing raw payload" do
       type_in_editor("[[Quebrado|00000000-0000-0000-0000-000000000000]] ")
       editor.send_keys(:escape)
