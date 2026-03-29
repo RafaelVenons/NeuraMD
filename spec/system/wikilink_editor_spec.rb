@@ -255,6 +255,13 @@ RSpec.describe "Wiki-link editor", type: :system do
       expect(editor).to have_text("risco", wait: 5)
     end
 
+    it "keeps underscore italic content legible while typewriter is active" do
+      type_in_editor("trecho _italico_ aqui")
+      editor.send_keys([:control, "\\"])
+
+      expect(editor).to have_text("italico", wait: 5)
+    end
+
     it "reveals inline markdown delimiters when the cursor enters that span in typewriter mode" do
       type_in_editor("inicio `codigo` fim")
       editor.send_keys([:control, "\\"])

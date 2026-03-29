@@ -7,7 +7,8 @@ const PROMISE_WIKILINK_RE = /\[\[([^\]\|]+)\]\]/gi
 const INLINE_PATTERNS = [
   { regex: /`([^`\n]+)`/g, delimiterLength: 1 },
   { regex: /~~([^~\n]+)~~/g, delimiterLength: 2 },
-  { regex: /\*\*([^*\n](?:.*?[^*\n])?)\*\*/g, delimiterLength: 2 }
+  { regex: /\*\*([^*\n](?:.*?[^*\n])?)\*\*/g, delimiterLength: 2 },
+  { regex: /_([^_\n]+)_/g, delimiterLength: 1 }
 ]
 const ROLE_CLASS = {
   f: "wikilink-father",
