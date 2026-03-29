@@ -271,6 +271,15 @@ RSpec.describe "Wiki-link editor", type: :system do
       expect(raw_line_text).to include("`codigo`")
     end
 
+    it "reveals asterisk italic delimiters when the cursor enters that span in typewriter mode" do
+      type_in_editor("inicio *italico* fim")
+      editor.send_keys([:control, "\\"])
+      editor.send_keys(:left, :left, :left, :left, :left, :left, :left, :left)
+
+      raw_line_text = page.evaluate_script("document.querySelector('.cm-line').textContent")
+      expect(raw_line_text).to include("*italico*")
+    end
+
     it "keeps asterisk italic content legible while typewriter is active" do
       type_in_editor("trecho *italico* aqui")
       editor.send_keys([:control, "\\"])
