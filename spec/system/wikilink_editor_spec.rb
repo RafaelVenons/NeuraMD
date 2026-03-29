@@ -255,6 +255,15 @@ RSpec.describe "Wiki-link editor", type: :system do
       expect(editor).to have_text("risco", wait: 5)
     end
 
+    it "reveals inline markdown delimiters when the cursor enters that span in typewriter mode" do
+      type_in_editor("inicio `codigo` fim")
+      editor.send_keys([:control, "\\"])
+      editor.send_keys(:left, :left, :left, :left, :left, :left, :left, :left)
+
+      raw_line_text = page.evaluate_script("document.querySelector('.cm-line').textContent")
+      expect(raw_line_text).to include("`codigo`")
+    end
+
     it "does not hide markdown-like symbols inside fenced code content" do
       type_in_editor("```ruby\nputs '**nao formatar**'\n```")
       editor.send_keys([:control, "\\"])

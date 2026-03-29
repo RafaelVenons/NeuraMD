@@ -1553,6 +1553,7 @@ sincronizacao coerente do preview e sem degradar a experiencia de selecao, links
   - permitir navegar para a nota quando isso ja fizer parte do contrato do editor
   - [x] permitir revelar/editar a forma completa quando necessario
   - nunca corromper o UUID estrutural
+- [x] Spans inline limpos pelo typewriter devem revelar a sintaxe ao receber foco/cursor local para edicao direta
 - [ ] O comportamento visual do typewriter para wikilinks deve ser consistente com a regra global de preservacao estrutural de links
 - [x] Links quebrados em typewriter devem ser distinguiveis visualmente, tal como no preview
 

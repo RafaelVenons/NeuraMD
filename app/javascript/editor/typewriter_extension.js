@@ -327,6 +327,7 @@ function buildInlineMarkdownDecorations(doc, selection, builder, fencedRanges) {
       const from = match.index
       const to = from + full.length
       if (rangeOverlapsAny(from, to, fencedRanges)) continue
+      if (selectionTouchesRange(selection, from, to)) continue
       const openTo = from + delimiterLength
       const closeFrom = to - delimiterLength
 
@@ -414,4 +415,9 @@ function rangesOverlap(fromA, toA, fromB, toB) {
 
 function rangeOverlapsAny(from, to, ranges) {
   return ranges.some((range) => rangesOverlap(from, to, range.from, range.to))
+}
+
+function selectionTouchesRange(selection, from, to) {
+  return rangesOverlap(from, to, selection.from, selection.to) ||
+    (selection.empty && selection.head > from && selection.head < to)
 }
