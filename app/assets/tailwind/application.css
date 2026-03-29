@@ -1956,6 +1956,28 @@
     border-left-color: var(--theme-accent-hover);
     border-left-width: 2px;
   }
+  body.typewriter-mode .cm-editor .typewriter-inline-code {
+    font-family: var(--font-mono);
+    color: color-mix(in srgb, var(--theme-text-primary) 92%, var(--theme-accent) 8%);
+    background: color-mix(in srgb, var(--theme-code-bg) 68%, transparent);
+    border: 1px solid color-mix(in srgb, var(--theme-border) 70%, transparent);
+    border-radius: 0.45rem;
+    padding: 0.05rem 0.35rem;
+  }
+  body.typewriter-mode .cm-editor .typewriter-inline-strong {
+    color: color-mix(in srgb, var(--theme-text-primary) 96%, white 4%);
+    font-weight: 700;
+  }
+  body.typewriter-mode .cm-editor .typewriter-inline-emphasis {
+    color: color-mix(in srgb, var(--theme-text-primary) 94%, var(--theme-accent) 6%);
+    font-style: italic;
+  }
+  body.typewriter-mode .cm-editor .typewriter-inline-strike {
+    color: color-mix(in srgb, var(--theme-text-secondary) 92%, var(--theme-text-faint) 8%);
+    text-decoration: line-through;
+    text-decoration-thickness: 1.5px;
+    text-decoration-color: color-mix(in srgb, var(--theme-accent) 42%, currentColor);
+  }
   .preview-typewriter-mode {
     padding-bottom: 50vh !important;
   }

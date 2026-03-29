@@ -271,6 +271,13 @@ RSpec.describe "Wiki-link editor", type: :system do
       expect(raw_line_text).to include("`codigo`")
     end
 
+    it "keeps asterisk italic content legible while typewriter is active" do
+      type_in_editor("trecho *italico* aqui")
+      editor.send_keys([:control, "\\"])
+
+      expect(editor).to have_text("italico", wait: 5)
+    end
+
     it "does not hide markdown-like symbols inside fenced code content" do
       type_in_editor("```ruby\nputs '**nao formatar**'\n```")
       editor.send_keys([:control, "\\"])

@@ -1530,6 +1530,8 @@ sincronizacao coerente do preview e sem degradar a experiencia de selecao, links
 - [ ] O layout nao pode reintroduzir scroll fantasma nem conflito com stats bar/footer
 - [x] Primeira camada de focus mode: ocultar chrome secundario e sobrepor preview a area principal de escrita
 - [x] Primeira camada de limpeza do markdown cru: ocultar prefixos estruturais seguros (heading/lista/blockquote/code fence) no texto visivel do editor em typewriter
+- [x] Aplicar estilo de preview aos spans inline ja tratados (`inline code`, `strong`, `strike`, `_italic_`) em vez de apenas esconder delimitadores
+- [x] Suportar heuristica conservadora para `*italic*` sem conflitar com `**bold**`
 
 **Sincronizacao com preview:**
 - [x] Preview deve receber estado explicito de typewriter mode

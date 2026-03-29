@@ -5,10 +5,11 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 const RESOLVED_WIKILINK_RE = /\[\[([^\]|]+)\|(?:([a-z]+):)?([^\]]+)\]\]/gi
 const PROMISE_WIKILINK_RE = /\[\[([^\]\|]+)\]\]/gi
 const INLINE_PATTERNS = [
-  { regex: /`([^`\n]+)`/g, delimiterLength: 1 },
-  { regex: /~~([^~\n]+)~~/g, delimiterLength: 2 },
-  { regex: /\*\*([^*\n](?:.*?[^*\n])?)\*\*/g, delimiterLength: 2 },
-  { regex: /_([^_\n]+)_/g, delimiterLength: 1 }
+  { regex: /`([^`\n]+)`/g, delimiterLength: 1, contentClass: "typewriter-inline-code" },
+  { regex: /~~([^~\n]+)~~/g, delimiterLength: 2, contentClass: "typewriter-inline-strike" },
+  { regex: /\*\*([^*\n](?:.*?[^*\n])?)\*\*/g, delimiterLength: 2, contentClass: "typewriter-inline-strong" },
+  { regex: /(?<!\*)\*(?=\S)([^*\n]*?\S)\*(?!\*)/g, delimiterLength: 1, contentClass: "typewriter-inline-emphasis" },
+  { regex: /_([^_\n]+)_/g, delimiterLength: 1, contentClass: "typewriter-inline-emphasis" }
 ]
 const ROLE_CLASS = {
   f: "wikilink-father",
@@ -319,7 +320,7 @@ function buildStructuralMarkdownDecorations(doc, selection, builder) {
 }
 
 function buildInlineMarkdownDecorations(doc, selection, builder, fencedRanges) {
-  INLINE_PATTERNS.forEach(({ regex, delimiterLength }) => {
+  INLINE_PATTERNS.forEach(({ regex, delimiterLength, contentClass }) => {
     regex.lastIndex = 0
     let match
 
@@ -333,6 +334,13 @@ function buildInlineMarkdownDecorations(doc, selection, builder, fencedRanges) {
       const closeFrom = to - delimiterLength
 
       addHiddenSyntaxRange(builder, from, openTo, selection)
+      if (closeFrom > openTo) {
+        builder.add(openTo, closeFrom, Decoration.mark({
+          tagName: "span",
+          class: contentClass,
+          attributes: { "data-typewriter-inline": contentClass }
+        }))
+      }
       addHiddenSyntaxRange(builder, closeFrom, to, selection)
     }
   })
