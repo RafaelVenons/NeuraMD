@@ -384,7 +384,7 @@ function buildInlineMarkdownDecorations(doc, selection, builder, fencedRanges) {
 function addHiddenSyntaxRange(builder, from, to, selection) {
   if (to <= from) return
   const overlapsSelection = rangesOverlap(from, to, selection.from, selection.to) ||
-    (selection.empty && selection.head > from && selection.head < to)
+    cursorTouchesRange(selection, from, to)
   if (overlapsSelection) return
   builder.add(from, to, hiddenSyntaxDecoration)
 }
@@ -392,7 +392,7 @@ function addHiddenSyntaxRange(builder, from, to, selection) {
 function addListMarkerDecoration(builder, from, to, selection, marker) {
   if (to <= from) return
   const overlapsSelection = rangesOverlap(from, to, selection.from, selection.to) ||
-    (selection.empty && selection.head > from && selection.head < to)
+    cursorTouchesRange(selection, from, to)
   if (overlapsSelection) return
   builder.add(from, to, Decoration.replace({
     widget: new ListMarkerWidget(marker),
@@ -482,7 +482,12 @@ function rangeOverlapsAny(from, to, ranges) {
 
 function selectionTouchesRange(selection, from, to) {
   return rangesOverlap(from, to, selection.from, selection.to) ||
-    (selection.empty && selection.head > from && selection.head < to)
+    cursorTouchesRange(selection, from, to)
+}
+
+function cursorTouchesRange(selection, from, to) {
+  if (!selection.empty) return false
+  return selection.head >= from && selection.head <= to
 }
 
 function extractListMarker(prefix) {
