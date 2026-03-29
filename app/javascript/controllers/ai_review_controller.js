@@ -2971,7 +2971,10 @@ export default class extends Controller {
     }]
 
     if (capability === "translate") {
-      return providers.flatMap((option) => this._providerExecutionOptions({
+      const sorted = [...providers].sort((a, b) =>
+        (a.name === "google_translate" ? -1 : 0) - (b.name === "google_translate" ? -1 : 0)
+      )
+      return sorted.flatMap((option) => this._providerExecutionOptions({
         capability,
         provider: option,
         text,
@@ -2979,7 +2982,9 @@ export default class extends Controller {
       }))
     }
 
-    return providers.flatMap((option) => this._providerExecutionOptions({
+    // Filter out google_translate for non-translate capabilities
+    const filtered = providers.filter((p) => p.name !== "google_translate")
+    return filtered.flatMap((option) => this._providerExecutionOptions({
       capability,
       provider: option,
       text,
@@ -3053,7 +3058,8 @@ export default class extends Controller {
       "qwen2.5:3b": "Mais qualidade para textos maiores.",
       "qwen2:1.5b": capability === "translate" ? "Bom custo/qualidade para traducao pt-en." : "Resposta rapida com boa qualidade geral.",
       "llama3.2:1b": "Alternativa leve para respostas curtas.",
-      "llama3.2:3b": "Melhor fluidez, com mais latencia."
+      "llama3.2:3b": "Melhor fluidez, com mais latencia.",
+      "free": "Traducao direta via Google Translate (sem IA)."
     }
     const suffix = capability === "translate" && targetLanguage ? ` Idioma alvo: ${this._languageLabel(targetLanguage)}.` : ""
     return `${hints[model] || "Execucao manual neste modelo."}${suffix}`

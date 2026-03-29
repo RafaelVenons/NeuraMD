@@ -108,7 +108,7 @@ module Ai
         end
 
         provider = ProviderRegistry.build(request.requested_provider, model_name: request.metadata["requested_model"])
-        prompt_text = prompt_input_text(request.capability, request.input_text)
+        prompt_text = prompt_input_text(request.capability, request.input_text, provider_name: request.requested_provider)
         result = provider.review(
           capability: normalized_capability(request.capability),
           text: prompt_text,
@@ -323,6 +323,9 @@ module Ai
         normalized_capability = normalized_capability(request.capability)
         return SeedNoteOutputGuard.normalize!(content:, input_text: request.input_text) if normalized_capability == "seed_note"
 
+        # Google Translate handles wikilinks internally — skip LLM output guards
+        return content if request.requested_provider == "google_translate"
+
         normalized = OutputSanitizer.normalize(content)
 
         if %w[rewrite grammar_review translate].include?(normalized_capability)
@@ -332,8 +335,9 @@ module Ai
         normalized
       end
 
-      def prompt_input_text(capability, text)
+      def prompt_input_text(capability, text, provider_name: nil)
         return text if normalized_capability(capability) == "seed_note"
+        return text if provider_name == "google_translate"
 
         WikilinkPromptText.normalize(text)
       end

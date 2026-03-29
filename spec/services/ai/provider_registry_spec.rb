@@ -26,6 +26,7 @@ RSpec.describe Ai::ProviderRegistry do
         OLLAMA_API_BASE
         AZURE_OPENAI_BASE_URL
         LOCAL_AI_BASE_URL
+        GOOGLE_TRANSLATE_BASE_URL
       ].each do |key|
         allow(ENV).to receive(:[]).with(key).and_return(nil)
       end
@@ -53,12 +54,12 @@ RSpec.describe Ai::ProviderRegistry do
       )
     end
 
-    it "disables AI when no provider is configured" do
+    it "always includes google_translate even when no other provider is configured" do
       status = described_class.status
 
-      expect(status[:enabled]).to be(false)
-      expect(status[:provider]).to be_nil
-      expect(status[:available_providers]).to eq([])
+      expect(status[:enabled]).to be(true)
+      expect(status[:available_providers]).to eq(["google_translate"])
+      expect(status[:provider]).to eq("google_translate")
     end
   end
 

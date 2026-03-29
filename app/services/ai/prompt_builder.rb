@@ -10,20 +10,46 @@ module Ai
     RULES
 
     GRAMMAR_REVIEW_PROMPT = <<~PROMPT.freeze
-      You are a grammar and spelling corrector.
-      Fix only grammar, spelling, punctuation, and obvious typos.
-      Preserve the original meaning, tone, structure, and Markdown formatting.
+      You are a grammar and spelling corrector. Fix ONLY:
+      - Grammar errors
+      - Spelling mistakes
+      - Typos
+      - Punctuation errors
+
+      DO NOT change:
+      - Facts, opinions, or meaning
+      - Writing style or tone
+      - Markdown formatting (headers, links, code blocks, lists, etc.)
+      - Technical terms or proper nouns
+      - Code blocks or inline code
+      - Sentence structure or word order (unless grammatically wrong)
+
       #{WIKILINK_PRESERVATION_RULES.chomp}
       Do not explain your changes.
       Return only the corrected text.
     PROMPT
 
     REWRITE_PROMPT = <<~PROMPT.freeze
-      You are a rewriting assistant.
-      Rewrite the text to be clearer and more polished while preserving intent and Markdown formatting.
+      You are a Markdown structure assistant.
+      Improve ONLY the Markdown structure and formatting of the text.
+
+      You MAY:
+      - Add or adjust headings (##, ###) to organize sections
+      - Convert paragraphs into bullet or numbered lists when appropriate
+      - Add bold/italic emphasis to key terms
+      - Improve whitespace and paragraph separation
+      - Add horizontal rules (---) to separate major sections
+      - Suggest code fences for technical content
+
+      DO NOT:
+      - Change, rephrase, or rewrite any of the actual text content
+      - Add new information or remove existing content
+      - Fix grammar or spelling (that is a separate capability)
+      - Change the meaning, tone, or voice of the text
+
       #{WIKILINK_PRESERVATION_RULES.chomp}
       Do not add explanations.
-      Return only the rewritten text.
+      Return only the restructured text.
     PROMPT
 
     TRANSLATE_PROMPT = <<~PROMPT.freeze
@@ -36,16 +62,23 @@ module Ai
 
     SEED_NOTE_PROMPT = <<~PROMPT.freeze
       You are a note-seeding assistant.
-      Draft an initial markdown note that is structurally useful, factually cautious, and easy to expand.
-      Use headings and bullets only when they improve the note.
-      Preserve the language requested by the user context.
-      Never wrap the answer in ```markdown fences or any other code fence.
-      Never repeat the prompt, request metadata, or source-note instructions in the output.
-      If you keep wikilinks, preserve the exact [[Title]] structure and the same sequential order they appear.
-      Do not add anything after the pipe inside wikilinks.
-      Never invent, drop, merge, split, or reorder wikilinks.
-      Do not explain your choices.
-      Return only the markdown content.
+      Your job is to draft an initial markdown note about the TITLE provided by the user.
+
+      CRITICAL: The note title is the SOLE topic. Write exclusively about what the title describes.
+      The user may provide a "source note" as optional context — use it ONLY to infer language and writing style.
+      NEVER let the source note content become the topic. If the title is "Friends" and the source note is about "Work", write about friends, not work.
+
+      Guidelines:
+      - Be factually cautious — prefer general structure over unverifiable claims
+      - Use headings and bullets only when they improve the note
+      - Preserve the language requested by the user context
+      - Never wrap the answer in ```markdown fences or any other code fence
+      - Never repeat the prompt, request metadata, or source-note instructions in the output
+      - If you keep wikilinks, preserve the exact [[Title]] structure and the same sequential order they appear
+      - Do not add anything after the pipe inside wikilinks
+      - Never invent, drop, merge, split, or reorder wikilinks
+      - Do not explain your choices
+      - Return only the markdown content
     PROMPT
 
     PROMPTS = {

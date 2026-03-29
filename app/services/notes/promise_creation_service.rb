@@ -64,19 +64,26 @@ module Notes
     end
 
     def prompt_input
-      [
-        "Create an initial markdown note for the new title below.",
-        "The title is the primary source of truth for what this new note should cover.",
-        "Use the current note only as optional contextual grounding when it genuinely helps.",
-        "Return only the markdown body.",
+      lines = [
+        "Write a markdown note about: #{@title}",
         "",
-        "New note title: #{@title}",
-        "Current note title: #{@source_note.title}",
-        "Current note language: #{@source_note.detected_language}",
-        "",
-        "Current note content (optional context):",
-        source_content.presence || "(empty)"
-      ].join("\n")
+        "The note must be ENTIRELY about \"#{@title}\" — this is the only topic.",
+        "Language: #{@source_note.detected_language || 'auto-detect from title'}.",
+        "Return only the markdown body."
+      ]
+
+      # Only include source context if it's non-trivial and might help with style/language
+      content = source_content.presence
+      if content && content.length > 20
+        lines += [
+          "",
+          "--- Style reference (do NOT write about this content, use only for language/tone) ---",
+          "Source note title: #{@source_note.title}",
+          "Source excerpt: #{content.truncate(300)}"
+        ]
+      end
+
+      lines.join("\n")
     end
 
     def source_revision_for_request

@@ -104,8 +104,8 @@ RSpec.describe "Notes", type: :request do
         "promise_note_title" => "Nova promessa",
         "promise_source_note_id" => note.id
       )
-      expect(request_record.input_text).to include("The title is the primary source of truth")
-      expect(request_record.input_text).to include("Current note content (optional context):")
+      expect(request_record.input_text).to include("Write a markdown note about: Nova promessa")
+      expect(request_record.input_text).to include("ENTIRELY about")
       expect(response.parsed_body).to include(
         "note_id" => created.id,
         "request_id" => request_record.id,

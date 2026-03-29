@@ -3,10 +3,11 @@ require_relative "model_router"
 require_relative "openai_compatible_provider"
 require_relative "anthropic_provider"
 require_relative "ollama_provider"
+require_relative "google_translate_provider"
 
 module Ai
   class ProviderRegistry
-    PROVIDER_PRIORITY = %w[openai anthropic ollama azure_openai local].freeze
+    PROVIDER_PRIORITY = %w[openai anthropic ollama azure_openai local google_translate].freeze
     FALSE_VALUES = %w[0 false off no].freeze
     TRUE_VALUES = %w[1 true on yes].freeze
 
@@ -48,6 +49,8 @@ module Ai
           AnthropicProvider.new(**config.slice(:name, :model, :base_url, :api_key))
         when "ollama"
           OllamaProvider.new(**config.slice(:name, :model, :base_url, :api_key))
+        when "google_translate"
+          GoogleTranslateProvider.new(**config.slice(:name, :model, :base_url, :api_key))
         else
           raise ProviderUnavailableError, "Provider #{config[:name]} nao suportado."
         end
@@ -115,12 +118,16 @@ module Ai
 
       def provider_names
         names = parse_list(ENV["AI_ENABLED_PROVIDERS"])
-        return names if names.any?
+        return (names + always_available_providers).uniq if names.any?
 
         db_names = AiProvider.enabled.pluck(:name)
-        return db_names if db_names.any?
+        return (db_names + always_available_providers).uniq if db_names.any?
 
         PROVIDER_PRIORITY
+      end
+
+      def always_available_providers
+        %w[google_translate]
       end
 
       def priority_names
@@ -144,6 +151,8 @@ module Ai
           config[:api_key].present? && config[:model].present? && config[:base_url].present?
         when "ollama", "local"
           explicitly_enabled?(name) && config[:model].present? && config[:base_url].present?
+        when "google_translate"
+          true
         else
           false
         end
@@ -200,6 +209,9 @@ module Ai
         when ["local", :api_key] then "LOCAL_AI_API_KEY"
         when ["local", :model] then "LOCAL_AI_MODEL"
         when ["local", :base_url] then "LOCAL_AI_BASE_URL"
+        when ["google_translate", :api_key] then nil
+        when ["google_translate", :model] then nil
+        when ["google_translate", :base_url] then "GOOGLE_TRANSLATE_BASE_URL"
         end
 
         env_key ? ENV[env_key].presence : nil
@@ -211,7 +223,8 @@ module Ai
           "anthropic" => "claude-3-5-sonnet-latest",
           "ollama" => "llama3.2",
           "azure_openai" => nil,
-          "local" => nil
+          "local" => nil,
+          "google_translate" => "free"
         }[name]
       end
 
@@ -221,7 +234,8 @@ module Ai
           "anthropic" => "https://api.anthropic.com/v1",
           "ollama" => "http://AIrch:11434",
           "azure_openai" => nil,
-          "local" => "http://127.0.0.1:1234/v1"
+          "local" => "http://127.0.0.1:1234/v1",
+          "google_translate" => "https://translate.googleapis.com"
         }[name]
       end
 
@@ -246,7 +260,8 @@ module Ai
           "anthropic" => "Anthropic",
           "azure_openai" => "Azure OpenAI",
           "ollama" => "Ollama",
-          "local" => "Local"
+          "local" => "Local",
+          "google_translate" => "Google Translate"
         }[name] || name.humanize
       end
     end
