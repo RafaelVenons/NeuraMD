@@ -1936,6 +1936,10 @@
   body.typewriter-mode .cm-editor {
     background: transparent;
   }
+  body.typewriter-mode .cm-editor .cm-cursorLayer,
+  body.typewriter-mode .cm-editor .cm-selectionLayer {
+    z-index: 6;
+  }
   body.typewriter-mode .cm-editor .cm-gutters {
     opacity: 0.1;
     background: transparent;
@@ -1956,6 +1960,7 @@
   body.typewriter-mode .cm-editor .cm-cursor {
     border-left-color: var(--theme-accent-hover);
     border-left-width: 2px;
+    filter: drop-shadow(0 0 6px color-mix(in srgb, var(--theme-accent-hover) 45%, transparent));
   }
   body.typewriter-mode .cm-editor .typewriter-inline-code {
     font-family: var(--font-mono);

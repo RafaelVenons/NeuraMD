@@ -197,12 +197,12 @@ RSpec.describe "Wiki-link editor", type: :system do
       editor.send_keys([:control, "\\"])
 
       expect(page.evaluate_script("document.body.classList.contains('typewriter-mode')")).to be(true)
-      expect(find("[data-editor-target='typewriterBtn']")["aria-pressed"]).to eq("true")
+      expect(find("[data-editor-target='typewriterBtn']", visible: false)["aria-pressed"]).to eq("true")
 
       editor.send_keys([:control, "\\"])
 
       expect(page.evaluate_script("document.body.classList.contains('typewriter-mode')")).to be(false)
-      expect(find("[data-editor-target='typewriterBtn']")["aria-pressed"]).to eq("false")
+      expect(find("[data-editor-target='typewriterBtn']", visible: false)["aria-pressed"]).to eq("false")
     end
 
     it "switches to a distraction-free focus layout in typewriter mode" do
@@ -213,6 +213,17 @@ RSpec.describe "Wiki-link editor", type: :system do
       expect(page.evaluate_script("getComputedStyle(document.getElementById('tag-sidebar')).display")).to eq("none")
       expect(page).to have_css(".typewriter-exit-btn", text: "Normal", visible: :visible, wait: 5)
       expect(page.evaluate_script("getComputedStyle(document.getElementById('preview-pane')).position")).to eq("absolute")
+    end
+
+    it "restores the normal layout when leaving typewriter through the exit button" do
+      editor.click
+      editor.send_keys([:control, "\\"])
+
+      find(".typewriter-exit-btn", text: "Normal").click
+
+      expect(page.evaluate_script("document.body.classList.contains('typewriter-mode')")).to be(false)
+      expect(page.evaluate_script("getComputedStyle(document.getElementById('editor-toolbar')).display")).not_to eq("none")
+      expect(find("[data-editor-target='typewriterBtn']", visible: false)["aria-pressed"]).to eq("false")
     end
 
     it "hides heading and list prefixes in visible editor text while typewriter is active" do
