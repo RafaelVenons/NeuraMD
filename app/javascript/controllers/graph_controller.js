@@ -57,9 +57,12 @@ export default class extends Controller {
     this.stagePanState = null
     this._boundResize = () => this.positionTooltip()
     this._resizeObserver = new ResizeObserver(() => {
-      // Defer refresh to next frame so CSS layout has settled
+      // Defer to next frame so CSS layout has settled
       requestAnimationFrame(() => {
-        this.state.renderer?.refresh()
+        if (this.state.renderer) {
+          this.state.renderer.resize()
+          this.state.renderer.refresh()
+        }
         this.positionTooltip()
       })
     })

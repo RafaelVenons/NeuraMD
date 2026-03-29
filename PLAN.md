@@ -1363,21 +1363,24 @@ Esse padrão evita drift entre caminhos internos dos serviços.
 #### 7.0 — Correcoes de Layout (PRIORIDADE)
 
 **Scroll do editor:**
-- [ ] Bug: texto cabe no editor mas scroll desloca para baixo escondendo conteudo
-- [ ] Investigar padding/margin do `.cm-content` e `#codemirror-host` que gera scroll desnecessario
+- [x] Bug: texto cabe no editor mas scroll desloca para baixo escondendo conteudo
+- [x] Investigar padding/margin do `.cm-content` e `#codemirror-host` que gera scroll desnecessario
 - [ ] Typewriter mode (40vh padding) nao deve aplicar quando desativado — verificar residual
 
 **Footer (Grafo/Backlinks) independente do scroll do preview:**
-- [ ] Extrair `.note-context-panel` para FORA do `#preview-pane` overflow container
-- [ ] Layout: preview-pane vira flex column com `flex: 1 1 auto; overflow-y: auto` para o conteudo e `flex: 0 0 auto` para o footer
-- [ ] Footer ocupa sua propria regiao visual — scroll do preview NAO afeta grafo/backlinks
-- [ ] Resize handle continua funcional entre preview e footer
+- [x] Extrair `.note-context-panel` para FORA do `#preview-pane` overflow container
+- [x] Layout: preview-pane vira flex column com `flex: 1 1 auto; overflow-y: auto` para o conteudo e `flex: 0 0 auto` para o footer
+- [x] Footer ocupa sua propria regiao visual — scroll do preview NAO afeta grafo/backlinks
+- [x] Resize handle continua funcional entre preview e footer
 
 **Graph resize bug:**
-- [ ] Bug atual: ao redimensionar o grafo, se scroll esconde parte dele, o Sigma.js da zoom ao inves de ocupar area visivel
-- [ ] Fix: forcar `sigma.refresh()` / resize apos mutation do container (ResizeObserver)
-- [ ] Graph canvas deve preencher 100% do container visivel, sem depender de scroll
-- [ ] Testar com ResizeObserver no `graph_controller.js` para recalcular dimensoes ao redimensionar
+- [x] Bug atual: ao redimensionar o grafo, se scroll esconde parte dele, o Sigma.js da zoom ao inves de ocupar area visivel
+- [x] Fix: forcar `sigma.refresh()` / resize apos mutation do container (ResizeObserver)
+- [x] Graph canvas deve preencher 100% do container visivel, sem depender de scroll
+- [x] Testar com ResizeObserver no `graph_controller.js` para recalcular dimensoes ao redimensionar
+
+**Workspace de diff/translation da IA:**
+- [x] Corrigir scroll interno do diff/proposta no workspace de IA para textos longos, inclusive no fluxo de traducao
 
 #### 7.1 — Toolbar Revisada
 

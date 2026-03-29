@@ -683,24 +683,24 @@ AI_ENABLED_PROVIDERS=ollama</pre>
             <p class="text-[11px] uppercase tracking-[0.18em] text-[var(--theme-text-faint)]">Sugerido</p>
           </div>
           <div data-ai-review-target="proposalPanels"
-               class="flex-1 min-h-0 overflow-hidden">
+               class="flex flex-1 min-h-0 overflow-hidden">
             <div data-ai-review-target="proposalRawPane"
-                 class="hidden min-h-0 min-w-0 border-r border-[var(--theme-border)] bg-[var(--theme-bg-primary)]">
+                 class="hidden min-h-0 min-w-0 flex-1 flex-col overflow-hidden border-r border-[var(--theme-border)] bg-[var(--theme-bg-primary)]">
               <div class="border-b border-[var(--theme-border)] bg-[var(--theme-bg-secondary)] px-5 py-3">
                 <p class="text-[11px] uppercase tracking-[0.18em] text-[var(--theme-text-faint)]">Markdown</p>
               </div>
               <textarea data-ai-review-target="correctedText"
-                        class="ai-review-seed-note-editor h-full w-full resize-none border-0 bg-[var(--theme-bg-primary)] px-5 py-4 font-mono text-sm leading-relaxed text-[var(--theme-text-primary)] outline-none"
+                        class="ai-review-seed-note-editor flex-1 min-h-0 w-full resize-none border-0 bg-[var(--theme-bg-primary)] px-5 py-4 font-mono text-sm leading-relaxed text-[var(--theme-text-primary)] outline-none"
                         spellcheck="false"
                         data-action="input->ai-review#proposalChanged change->ai-review#proposalChanged"></textarea>
             </div>
             <div data-ai-review-target="proposalPreviewPane"
-                 class="min-h-0 min-w-0 overflow-y-auto bg-[var(--theme-bg-primary)] px-5 py-4">
+                 class="flex-1 min-h-0 min-w-0 overflow-y-auto bg-[var(--theme-bg-primary)]">
               <div data-ai-review-target="proposalDiff"
                    contenteditable="true"
                    spellcheck="false"
                    data-action="pointerdown->ai-review#activateSeedNoteEditing input->ai-review#proposalEditorChanged blur->ai-review#proposalEditorChanged"
-                   class="h-full min-h-full overflow-y-auto whitespace-pre-wrap font-mono text-sm leading-relaxed text-[var(--theme-text-primary)] outline-none"></div>
+                   class="ai-review-proposal-content min-h-full whitespace-pre-wrap font-mono text-sm leading-relaxed text-[var(--theme-text-primary)] outline-none"></div>
             </div>
           </div>
 
