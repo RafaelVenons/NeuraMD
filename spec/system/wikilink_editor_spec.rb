@@ -246,6 +246,22 @@ RSpec.describe "Wiki-link editor", type: :system do
       expect(visible_editor_text).not_to include("```")
     end
 
+    it "keeps inline markdown content legible while typewriter is active" do
+      type_in_editor("`codigo` **forte** ~~risco~~")
+      editor.send_keys([:control, "\\"])
+
+      expect(editor).to have_text("codigo", wait: 5)
+      expect(editor).to have_text("forte", wait: 5)
+      expect(editor).to have_text("risco", wait: 5)
+    end
+
+    it "does not hide markdown-like symbols inside fenced code content" do
+      type_in_editor("```ruby\nputs '**nao formatar**'\n```")
+      editor.send_keys([:control, "\\"])
+
+      expect(editor).to have_text("**nao formatar**", wait: 5)
+    end
+
     it "keeps broken wikilinks visually broken in typewriter mode without exposing raw payload" do
       type_in_editor("[[Quebrado|00000000-0000-0000-0000-000000000000]] ")
       editor.send_keys(:escape)

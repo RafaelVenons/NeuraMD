@@ -4,6 +4,11 @@ import { Decoration, EditorView, ViewPlugin } from "@codemirror/view"
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 const RESOLVED_WIKILINK_RE = /\[\[([^\]|]+)\|(?:([a-z]+):)?([^\]]+)\]\]/gi
 const PROMISE_WIKILINK_RE = /\[\[([^\]\|]+)\]\]/gi
+const INLINE_PATTERNS = [
+  { regex: /`([^`\n]+)`/g, delimiterLength: 1 },
+  { regex: /~~([^~\n]+)~~/g, delimiterLength: 2 },
+  { regex: /\*\*([^*\n](?:.*?[^*\n])?)\*\*/g, delimiterLength: 2 }
+]
 const ROLE_CLASS = {
   f: "wikilink-father",
   c: "wikilink-child",
@@ -244,31 +249,33 @@ function buildDecorations(view) {
   if (!enabled) return Decoration.none
 
   const doc = view.state.doc.toString()
-    const selection = view.state.selection.main
-    const validationCache = view.state.field(validationState)
-    const builder = new RangeSetBuilder()
+  const selection = view.state.selection.main
+  const validationCache = view.state.field(validationState)
+  const builder = new RangeSetBuilder()
+  const fencedRanges = collectFencedRanges(doc)
 
-    buildStructuralMarkdownDecorations(doc, selection, builder)
+  buildStructuralMarkdownDecorations(doc, selection, builder)
+  buildInlineMarkdownDecorations(doc, selection, builder, fencedRanges)
 
-    for (const link of extractWikilinks(doc)) {
-      const overlapsSelection = rangesOverlap(link.from, link.to, selection.from, selection.to) ||
-        (selection.empty && selection.head > link.from && selection.head < link.to)
-      if (overlapsSelection) continue
+  for (const link of extractWikilinks(doc)) {
+    const overlapsSelection = rangesOverlap(link.from, link.to, selection.from, selection.to) ||
+      (selection.empty && selection.head > link.from && selection.head < link.to)
+    if (overlapsSelection) continue
 
-      const broken = link.promise ? false : (!link.uuid || validationCache.get(link.uuid) === false)
-      const displayClass = link.promise
-        ? "wikilink-promise"
-        : broken
-          ? "wikilink-broken"
-          : `wikilink ${ROLE_CLASS[link.role] || "wikilink-null"}`
+    const broken = link.promise ? false : (!link.uuid || validationCache.get(link.uuid) === false)
+    const displayClass = link.promise
+      ? "wikilink-promise"
+      : broken
+        ? "wikilink-broken"
+        : `wikilink ${ROLE_CLASS[link.role] || "wikilink-null"}`
 
-      builder.add(link.from, link.displayFrom, hiddenSyntaxDecoration)
-      builder.add(link.displayFrom, link.displayTo, Decoration.mark({
-        class: displayClass,
-        attributes: broken ? { title: "Nota nao encontrada" } : (link.promise ? { title: "Sugestao de nota futura" } : {})
-      }))
-      builder.add(link.displayTo, link.to, hiddenSyntaxDecoration)
-    }
+    builder.add(link.from, link.displayFrom, hiddenSyntaxDecoration)
+    builder.add(link.displayFrom, link.displayTo, Decoration.mark({
+      class: displayClass,
+      attributes: broken ? { title: "Nota nao encontrada" } : (link.promise ? { title: "Sugestao de nota futura" } : {})
+    }))
+    builder.add(link.displayTo, link.to, hiddenSyntaxDecoration)
+  }
 
   return builder.finish()
 }
@@ -310,12 +317,57 @@ function buildStructuralMarkdownDecorations(doc, selection, builder) {
   })
 }
 
+function buildInlineMarkdownDecorations(doc, selection, builder, fencedRanges) {
+  INLINE_PATTERNS.forEach(({ regex, delimiterLength }) => {
+    regex.lastIndex = 0
+    let match
+
+    while ((match = regex.exec(doc)) !== null) {
+      const full = match[0]
+      const from = match.index
+      const to = from + full.length
+      if (rangeOverlapsAny(from, to, fencedRanges)) continue
+      const openTo = from + delimiterLength
+      const closeFrom = to - delimiterLength
+
+      addHiddenSyntaxRange(builder, from, openTo, selection)
+      addHiddenSyntaxRange(builder, closeFrom, to, selection)
+    }
+  })
+}
+
 function addHiddenSyntaxRange(builder, from, to, selection) {
   if (to <= from) return
   const overlapsSelection = rangesOverlap(from, to, selection.from, selection.to) ||
     (selection.empty && selection.head > from && selection.head < to)
   if (overlapsSelection) return
   builder.add(from, to, hiddenSyntaxDecoration)
+}
+
+function collectFencedRanges(doc) {
+  const ranges = []
+  const lines = doc.split("\n")
+  let offset = 0
+  let activeRangeStart = null
+
+  lines.forEach((line) => {
+    if (/^\s*```/.test(line)) {
+      if (activeRangeStart == null) {
+        activeRangeStart = offset
+      } else {
+        ranges.push({ from: activeRangeStart, to: offset + line.length })
+        activeRangeStart = null
+      }
+    }
+
+    offset += line.length + 1
+  })
+
+  if (activeRangeStart != null) {
+    ranges.push({ from: activeRangeStart, to: doc.length })
+  }
+
+  return ranges
 }
 
 function extractWikilinks(doc) {
@@ -358,4 +410,8 @@ function extractWikilinks(doc) {
 
 function rangesOverlap(fromA, toA, fromB, toB) {
   return fromA < toB && fromB < toA
+}
+
+function rangeOverlapsAny(from, to, ranges) {
+  return ranges.some((range) => rangesOverlap(from, to, range.from, range.to))
 }
