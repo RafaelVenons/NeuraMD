@@ -308,6 +308,35 @@ RSpec.describe "Wiki-link editor", type: :system do
       expect(page).to have_css(".cm-content .wikilink-broken", text: "Quebrado", wait: 5)
     end
 
+    it "navigates from a resolved typewriter wikilink only on Ctrl+click and saves draft first" do
+      source_note = Note.find_by!(slug: current_path.split("/").last)
+
+      type_in_editor("Veja [[#{target_title}|#{target.id}]]")
+      editor.send_keys([:control, "\\"])
+
+      page.execute_script(<<~JS)
+        const link = document.querySelector(".cm-content [data-typewriter-wikilink='true']")
+        link.dispatchEvent(new MouseEvent("click", {
+          bubbles: true,
+          cancelable: true
+        }))
+      JS
+      expect(page).to have_current_path(note_path(source_note.slug), wait: 2)
+
+      page.execute_script(<<~JS)
+        const link = document.querySelector(".cm-content [data-typewriter-wikilink='true']")
+        link.dispatchEvent(new MouseEvent("click", {
+          bubbles: true,
+          cancelable: true,
+          ctrlKey: true
+        }))
+      JS
+
+      expect(page).to have_current_path(note_path(target.slug), wait: 5)
+      source_note.reload
+      expect(source_note.note_revisions.where(revision_kind: :draft)).to exist
+    end
+
     it "turns a completed promise wikilink into creation actions" do
       type_in_editor("[[Nota futura]]")
 

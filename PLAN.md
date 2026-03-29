@@ -1552,7 +1552,7 @@ sincronizacao coerente do preview e sem degradar a experiencia de selecao, links
   - widgets
   - replacement ranges
 - [ ] Clique/hover/foco no wikilink em typewriter deve preservar editabilidade:
-  - permitir navegar para a nota quando isso ja fizer parte do contrato do editor
+  - [x] permitir navegar para a nota quando isso ja fizer parte do contrato do editor, preservando clique simples para edicao local
   - [x] permitir revelar/editar a forma completa quando necessario
   - nunca corromper o UUID estrutural
 - [x] Spans inline limpos pelo typewriter devem revelar a sintaxe ao receber foco/cursor local para edicao direta

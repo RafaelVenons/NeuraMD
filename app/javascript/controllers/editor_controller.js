@@ -342,9 +342,12 @@ export default class extends Controller {
   // note is saved as a draft before Turbo navigates to the destination.
   _bindNoteNavigation() {
     this.element.addEventListener("click", async (e) => {
-      const link = e.target.closest(".preview-prose a.wikilink, .backlinks-panel a")
+      const link = e.target.closest(".preview-prose a.wikilink, .backlinks-panel a, .cm-content [data-note-href]")
       if (!link) return
-      const href = link.getAttribute("href")
+      const isEditorTypewriterLink = !!link.closest(".cm-content")
+      if (isEditorTypewriterLink && !(e.ctrlKey || e.metaKey)) return
+
+      const href = link.getAttribute("href") || link.dataset.noteHref
       if (!href || href.startsWith("#")) return
 
       e.preventDefault()

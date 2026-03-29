@@ -270,11 +270,20 @@ function buildDecorations(view) {
       : broken
         ? "wikilink-broken"
         : `wikilink ${ROLE_CLASS[link.role] || "wikilink-null"}`
+    const attributes = broken
+      ? { title: "Nota nao encontrada" }
+      : (link.promise
+        ? { title: "Sugestao de nota futura" }
+        : {
+            title: "Ctrl/Cmd+click para abrir a nota",
+            "data-note-href": `/notes/${link.uuid}`,
+            "data-typewriter-wikilink": "true"
+          })
 
     builder.add(link.from, link.displayFrom, hiddenSyntaxDecoration)
     builder.add(link.displayFrom, link.displayTo, Decoration.mark({
       class: displayClass,
-      attributes: broken ? { title: "Nota nao encontrada" } : (link.promise ? { title: "Sugestao de nota futura" } : {})
+      attributes
     }))
     builder.add(link.displayTo, link.to, hiddenSyntaxDecoration)
   }
