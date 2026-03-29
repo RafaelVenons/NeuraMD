@@ -263,6 +263,15 @@ RSpec.describe "Wiki-link editor", type: :system do
       expect(raw_line_text).to include("- item")
     end
 
+    it "reveals blockquote markdown when the cursor moves to the start of the line in typewriter mode" do
+      type_in_editor("> citacao")
+      editor.send_keys([:control, "\\"])
+      editor.send_keys(:home)
+
+      raw_line_text = page.evaluate_script("document.querySelector('.cm-line').textContent")
+      expect(raw_line_text).to include("> citacao")
+    end
+
     it "hides code fence lines while keeping code content visible in typewriter mode" do
       type_in_editor("```ruby\nputs 'oi'\n```")
       editor.send_keys([:control, "\\"])
@@ -279,6 +288,15 @@ RSpec.describe "Wiki-link editor", type: :system do
       editor.send_keys(:up)
 
       expect(page).to have_css(".cm-content .typewriter-block-code", text: "puts 'oi'", wait: 5)
+    end
+
+    it "reveals code fence markdown when the cursor moves onto the fence line in typewriter mode" do
+      type_in_editor("```ruby\nputs 'oi'\n```")
+      editor.send_keys([:control, "\\"])
+      editor.send_keys(:up, :up, :home)
+
+      first_line_text = page.evaluate_script("document.querySelectorAll('.cm-line')[0].textContent")
+      expect(first_line_text).to include("```ruby")
     end
 
     it "keeps inline markdown content legible while typewriter is active" do
