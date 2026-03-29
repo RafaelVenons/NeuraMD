@@ -1533,6 +1533,7 @@ sincronizacao coerente do preview e sem degradar a experiencia de selecao, links
 - [x] Aplicar estilo de preview aos spans inline ja tratados (`inline code`, `strong`, `strike`, `_italic_`) em vez de apenas esconder delimitadores
 - [x] Suportar heuristica conservadora para `*italic*` sem conflitar com `**bold**`
 - [x] Aplicar estilo de preview ao conteudo estrutural das linhas (`heading`, `blockquote`, `list`) no editor do typewriter, mantendo apenas os prefixos ocultos
+- [x] Aplicar estilo de bloco de codigo ao conteudo interno de fenced code no editor do typewriter, mantendo os fences ocultos
 
 **Sincronizacao com preview:**
 - [x] Preview deve receber estado explicito de typewriter mode

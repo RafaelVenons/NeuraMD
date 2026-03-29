@@ -323,6 +323,7 @@ function buildStructuralMarkdownDecorations(doc, selection, builder) {
     }
 
     if (inFence) {
+      addVisibleContentMark(builder, offset, offset + line.length, "typewriter-block-code")
       offset += line.length + 1
       return
     }

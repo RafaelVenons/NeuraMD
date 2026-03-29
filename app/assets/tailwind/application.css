@@ -2016,6 +2016,17 @@
     color: color-mix(in srgb, var(--theme-accent) 75%, white 25%);
     font-weight: 600;
   }
+  body.typewriter-mode .cm-editor .typewriter-block-code {
+    display: inline-block;
+    width: 100%;
+    box-sizing: border-box;
+    font-family: var(--font-mono);
+    color: color-mix(in srgb, var(--theme-text-primary) 92%, white 8%);
+    background: color-mix(in srgb, var(--theme-code-bg) 84%, transparent);
+    border: 1px solid color-mix(in srgb, var(--theme-border) 70%, transparent);
+    border-radius: 0.55rem;
+    padding: 0.2rem 0.65rem;
+  }
   .preview-typewriter-mode {
     padding-bottom: 50vh !important;
   }

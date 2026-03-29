@@ -255,6 +255,14 @@ RSpec.describe "Wiki-link editor", type: :system do
       expect(visible_editor_text).not_to include("```")
     end
 
+    it "wraps fenced code content with preview-like classes in typewriter mode" do
+      type_in_editor("```ruby\nputs 'oi'\n```")
+      editor.send_keys([:control, "\\"])
+      editor.send_keys(:up)
+
+      expect(page).to have_css(".cm-content .typewriter-block-code", text: "puts 'oi'", wait: 5)
+    end
+
     it "keeps inline markdown content legible while typewriter is active" do
       type_in_editor("`codigo` **forte** ~~risco~~")
       editor.send_keys([:control, "\\"])
