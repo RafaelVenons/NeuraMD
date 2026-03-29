@@ -1896,7 +1896,7 @@
   }
   body.typewriter-mode #preview-pane {
     position: absolute;
-    z-index: 1;
+    z-index: 4;
     flex: none !important;
     display: flex !important;
     width: 100%;
@@ -1946,7 +1946,8 @@
     background: transparent;
   }
   body.typewriter-mode .cm-editor .cm-line {
-    color: color-mix(in srgb, var(--theme-text-primary) 16%, transparent);
+    color: transparent;
+    text-shadow: none;
   }
   body.typewriter-mode .cm-editor .cm-selectionBackground,
   body.typewriter-mode .cm-editor ::selection {
