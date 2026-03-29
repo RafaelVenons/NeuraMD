@@ -205,6 +205,16 @@ RSpec.describe "Wiki-link editor", type: :system do
       expect(find("[data-editor-target='typewriterBtn']")["aria-pressed"]).to eq("false")
     end
 
+    it "switches to a distraction-free focus layout in typewriter mode" do
+      editor.click
+      editor.send_keys([:control, "\\"])
+
+      expect(page.evaluate_script("getComputedStyle(document.getElementById('editor-toolbar')).display")).to eq("none")
+      expect(page.evaluate_script("getComputedStyle(document.getElementById('tag-sidebar')).display")).to eq("none")
+      expect(page).to have_css(".typewriter-exit-btn", text: "Normal", visible: :visible, wait: 5)
+      expect(page.evaluate_script("getComputedStyle(document.getElementById('preview-pane')).position")).to eq("absolute")
+    end
+
     it "keeps broken wikilinks visually broken in typewriter mode without exposing raw payload" do
       type_in_editor("[[Quebrado|00000000-0000-0000-0000-000000000000]] ")
       editor.send_keys(:escape)
@@ -303,6 +313,25 @@ RSpec.describe "Wiki-link editor", type: :system do
       expect(page).to have_css(".wikilink-role-current", text: "Brother", wait: 1)
       editor.send_keys(:left)
       expect(page).to have_css(".wikilink-role-current", text: "Child", wait: 1)
+    end
+
+    it "cycles role on a focused completed wikilink with ArrowDown and ArrowUp" do
+      type_in_editor("[[#{target_title}|#{target.id}]]")
+
+      editor.send_keys(:down)
+      expect(editor.text).to include("[[#{target_title}|f:#{target.id}]]")
+
+      editor.send_keys(:down)
+      expect(editor.text).to include("[[#{target_title}|c:#{target.id}]]")
+
+      editor.send_keys(:down)
+      expect(editor.text).to include("[[#{target_title}|b:#{target.id}]]")
+
+      editor.send_keys(:down)
+      expect(editor.text).to include("[[#{target_title}|#{target.id}]]")
+
+      editor.send_keys(:up)
+      expect(editor.text).to include("[[#{target_title}|b:#{target.id}]]")
     end
   end
 

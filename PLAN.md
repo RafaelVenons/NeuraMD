@@ -1487,7 +1487,7 @@ sincronizacao coerente do preview e sem degradar a experiencia de selecao, links
 
 **Objetivo funcional do Typewriter Mode:**
 - [ ] Cursor deve permanecer aproximadamente em 50% da area visivel do editor durante digitacao normal
-- [ ] Reduzir movimento ocular e scroll manual em sessoes longas de escrita
+- [x] Reduzir movimento ocular e scroll manual em sessoes longas de escrita
 - [ ] Preservar fluidez de escrita com markdown, wikilinks, CJK/IME e selecao de texto
 - [ ] Nao transformar o editor em preview falso; o documento continua sendo markdown editavel
 
@@ -1523,11 +1523,12 @@ sincronizacao coerente do preview e sem degradar a experiencia de selecao, links
 **Padding e layout visual:**
 - [x] `padding-bottom` do scroller deve ser calculado dinamicamente a partir da altura visivel real do editor
 - [x] Ao desativar o modo, limpar TODO padding inline residual
-- [ ] O container do editor deve cooperar com centragem horizontal, seguindo a direcao do FrankMD:
+- [x] O container do editor deve cooperar com centragem horizontal, seguindo a direcao do FrankMD:
   - wrapper pode centralizar o corpo do editor
   - body/editor devem respeitar largura maxima coerente
   - `.cm-content` nao deve manter margens/paddings conflitantes
 - [ ] O layout nao pode reintroduzir scroll fantasma nem conflito com stats bar/footer
+- [x] Primeira camada de focus mode: ocultar chrome secundario e sobrepor preview a area principal de escrita
 
 **Sincronizacao com preview:**
 - [x] Preview deve receber estado explicito de typewriter mode
@@ -1549,7 +1550,7 @@ sincronizacao coerente do preview e sem degradar a experiencia de selecao, links
   - replacement ranges
 - [ ] Clique/hover/foco no wikilink em typewriter deve preservar editabilidade:
   - permitir navegar para a nota quando isso ja fizer parte do contrato do editor
-  - permitir revelar/editar a forma completa quando necessario
+  - [x] permitir revelar/editar a forma completa quando necessario
   - nunca corromper o UUID estrutural
 - [ ] O comportamento visual do typewriter para wikilinks deve ser consistente com a regra global de preservacao estrutural de links
 - [x] Links quebrados em typewriter devem ser distinguiveis visualmente, tal como no preview
@@ -1585,6 +1586,7 @@ sincronizacao coerente do preview e sem degradar a experiencia de selecao, links
   - `[[Titulo|uuid]]` exibe so o texto visivel
   - `[[Titulo|f:uuid]]` / `c:` / `b:` preservam semantica visual
   - [x] link quebrado aparece como quebrado
+  - [x] `ArrowDown`/`ArrowUp` sobre link completo permite editar rapidamente o role sem corromper o UUID
   - sair do typewriter devolve exibicao crua do markdown, sem perda estrutural
 - [ ] System/Playwright:
   - ativar typewriter e digitar em documento longo
@@ -1593,6 +1595,7 @@ sincronizacao coerente do preview e sem degradar a experiencia de selecao, links
   - wikilinks aparecem como no preview
   - desativar typewriter restaura layout e exibicao normal sem residual
 - [x] System spec inicial no NeuraMD cobre exibicao visivel de wikilink em typewriter sem expor UUID no texto renderizado
+- [x] System spec inicial cobre layout enxuto do typewriter (toolbar/sidebar ocultos e preview sobreposto)
 
 #### 7.7 — Internacionalizacao (i18n)
 

@@ -1842,12 +1842,89 @@
   }
 
   /* ── Typewriter mode ── */
-  body.typewriter-mode #editor-pane {
+  .typewriter-exit-btn {
+    position: fixed;
+    top: 14px;
+    right: 16px;
+    z-index: 70;
+    display: none;
+    border: 1px solid color-mix(in srgb, var(--theme-border) 82%, transparent);
+    background: color-mix(in srgb, var(--theme-bg-secondary) 88%, transparent);
+    color: var(--theme-text-secondary);
+    border-radius: 999px;
+    padding: 0.4rem 0.8rem;
+    font-size: 0.75rem;
+    backdrop-filter: blur(12px);
+  }
+  body.typewriter-mode .typewriter-exit-btn {
+    display: inline-flex;
     align-items: center;
+    justify-content: center;
+  }
+  body.typewriter-mode #editor-toolbar,
+  body.typewriter-mode #tag-sidebar,
+  body.typewriter-mode .editor-stats-bar,
+  body.typewriter-mode .pane-divider,
+  body.typewriter-mode .preview-context-resize-handle,
+  body.typewriter-mode .note-context-panel,
+  body.typewriter-mode [data-ai-review-target="queueDock"],
+  body.typewriter-mode [data-tts-target="player"] {
+    display: none !important;
+  }
+  body.typewriter-mode [data-editor-target="mainArea"] {
+    position: relative;
+    overflow: hidden;
+    background:
+      radial-gradient(circle at top, color-mix(in srgb, var(--theme-accent) 10%, transparent), transparent 42%),
+      linear-gradient(180deg, color-mix(in srgb, var(--theme-bg-primary) 94%, black), var(--theme-bg-primary));
+  }
+  body.typewriter-mode #editor-pane,
+  body.typewriter-mode #preview-pane {
+    inset: 0;
+  }
+  body.typewriter-mode #editor-pane {
+    position: relative;
+    z-index: 2;
+    flex: 1 1 auto;
+    align-items: center;
+    justify-content: stretch;
   }
   body.typewriter-mode #codemirror-host {
     width: 100%;
     max-width: calc(72ch + 4rem);
+    background: transparent;
+  }
+  body.typewriter-mode #preview-pane {
+    position: absolute;
+    z-index: 1;
+    flex: none !important;
+    display: flex !important;
+    width: 100%;
+    pointer-events: none;
+  }
+  body.typewriter-mode .preview-prose-wrapper {
+    overflow-y: hidden;
+    width: 100%;
+    padding: 8vh max(2rem, calc((100% - 72ch) / 2)) 12vh;
+  }
+  body.typewriter-mode .preview-prose {
+    min-height: 100%;
+    max-width: 72ch;
+    margin: 0 auto;
+    font-size: 1.05rem;
+    line-height: 1.9;
+    text-wrap: pretty;
+  }
+  body.typewriter-mode .preview-prose p,
+  body.typewriter-mode .preview-prose ul,
+  body.typewriter-mode .preview-prose ol,
+  body.typewriter-mode .preview-prose blockquote,
+  body.typewriter-mode .preview-prose pre,
+  body.typewriter-mode .preview-prose h1,
+  body.typewriter-mode .preview-prose h2,
+  body.typewriter-mode .preview-prose h3,
+  body.typewriter-mode .preview-prose h4 {
+    max-width: 72ch;
   }
   .cm-editor.typewriter-mode .cm-scroller {
     width: 100%;
@@ -1855,6 +1932,29 @@
   .cm-editor.typewriter-mode .cm-content {
     max-width: 100%;
     margin: 0;
+  }
+  body.typewriter-mode .cm-editor {
+    background: transparent;
+  }
+  body.typewriter-mode .cm-editor .cm-gutters {
+    opacity: 0.1;
+    background: transparent;
+    border-right-color: transparent;
+  }
+  body.typewriter-mode .cm-editor .cm-activeLine,
+  body.typewriter-mode .cm-editor .cm-activeLineGutter {
+    background: transparent;
+  }
+  body.typewriter-mode .cm-editor .cm-line {
+    color: color-mix(in srgb, var(--theme-text-primary) 16%, transparent);
+  }
+  body.typewriter-mode .cm-editor .cm-selectionBackground,
+  body.typewriter-mode .cm-editor ::selection {
+    background: color-mix(in srgb, var(--theme-accent) 22%, transparent) !important;
+  }
+  body.typewriter-mode .cm-editor .cm-cursor {
+    border-left-color: var(--theme-accent-hover);
+    border-left-width: 2px;
   }
   .preview-typewriter-mode {
     padding-bottom: 50vh !important;

@@ -28,6 +28,7 @@ export default class extends Controller {
     this._cm = null
     this._currentRole  = null   // null | 'f' | 'c' | 'b'
     this._lastFocusedUUID = null
+    this._focusedLink = null
     this._isComposing = false
     this._dropdownMode = "search"
     this._promiseTitle = null
@@ -61,7 +62,6 @@ export default class extends Controller {
     // Use capture phase so our handler fires BEFORE CodeMirror's keymap,
     // allowing us to call stopPropagation() when we consume a key.
     this._keydownHandler = (e) => {
-      if (!this._isDropdownOpen()) return
       if (e.isComposing || e.keyCode === 229 || this._isComposing) return
       const handled = this._handleKey(e.key)
       if (handled) {
@@ -152,6 +152,11 @@ export default class extends Controller {
       }
     }
 
+    this._focusedLink = focused
+    if (focused && this._isDropdownOpen()) {
+      this._closeDropdown({ preserveFocus: true })
+    }
+
     const uuid = focused?.uuid ?? null
     if (uuid !== this._lastFocusedUUID) {
       this._lastFocusedUUID = uuid
@@ -167,45 +172,58 @@ export default class extends Controller {
   // Returns true to consume the key (blocking CodeMirror defaults),
   // false to let it pass through normally.
   _handleKey(key) {
-    if (!this._isDropdownOpen()) return false
+    if (this._focusedLink && (key === "ArrowDown" || key === "ArrowUp")) {
+      return this._cycleFocusedLinkRole(key === "ArrowDown" ? 1 : -1)
+    }
+
+    if (this._isDropdownOpen()) {
+      switch (key) {
+        case "ArrowDown":
+          this._activeIndex = Math.min(this._activeIndex + 1, this._suggestions.length - 1)
+          this._renderDropdown()
+          return true
+
+        case "ArrowUp":
+          this._activeIndex = Math.max(this._activeIndex - 1, 0)
+          this._renderDropdown()
+          return true
+
+        case "ArrowRight":
+          this._cycleRole(1)
+          return true
+
+        case "ArrowLeft":
+          this._cycleRole(-1)
+          return true
+
+        case "Enter":
+        case "Tab":
+          if (this._activeIndex >= 0) {
+            if (this._dropdownMode === "promise") this._selectPromiseAction(this._suggestions[this._activeIndex])
+            else this._insertSuggestion(this._suggestions[this._activeIndex])
+          }
+          return true
+
+        case "Escape":
+          this._closeDropdown()
+          return true
+
+        case " ":
+          if (this._dropdownMode === "promise") {
+            this._closeDropdown({ preserveFocus: true })
+          }
+          return false
+
+        default:
+          return false
+      }
+    }
 
     switch (key) {
       case "ArrowDown":
-        this._activeIndex = Math.min(this._activeIndex + 1, this._suggestions.length - 1)
-        this._renderDropdown()
-        return true
-
+        return this._cycleFocusedLinkRole(1)
       case "ArrowUp":
-        this._activeIndex = Math.max(this._activeIndex - 1, 0)
-        this._renderDropdown()
-        return true
-
-      case "ArrowRight":
-        this._cycleRole(1)
-        return true
-
-      case "ArrowLeft":
-        this._cycleRole(-1)
-        return true
-
-      case "Enter":
-      case "Tab":
-        if (this._activeIndex >= 0) {
-          if (this._dropdownMode === "promise") this._selectPromiseAction(this._suggestions[this._activeIndex])
-          else this._insertSuggestion(this._suggestions[this._activeIndex])
-        }
-        return true
-
-      case "Escape":
-        this._closeDropdown()
-        return true
-
-      case " ":
-        if (this._dropdownMode === "promise") {
-          this._closeDropdown({ preserveFocus: true })
-        }
-        return false
-
+        return this._cycleFocusedLinkRole(-1)
       default:
         return false
     }
@@ -216,6 +234,29 @@ export default class extends Controller {
     const i = roles.indexOf(this._currentRole)
     this._currentRole = roles[((i + dir) + roles.length) % roles.length]
     this._renderDropdown()
+  }
+
+  _cycleFocusedLinkRole(dir) {
+    if (!this._focusedLink || !this._cm) return false
+
+    const roles = this.constructor.ROLES
+    const currentRole = this._focusedLink.role || null
+    const index = roles.indexOf(currentRole)
+    const nextRole = roles[((index + dir) + roles.length) % roles.length]
+    const rolePrefix = nextRole ? `${nextRole}:` : ""
+    const markup = `[[${this._focusedLink.display}|${rolePrefix}${this._focusedLink.uuid}]]`
+    const cursorOffset = Math.max(0, (this._cm.getSelectionRange?.().from ?? this._focusedLink.to) - this._focusedLink.from)
+    const nextCursor = Math.min(this._focusedLink.from + cursorOffset, this._focusedLink.from + markup.length - 2)
+
+    this._cm.replaceRange(this._focusedLink.from, this._focusedLink.to, markup, {
+      selectionAnchor: nextCursor
+    })
+    this._focusedLink = {
+      ...this._focusedLink,
+      role: nextRole,
+      to: this._focusedLink.from + markup.length
+    }
+    return true
   }
 
   // ── Suggestion fetching ──────────────────────────────────

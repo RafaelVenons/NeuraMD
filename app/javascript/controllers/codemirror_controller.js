@@ -156,6 +156,23 @@ export default class extends Controller {
     this._view.focus()
   }
 
+  replaceRange(from, to, text, { selectionAnchor = null, selectionHead = null } = {}) {
+    if (!this._view) return
+    const transaction = {
+      changes: { from, to, insert: text }
+    }
+
+    if (selectionAnchor != null || selectionHead != null) {
+      transaction.selection = {
+        anchor: selectionAnchor ?? selectionHead ?? from,
+        head: selectionHead ?? selectionAnchor ?? from
+      }
+    }
+
+    this._view.dispatch(transaction)
+    this._view.focus()
+  }
+
   focus() {
     this._view?.focus()
   }

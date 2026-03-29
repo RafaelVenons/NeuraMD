@@ -8,7 +8,7 @@ export default class extends Controller {
     "previewResizeHandle", "contextResizeHandle",
     "titleInput", "langBadge", "saveStatus",
     "previewToggleBtn", "typewriterBtn", "primaryActionButton",
-    "revisionsButton", "revisionsMenu", "revisionsList"
+    "revisionsButton", "revisionsMenu", "revisionsList", "typewriterExitBtn"
   ]
   static values = {
     autosaveUrl: String,
@@ -40,6 +40,8 @@ export default class extends Controller {
     this._aiStageActive = false
     this._aiReviewFocusMode = false
     this._storedAiReviewLayout = null
+    this._typewriterFocusMode = false
+    this._storedTypewriterLayout = null
     this._onDocumentClick = this._handleDocumentClick.bind(this)
     this._layoutStorageKey = `editor-layout:${this.slugValue}`
     this._boundPointerMove = (event) => this._handlePointerMove(event)
@@ -296,6 +298,7 @@ export default class extends Controller {
 
     this.element.addEventListener("typewriter:toggled", (e) => {
       const enabled = !!e.detail?.enabled
+      this._applyTypewriterFocusMode(enabled)
       const preview = this._getPreviewController()
       preview?.setTypewriterMode(enabled)
       if (!enabled) return
@@ -378,6 +381,57 @@ export default class extends Controller {
     this._applyContextHeight(this._contextHeight)
     this._applyContextMode(this.contextModeTarget.value)
     this._syncEditorWidthMode()
+  }
+
+  _applyTypewriterFocusMode(enabled) {
+    if (enabled) {
+      if (!this._typewriterFocusMode) {
+        this._storedTypewriterLayout = {
+          previewVisible: this._previewVisible,
+          previewPaneFlex: this.previewPaneTarget.style.flex,
+          contextMode: this.contextModeTarget.value,
+          contextHeight: this._contextHeight
+        }
+      }
+
+      this._typewriterFocusMode = true
+      this.showPreview()
+      this.contextModeTarget.value = "hidden"
+      this._applyContextMode("hidden")
+      this.previewPaneTarget.style.flex = "1 1 auto"
+      this.previewResizeHandleTarget.classList.add("hidden")
+      if (this.hasTypewriterExitBtnTarget) {
+        this.typewriterExitBtnTarget.setAttribute("aria-hidden", "false")
+      }
+      return
+    }
+
+    const stored = this._storedTypewriterLayout || {}
+    this._typewriterFocusMode = false
+    if (this.hasTypewriterExitBtnTarget) {
+      this.typewriterExitBtnTarget.setAttribute("aria-hidden", "true")
+    }
+
+    this.contextModeTarget.value = stored.contextMode || this.contextModeTarget.value || "graph"
+    this._contextHeight = stored.contextHeight || this._contextHeight
+    this._applyContextMode(this.contextModeTarget.value)
+
+    this._previewVisible = stored.previewVisible !== false
+    if (this._previewVisible) {
+      this.previewPaneTarget.classList.remove("hidden")
+      this.previewResizeHandleTarget.classList.remove("hidden")
+      this.previewPaneTarget.style.flex = stored.previewPaneFlex || ""
+      if (!stored.previewPaneFlex) this._applyPreviewWidth(this._previewWidthRatio || 0.5)
+    } else {
+      this.previewPaneTarget.classList.add("hidden")
+      this.previewResizeHandleTarget.classList.add("hidden")
+      this.previewPaneTarget.style.flex = stored.previewPaneFlex || ""
+      this.editorPaneTarget.style.flex = "1 1 100%"
+      this.previewToggleBtnTarget.classList.remove("toolbar-btn--active")
+    }
+
+    this._storedTypewriterLayout = null
+    this._persistLayoutState()
   }
 
   _applyPreviewWidth(ratio) {
