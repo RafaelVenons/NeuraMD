@@ -245,6 +245,14 @@ RSpec.describe "Wiki-link editor", type: :system do
       expect(page).to have_css(".cm-content .typewriter-block-quote", text: "citacao", wait: 5)
     end
 
+    it "keeps ordered list markers visible in typewriter mode" do
+      type_in_editor("7. item")
+      editor.send_keys([:control, "\\"])
+
+      visible_editor_text = page.evaluate_script("document.querySelector('.cm-content').innerText")
+      expect(visible_editor_text).to include("7. item")
+    end
+
     it "reveals heading markdown when the cursor moves to the start of the line in typewriter mode" do
       type_in_editor("## Titulo")
       editor.send_keys([:control, "\\"])
@@ -261,6 +269,15 @@ RSpec.describe "Wiki-link editor", type: :system do
 
       raw_line_text = page.evaluate_script("document.querySelector('.cm-line').textContent")
       expect(raw_line_text).to include("- item")
+    end
+
+    it "reveals ordered list markdown when the cursor moves to the start of the line in typewriter mode" do
+      type_in_editor("7. item")
+      editor.send_keys([:control, "\\"])
+      editor.send_keys(:home)
+
+      raw_line_text = page.evaluate_script("document.querySelector('.cm-line').textContent")
+      expect(raw_line_text).to include("7. item")
     end
 
     it "reveals blockquote markdown when the cursor moves to the start of the line in typewriter mode" do
