@@ -2,10 +2,30 @@
 set -e
 
 COMPOSE_FILE="docker-compose.dev.yml"
+APP_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+SERVER_PID_FILE="${APP_ROOT}/tmp/pids/server.pid"
+PORT="${PORT:-3000}"
 POSTGRES_HOST="${POSTGRES_HOST:-127.0.0.1}"
 POSTGRES_PORT="${POSTGRES_PORT:-5432}"
 REDIS_HOST="${REDIS_HOST:-127.0.0.1}"
 REDIS_PORT="${REDIS_PORT:-6379}"
+
+# Development should always use the stable local fallback from
+# config/initializers/active_record_encryption.rb. If the shell has old
+# encryption vars exported, Puma may boot with a different key and fail to
+# decrypt existing local notes.
+unset ACTIVE_RECORD_ENCRYPTION_PRIMARY_KEY
+unset ACTIVE_RECORD_ENCRYPTION_DETERMINISTIC_KEY
+unset ACTIVE_RECORD_ENCRYPTION_KEY_DERIVATION_SALT
+
+have_cmd() {
+  command -v "$1" >/dev/null 2>&1
+}
+
+systemd_unit_exists() {
+  local unit="$1"
+  systemctl list-unit-files --type=service --no-legend 2>/dev/null | grep -q "^${unit}[[:space:]]"
+}
 
 wait_for_host_port() {
   local host="$1"
@@ -17,33 +37,142 @@ wait_for_host_port() {
   done
 }
 
-echo "==> Subindo postgres e redis..."
-docker compose -f "$COMPOSE_FILE" up -d postgres redis
+start_local_services() {
+  local pg_unit=""
+  local redis_unit=""
 
-echo "==> Aguardando postgres ficar healthy..."
-until docker compose -f "$COMPOSE_FILE" exec -T postgres pg_isready -U postgres > /dev/null 2>&1; do
-  printf "."
-  sleep 1
-done
-echo " OK"
+  if systemd_unit_exists "postgresql.service"; then
+    pg_unit="postgresql"
+  fi
 
-echo "==> Validando porta do postgres no host..."
-until pg_isready -h "$POSTGRES_HOST" -p "$POSTGRES_PORT" -U postgres > /dev/null 2>&1; do
-  printf "."
-  sleep 1
-done
-echo " OK (${POSTGRES_HOST}:${POSTGRES_PORT})"
+  if systemd_unit_exists "valkey.service"; then
+    redis_unit="valkey"
+  elif systemd_unit_exists "redis.service"; then
+    redis_unit="redis"
+  fi
 
-echo "==> Aguardando redis ficar healthy..."
-until docker compose -f "$COMPOSE_FILE" exec -T redis redis-cli ping > /dev/null 2>&1; do
-  printf "."
-  sleep 1
-done
-echo " OK"
+  if [[ -z "$pg_unit" || -z "$redis_unit" ]]; then
+    echo "==> Nem Docker nem servicos locais compativeis foram encontrados."
+    echo "    Esperado: docker compose, ou systemd com postgresql + valkey/redis."
+    exit 1
+  fi
 
-echo "==> Validando porta do redis no host..."
-wait_for_host_port "$REDIS_HOST" "$REDIS_PORT"
-echo " OK (${REDIS_HOST}:${REDIS_PORT})"
+  echo "==> Subindo PostgreSQL e ${redis_unit} locais..."
+  sudo systemctl enable --now "$pg_unit" "$redis_unit"
+
+  echo "==> Aguardando PostgreSQL ficar pronto..."
+  until pg_isready -h "$POSTGRES_HOST" -p "$POSTGRES_PORT" -U postgres > /dev/null 2>&1; do
+    printf "."
+    sleep 1
+  done
+  echo " OK (${POSTGRES_HOST}:${POSTGRES_PORT})"
+
+  echo "==> Aguardando ${redis_unit} ficar pronto..."
+  until bash -c "exec 3<>/dev/tcp/${REDIS_HOST}/${REDIS_PORT}" > /dev/null 2>&1; do
+    printf "."
+    sleep 1
+  done
+  echo " OK (${REDIS_HOST}:${REDIS_PORT})"
+}
+
+process_cwd() {
+  local pid="$1"
+  if [[ -L "/proc/${pid}/cwd" ]]; then
+    readlink -f "/proc/${pid}/cwd" 2>/dev/null || true
+  fi
+}
+
+graceful_stop_pid() {
+  local pid="$1"
+  local label="$2"
+
+  if ! kill -0 "$pid" >/dev/null 2>&1; then
+    return 0
+  fi
+
+  echo "==> Parando ${label} (pid ${pid})..."
+  kill -TERM "$pid" >/dev/null 2>&1 || true
+
+  local waited=0
+  while kill -0 "$pid" >/dev/null 2>&1; do
+    if [[ "$waited" -ge 10 ]]; then
+      echo "==> ${label} nao encerrou a tempo, forçando stop..."
+      kill -KILL "$pid" >/dev/null 2>&1 || true
+      break
+    fi
+    sleep 1
+    waited=$((waited + 1))
+  done
+}
+
+stop_existing_dev_processes() {
+  local pid
+
+  if [[ -f "$SERVER_PID_FILE" ]]; then
+    pid="$(tr -d '[:space:]' < "$SERVER_PID_FILE")"
+    if [[ -n "$pid" && "$pid" =~ ^[0-9]+$ ]]; then
+      local cwd
+      cwd="$(process_cwd "$pid")"
+      if kill -0 "$pid" >/dev/null 2>&1 && [[ "$cwd" == "$APP_ROOT" ]]; then
+        graceful_stop_pid "$pid" "Rails de development"
+      fi
+    fi
+    rm -f "$SERVER_PID_FILE"
+  fi
+
+  while IFS= read -r match; do
+    [[ -z "$match" ]] && continue
+    pid="${match%% *}"
+    cmd="${match#* }"
+    [[ ! "$pid" =~ ^[0-9]+$ ]] && continue
+
+    case "$cmd" in
+      *"foreman start -f Procfile.dev"*|*"bin/rails tailwindcss:watch"*|*"bin/jobs"*)
+        if [[ "$(process_cwd "$pid")" == "$APP_ROOT" ]]; then
+          graceful_stop_pid "$pid" "$cmd"
+        fi
+        ;;
+    esac
+  done < <(pgrep -af "foreman start -f Procfile.dev|bin/rails tailwindcss:watch|bin/jobs")
+}
+
+if have_cmd docker && docker info > /dev/null 2>&1; then
+  echo "==> Subindo postgres e redis via Docker..."
+  docker compose -f "$COMPOSE_FILE" up -d postgres redis
+
+  echo "==> Aguardando postgres ficar healthy..."
+  until docker compose -f "$COMPOSE_FILE" exec -T postgres pg_isready -U postgres > /dev/null 2>&1; do
+    printf "."
+    sleep 1
+  done
+  echo " OK"
+
+  echo "==> Validando porta do postgres no host..."
+  until pg_isready -h "$POSTGRES_HOST" -p "$POSTGRES_PORT" -U postgres > /dev/null 2>&1; do
+    printf "."
+    sleep 1
+  done
+  echo " OK (${POSTGRES_HOST}:${POSTGRES_PORT})"
+
+  echo "==> Aguardando redis ficar healthy..."
+  until docker compose -f "$COMPOSE_FILE" exec -T redis redis-cli ping > /dev/null 2>&1; do
+    printf "."
+    sleep 1
+  done
+  echo " OK"
+
+  echo "==> Validando porta do redis no host..."
+  wait_for_host_port "$REDIS_HOST" "$REDIS_PORT"
+  echo " OK (${REDIS_HOST}:${REDIS_PORT})"
+else
+  start_local_services
+fi
+
+echo "==> Preparando banco..."
+bin/rails db:prepare db:migrate:queue
+
+echo "==> Reiniciando runtime local, se necessario..."
+stop_existing_dev_processes
 
 echo "==> Iniciando Rails + Tailwind..."
 exec bin/dev

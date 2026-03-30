@@ -2,7 +2,7 @@ const { test, expect } = require("@playwright/test")
 const { runRailsScript } = require("./helpers/rails")
 const { signIn } = require("./helpers/session")
 
-test("typewriter suppresses raw markdown leakage and keeps the preview layer active", async ({ page }) => {
+test("typewriter hides the preview overlay contract and keeps markdown editable in the native editor", async ({ page }) => {
   const token = `${Date.now()}-${Math.random().toString(16).slice(2, 8)}`
   const scenario = runRailsScript("script/e2e/bootstrap_typewriter_markdown_leak.rb", { E2E_TOKEN: token })
 
@@ -17,29 +17,29 @@ test("typewriter suppresses raw markdown leakage and keeps the preview layer act
 
   const diagnostics = await page.evaluate(() => {
     const previewPane = document.getElementById("preview-pane")
+    const editorPane = document.getElementById("editor-pane")
     const firstEditorLine = document.querySelector(".cm-line")
-    const previewHeading = document.querySelector(".preview-prose h2, .preview-prose h1")
-    const previewLink = document.querySelector(".preview-prose a.wikilink")
-    const codeBlock = document.querySelector(".preview-prose pre code")
+    const codemirrorHost = document.getElementById("codemirror-host")
+    const editorRect = codemirrorHost?.getBoundingClientRect()
+    const lineRect = firstEditorLine?.getBoundingClientRect()
 
     return {
       previewDisplay: previewPane ? getComputedStyle(previewPane).display : null,
-      previewPosition: previewPane ? getComputedStyle(previewPane).position : null,
-      editorLineVisibility: firstEditorLine
-        ? getComputedStyle(firstEditorLine).visibility
-        : null,
-      previewHeadingText: previewHeading?.textContent?.trim() || null,
-      previewLinkText: previewLink?.textContent?.trim() || null,
-      previewCodeText: codeBlock?.textContent?.trim() || null
+      editorPaneFlex: editorPane ? getComputedStyle(editorPane).flex : null,
+      editorText: document.querySelector(".cm-content")?.innerText || null,
+      editorHostWidth: editorRect?.width || null,
+      firstLineLeft: lineRect?.left || null,
+      hostLeft: editorRect?.left || null
     }
   })
 
   console.log(JSON.stringify(diagnostics, null, 2))
 
-  expect(diagnostics.previewDisplay).toBe("flex")
-  expect(diagnostics.previewPosition).toBe("absolute")
-  expect(diagnostics.editorLineVisibility).toBe("hidden")
-  expect(diagnostics.previewHeadingText).toBe("Titulo principal")
-  expect(diagnostics.previewLinkText).toBe("Destino")
-  expect(diagnostics.previewCodeText).toContain("puts '**nao formatar**'")
+  expect(diagnostics.previewDisplay).toBe("none")
+  expect(diagnostics.editorPaneFlex).toContain("1 1")
+  expect(diagnostics.editorText).toContain("## Titulo principal")
+  expect(diagnostics.editorText).toContain("[[Destino|")
+  expect(diagnostics.editorText).toContain("```ruby")
+  expect(diagnostics.editorHostWidth).toBeGreaterThan(0)
+  expect(Math.abs(diagnostics.firstLineLeft - diagnostics.hostLeft)).toBeLessThan(40)
 })

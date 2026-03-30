@@ -26,6 +26,8 @@ export default class extends Controller {
   static values = { initialValue: String }
 
   connect() {
+    this._resetStaleTypewriterStyles()
+
     this._themeCompartment = new Compartment()
     this._aiDiffCompartment = new Compartment()
     this._lineNumbersCompartment = new Compartment()
@@ -363,5 +365,18 @@ export default class extends Controller {
     this._mouseUpHandler = onMouseUp
     this._view.scrollDOM.addEventListener("mousedown", onMouseDown)
     document.addEventListener("mouseup", onMouseUp)
+  }
+
+  _resetStaleTypewriterStyles() {
+    const host = this.hostTarget
+    if (!host) return
+
+    host.querySelectorAll(".cm-content, .cm-line, .cm-cursorLayer, .cm-selectionLayer").forEach((node) => {
+      node.style.removeProperty("color")
+      node.style.removeProperty("-webkit-text-fill-color")
+      node.style.removeProperty("opacity")
+      node.style.removeProperty("visibility")
+      node.style.removeProperty("transform")
+    })
   }
 }

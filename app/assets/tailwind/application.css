@@ -1878,84 +1878,39 @@
       radial-gradient(circle at top, color-mix(in srgb, var(--theme-accent) 10%, transparent), transparent 42%),
       linear-gradient(180deg, color-mix(in srgb, var(--theme-bg-primary) 94%, black), var(--theme-bg-primary));
   }
-  body.typewriter-mode #editor-pane,
-  body.typewriter-mode #preview-pane {
-    inset: 0;
-  }
   body.typewriter-mode #editor-pane {
     position: relative;
-    z-index: 4;
     flex: 1 1 auto;
+    width: 100%;
     align-items: center;
-    justify-content: stretch;
+    justify-content: center;
   }
   body.typewriter-mode #codemirror-host {
     width: 100%;
-    max-width: 72ch;
+    max-width: calc(72ch + 4rem);
     box-sizing: border-box;
     padding-top: 8vh;
     padding-bottom: 12vh;
     background: transparent;
   }
   body.typewriter-mode #preview-pane {
-    position: absolute;
-    z-index: 5;
-    flex: none !important;
-    display: flex !important;
-    width: 100%;
-    pointer-events: none;
-  }
-  body.typewriter-mode .preview-prose-wrapper {
-    overflow-y: hidden;
-    width: 100%;
-    padding: 8vh max(2rem, calc((100% - 72ch) / 2)) 12vh;
-  }
-  body.typewriter-mode .preview-prose {
-    min-height: 100%;
-    max-width: 72ch;
-    margin: 0 auto;
-    font-size: 1.05rem;
-    line-height: 1.9;
-    text-wrap: pretty;
-  }
-  body.typewriter-mode .preview-prose p,
-  body.typewriter-mode .preview-prose ul,
-  body.typewriter-mode .preview-prose ol,
-  body.typewriter-mode .preview-prose blockquote,
-  body.typewriter-mode .preview-prose pre,
-  body.typewriter-mode .preview-prose h1,
-  body.typewriter-mode .preview-prose h2,
-  body.typewriter-mode .preview-prose h3,
-  body.typewriter-mode .preview-prose h4 {
-    max-width: 72ch;
+    display: none !important;
   }
   .cm-editor.typewriter-mode .cm-scroller {
     width: 100%;
   }
   .cm-editor.typewriter-mode .cm-content {
     width: 100%;
-    max-width: 72ch;
+    max-width: 100%;
     margin: 0;
     box-sizing: border-box;
-    padding: 0 !important;
-  }
-  body.typewriter-mode .cm-editor .cm-content {
-    opacity: 0 !important;
-    visibility: visible !important;
+    padding: 1rem 2rem !important;
   }
   body.typewriter-mode .cm-editor {
     background: transparent;
   }
-  body.typewriter-mode .cm-editor,
-  body.typewriter-mode .cm-editor .cm-content,
-  body.typewriter-mode .cm-editor .cm-line,
-  body.typewriter-mode .cm-editor .cm-content * {
-    color: transparent !important;
-    -webkit-text-fill-color: transparent;
-  }
   body.typewriter-mode .cm-editor .cm-cursorLayer,
   body.typewriter-mode .cm-editor .cm-selectionLayer {
-    z-index: 200 !important;
     visibility: visible !important;
     pointer-events: none;
   }
@@ -1967,11 +1922,6 @@
   body.typewriter-mode .cm-editor .cm-activeLine,
   body.typewriter-mode .cm-editor .cm-activeLineGutter {
     background: transparent;
-  }
-  body.typewriter-mode .cm-editor .cm-line {
-    color: transparent !important;
-    text-shadow: none;
-    visibility: hidden !important;
   }
   body.typewriter-mode .cm-editor .cm-selectionBackground,
   body.typewriter-mode .cm-editor ::selection {
@@ -1989,109 +1939,6 @@
       0 0 12px color-mix(in srgb, var(--theme-accent-hover) 38%, transparent);
     filter: none;
   }
-  body.typewriter-mode .cm-editor .typewriter-cursor-beacon {
-    border-radius: 999px;
-    background: color-mix(in srgb, var(--theme-accent-hover) 94%, white 6%);
-    box-shadow:
-      0 0 0 1px color-mix(in srgb, white 28%, transparent),
-      0 0 14px color-mix(in srgb, var(--theme-accent-hover) 68%, transparent),
-      0 0 24px color-mix(in srgb, var(--theme-accent-hover) 32%, transparent);
-    opacity: 1;
-  }
-  body.typewriter-mode .cm-editor .typewriter-inline-code {
-    font-family: var(--font-mono);
-    color: color-mix(in srgb, var(--theme-text-primary) 92%, var(--theme-accent) 8%) !important;
-    -webkit-text-fill-color: color-mix(in srgb, var(--theme-text-primary) 92%, var(--theme-accent) 8%);
-    background: color-mix(in srgb, var(--theme-code-bg) 68%, transparent);
-    border: 1px solid color-mix(in srgb, var(--theme-border) 70%, transparent);
-    border-radius: 0.45rem;
-    padding: 0.05rem 0.35rem;
-  }
-  body.typewriter-mode .cm-editor .typewriter-inline-strong {
-    color: color-mix(in srgb, var(--theme-text-primary) 96%, white 4%) !important;
-    -webkit-text-fill-color: color-mix(in srgb, var(--theme-text-primary) 96%, white 4%);
-    font-weight: 700;
-  }
-  body.typewriter-mode .cm-editor .typewriter-inline-emphasis {
-    color: color-mix(in srgb, var(--theme-text-primary) 94%, var(--theme-accent) 6%) !important;
-    -webkit-text-fill-color: color-mix(in srgb, var(--theme-text-primary) 94%, var(--theme-accent) 6%);
-    font-style: italic;
-  }
-  body.typewriter-mode .cm-editor .typewriter-inline-strike {
-    color: color-mix(in srgb, var(--theme-text-secondary) 92%, var(--theme-text-faint) 8%) !important;
-    -webkit-text-fill-color: color-mix(in srgb, var(--theme-text-secondary) 92%, var(--theme-text-faint) 8%);
-    text-decoration: line-through;
-    text-decoration-thickness: 1.5px;
-    text-decoration-color: color-mix(in srgb, var(--theme-accent) 42%, currentColor);
-  }
-  body.typewriter-mode .cm-editor .typewriter-block-heading {
-    display: inline-block;
-    color: color-mix(in srgb, var(--theme-text-primary) 94%, white 6%) !important;
-    -webkit-text-fill-color: color-mix(in srgb, var(--theme-text-primary) 94%, white 6%);
-    font-weight: 700;
-    letter-spacing: -0.015em;
-    line-height: 1.3;
-  }
-  body.typewriter-mode .cm-editor .typewriter-block-heading-1 {
-    font-size: 1.9rem;
-  }
-  body.typewriter-mode .cm-editor .typewriter-block-heading-2 {
-    font-size: 1.55rem;
-  }
-  body.typewriter-mode .cm-editor .typewriter-block-heading-3 {
-    font-size: 1.28rem;
-  }
-  body.typewriter-mode .cm-editor .typewriter-block-heading-4,
-  body.typewriter-mode .cm-editor .typewriter-block-heading-5,
-  body.typewriter-mode .cm-editor .typewriter-block-heading-6 {
-    font-size: 1.08rem;
-  }
-  body.typewriter-mode .cm-editor .typewriter-block-quote {
-    display: inline-block;
-    color: color-mix(in srgb, var(--theme-text-secondary) 92%, white 8%) !important;
-    -webkit-text-fill-color: color-mix(in srgb, var(--theme-text-secondary) 92%, white 8%);
-    border-left: 3px solid color-mix(in srgb, var(--theme-accent) 40%, transparent);
-    padding-left: 0.85rem;
-    font-style: italic;
-  }
-  body.typewriter-mode .cm-editor .typewriter-block-list {
-    display: inline-block;
-    padding-left: 0.5rem;
-  }
-  body.typewriter-mode .cm-editor .typewriter-list-bullet {
-    display: inline-block;
-    min-width: 1rem;
-    color: color-mix(in srgb, var(--theme-accent) 75%, white 25%) !important;
-    -webkit-text-fill-color: color-mix(in srgb, var(--theme-accent) 75%, white 25%);
-    font-weight: 600;
-  }
-  body.typewriter-mode .cm-editor .typewriter-block-code {
-    display: inline-block;
-    width: 100%;
-    box-sizing: border-box;
-    font-family: var(--font-mono);
-    color: color-mix(in srgb, var(--theme-text-primary) 92%, white 8%) !important;
-    -webkit-text-fill-color: color-mix(in srgb, var(--theme-text-primary) 92%, white 8%);
-    background: color-mix(in srgb, var(--theme-code-bg) 84%, transparent);
-    border: 1px solid color-mix(in srgb, var(--theme-border) 70%, transparent);
-    border-radius: 0.55rem;
-    padding: 0.2rem 0.65rem;
-  }
-  body.typewriter-mode .cm-editor .wikilink,
-  body.typewriter-mode .cm-editor .wikilink-father,
-  body.typewriter-mode .cm-editor .wikilink-child,
-  body.typewriter-mode .cm-editor .wikilink-brother,
-  body.typewriter-mode .cm-editor .wikilink-null,
-  body.typewriter-mode .cm-editor .wikilink-promise,
-  body.typewriter-mode .cm-editor .wikilink-broken {
-    -webkit-text-fill-color: currentColor;
-  }
-  body.typewriter-mode .cm-editor .wikilink-father { color: var(--wikilink-father) !important; }
-  body.typewriter-mode .cm-editor .wikilink-child { color: var(--wikilink-child) !important; }
-  body.typewriter-mode .cm-editor .wikilink-brother { color: var(--wikilink-brother) !important; }
-  body.typewriter-mode .cm-editor .wikilink-null,
-  body.typewriter-mode .cm-editor .wikilink-promise { color: var(--wikilink-null) !important; }
-  body.typewriter-mode .cm-editor .wikilink-broken { color: #fca5a5 !important; }
   .preview-typewriter-mode {
     padding-bottom: 50vh !important;
   }

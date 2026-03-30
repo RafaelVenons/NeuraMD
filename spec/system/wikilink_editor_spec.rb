@@ -179,7 +179,7 @@ RSpec.describe "Wiki-link editor", type: :system do
       end
     end
 
-    it "shows wikilinks in typewriter mode using preview-like visible text" do
+    it "keeps wikilinks editable as native markdown in typewriter mode" do
       type_in_editor("[[#{target_title}|#{target.id}]] ")
       editor.send_keys(:escape)
 
@@ -187,9 +187,9 @@ RSpec.describe "Wiki-link editor", type: :system do
 
       visible_editor_text = page.evaluate_script("document.querySelector('.cm-content').innerText")
       expect(visible_editor_text).to include(target_title)
-      expect(visible_editor_text).not_to include(target.id)
-      expect(visible_editor_text).not_to include("[[")
-      expect(visible_editor_text).not_to include("]]")
+      expect(visible_editor_text).to include(target.id)
+      expect(visible_editor_text).to include("[[")
+      expect(visible_editor_text).to include("]]")
     end
 
     it "toggles typewriter mode with Ctrl+\\ and updates the toolbar state" do
@@ -213,7 +213,7 @@ RSpec.describe "Wiki-link editor", type: :system do
       expect(page.evaluate_script("getComputedStyle(document.getElementById('tag-sidebar')).display")).to eq("none")
       expect(page.evaluate_script("getComputedStyle(document.querySelector('.cm-gutters')).display")).to eq("none")
       expect(page).to have_css(".typewriter-exit-btn", text: "Normal", visible: :visible, wait: 5)
-      expect(page.evaluate_script("getComputedStyle(document.getElementById('preview-pane')).position")).to eq("absolute")
+      expect(page.evaluate_script("getComputedStyle(document.getElementById('preview-pane')).display")).to eq("none")
     end
 
     it "restores the normal layout when leaving typewriter through the exit button" do
@@ -228,34 +228,30 @@ RSpec.describe "Wiki-link editor", type: :system do
       expect(find("[data-editor-target='typewriterBtn']", visible: false)["aria-pressed"]).to eq("false")
     end
 
-    it "hides heading and list prefixes in visible editor text while typewriter is active" do
+    it "keeps heading and list prefixes visible in the centered editor while typewriter is active" do
       type_in_editor("# Titulo\n- item 1\n> citacao")
       editor.send_keys([:control, "\\"])
 
       visible_editor_text = page.evaluate_script("document.querySelector('.cm-content').innerText")
-      expect(visible_editor_text).to include("Titulo")
-      expect(visible_editor_text).to include("item 1")
-      expect(visible_editor_text).to include("citacao")
-      expect(visible_editor_text).not_to include("# Titulo")
-      expect(visible_editor_text).not_to include("- item 1")
+      expect(visible_editor_text).to include("# Titulo")
+      expect(visible_editor_text).to include("- item 1")
+      expect(visible_editor_text).to include("> citacao")
     end
 
-    it "hides blockquote prefixes in visible editor text while typewriter is active" do
+    it "keeps blockquote prefixes visible in the centered editor while typewriter is active" do
       type_in_editor("> citacao")
       editor.send_keys([:control, "\\"])
 
       visible_editor_text = page.evaluate_script("document.querySelector('.cm-content').innerText")
-      expect(visible_editor_text).to include("citacao")
-      expect(visible_editor_text).not_to include("> citacao")
+      expect(visible_editor_text).to include("> citacao")
     end
 
-    it "wraps structural line content with preview-like classes in typewriter mode" do
+    it "does not inject preview-like structural wrappers in typewriter mode" do
       type_in_editor("## Titulo\n\n> citacao\n\n- item")
       editor.send_keys([:control, "\\"])
-      editor.send_keys(:up, :up)
 
-      expect(page).to have_css(".cm-content .typewriter-block-heading-2", text: "Titulo", wait: 5)
-      expect(page).to have_css(".cm-content .typewriter-block-quote", text: "citacao", wait: 5)
+      expect(page).to have_no_css(".cm-content .typewriter-block-heading-2", wait: 2)
+      expect(page).to have_no_css(".cm-content .typewriter-block-quote", wait: 2)
     end
 
     it "keeps ordered list markers visible in typewriter mode" do
@@ -266,7 +262,7 @@ RSpec.describe "Wiki-link editor", type: :system do
       expect(visible_editor_text).to include("7. item")
     end
 
-    it "reveals heading markdown when the cursor moves to the start of the line in typewriter mode" do
+    it "preserves heading markdown when the cursor moves to the start of the line in typewriter mode" do
       type_in_editor("## Titulo")
       editor.send_keys([:control, "\\"])
       editor.send_keys(:home)
@@ -275,7 +271,7 @@ RSpec.describe "Wiki-link editor", type: :system do
       expect(raw_line_text).to include("## Titulo")
     end
 
-    it "reveals list markdown when the cursor moves to the start of the line in typewriter mode" do
+    it "preserves list markdown when the cursor moves to the start of the line in typewriter mode" do
       type_in_editor("- item")
       editor.send_keys([:control, "\\"])
       editor.send_keys(:home)
@@ -284,7 +280,7 @@ RSpec.describe "Wiki-link editor", type: :system do
       expect(raw_line_text).to include("- item")
     end
 
-    it "reveals ordered list markdown when the cursor moves to the start of the line in typewriter mode" do
+    it "preserves ordered list markdown when the cursor moves to the start of the line in typewriter mode" do
       type_in_editor("7. item")
       editor.send_keys([:control, "\\"])
       editor.send_keys(:home)
@@ -293,7 +289,7 @@ RSpec.describe "Wiki-link editor", type: :system do
       expect(raw_line_text).to include("7. item")
     end
 
-    it "reveals blockquote markdown when the cursor moves to the start of the line in typewriter mode" do
+    it "preserves blockquote markdown when the cursor moves to the start of the line in typewriter mode" do
       type_in_editor("> citacao")
       editor.send_keys([:control, "\\"])
       editor.send_keys(:home)
@@ -302,25 +298,24 @@ RSpec.describe "Wiki-link editor", type: :system do
       expect(raw_line_text).to include("> citacao")
     end
 
-    it "hides code fence lines while keeping code content visible in typewriter mode" do
+    it "keeps code fence lines visible in typewriter mode" do
       type_in_editor("```ruby\nputs 'oi'\n```")
       editor.send_keys([:control, "\\"])
 
       visible_editor_text = page.evaluate_script("document.querySelector('.cm-content').innerText")
       expect(visible_editor_text).to include("puts 'oi'")
-      expect(visible_editor_text).not_to include("```ruby")
-      expect(visible_editor_text).not_to include("```")
+      expect(visible_editor_text).to include("```ruby")
+      expect(visible_editor_text).to include("```")
     end
 
-    it "wraps fenced code content with preview-like classes in typewriter mode" do
+    it "does not wrap fenced code content with preview-like classes in typewriter mode" do
       type_in_editor("```ruby\nputs 'oi'\n```")
       editor.send_keys([:control, "\\"])
-      editor.send_keys(:up)
 
-      expect(page).to have_css(".cm-content .typewriter-block-code", text: "puts 'oi'", wait: 5)
+      expect(page).to have_no_css(".cm-content .typewriter-block-code", wait: 2)
     end
 
-    it "reveals code fence markdown when the cursor moves onto the fence line in typewriter mode" do
+    it "preserves code fence markdown when the cursor moves onto the fence line in typewriter mode" do
       type_in_editor("```ruby\nputs 'oi'\n```")
       editor.send_keys([:control, "\\"])
       editor.send_keys(:up, :up, :home)
@@ -329,23 +324,23 @@ RSpec.describe "Wiki-link editor", type: :system do
       expect(first_line_text).to include("```ruby")
     end
 
-    it "keeps inline markdown content legible while typewriter is active" do
+    it "keeps inline markdown content visible while typewriter is active" do
       type_in_editor("`codigo` **forte** ~~risco~~")
       editor.send_keys([:control, "\\"])
 
-      expect(editor).to have_text("codigo", wait: 5)
-      expect(editor).to have_text("forte", wait: 5)
-      expect(editor).to have_text("risco", wait: 5)
+      expect(editor).to have_text("`codigo`", wait: 5)
+      expect(editor).to have_text("**forte**", wait: 5)
+      expect(editor).to have_text("~~risco~~", wait: 5)
     end
 
-    it "keeps underscore italic content legible while typewriter is active" do
+    it "keeps underscore italic markdown visible while typewriter is active" do
       type_in_editor("trecho _italico_ aqui")
       editor.send_keys([:control, "\\"])
 
-      expect(editor).to have_text("italico", wait: 5)
+      expect(editor).to have_text("_italico_", wait: 5)
     end
 
-    it "reveals inline markdown delimiters when the cursor enters that span in typewriter mode" do
+    it "preserves inline markdown delimiters when the cursor enters that span in typewriter mode" do
       type_in_editor("inicio `codigo` fim")
       editor.send_keys([:control, "\\"])
       editor.send_keys(:left, :left, :left, :left, :left, :left, :left, :left)
@@ -354,7 +349,7 @@ RSpec.describe "Wiki-link editor", type: :system do
       expect(raw_line_text).to include("`codigo`")
     end
 
-    it "reveals asterisk italic delimiters when the cursor enters that span in typewriter mode" do
+    it "preserves asterisk italic delimiters when the cursor enters that span in typewriter mode" do
       type_in_editor("inicio *italico* fim")
       editor.send_keys([:control, "\\"])
       editor.send_keys(:left, :left, :left, :left, :left, :left, :left, :left)
@@ -363,11 +358,11 @@ RSpec.describe "Wiki-link editor", type: :system do
       expect(raw_line_text).to include("*italico*")
     end
 
-    it "keeps asterisk italic content legible while typewriter is active" do
+    it "keeps asterisk italic markdown visible while typewriter is active" do
       type_in_editor("trecho *italico* aqui")
       editor.send_keys([:control, "\\"])
 
-      expect(editor).to have_text("italico", wait: 5)
+      expect(editor).to have_text("*italico*", wait: 5)
     end
 
     it "does not hide markdown-like symbols inside fenced code content" do
@@ -377,7 +372,7 @@ RSpec.describe "Wiki-link editor", type: :system do
       expect(editor).to have_text("**nao formatar**", wait: 5)
     end
 
-    it "keeps broken wikilinks visually broken in typewriter mode without exposing raw payload" do
+    it "keeps broken wikilinks editable as raw markdown in typewriter mode" do
       type_in_editor("[[Quebrado|00000000-0000-0000-0000-000000000000]] ")
       editor.send_keys(:escape)
 
@@ -385,39 +380,19 @@ RSpec.describe "Wiki-link editor", type: :system do
 
       visible_editor_text = page.evaluate_script("document.querySelector('.cm-content').innerText")
       expect(visible_editor_text).to include("Quebrado")
-      expect(visible_editor_text).not_to include("00000000-0000-0000-0000-000000000000")
-      expect(visible_editor_text).not_to include("[[")
-      expect(visible_editor_text).not_to include("]]")
-      expect(page).to have_css(".cm-content .wikilink-broken", text: "Quebrado", wait: 5)
+      expect(visible_editor_text).to include("00000000-0000-0000-0000-000000000000")
+      expect(visible_editor_text).to include("[[")
+      expect(visible_editor_text).to include("]]")
     end
 
-    it "navigates from a resolved typewriter wikilink only on Ctrl+click and saves draft first" do
+    it "keeps resolved wikilinks editable in typewriter mode without intercepting plain clicks" do
       source_note = Note.find_by!(slug: current_path.split("/").last)
 
       type_in_editor("Veja [[#{target_title}|#{target.id}]]")
       editor.send_keys([:control, "\\"])
 
-      page.execute_script(<<~JS)
-        const link = document.querySelector(".cm-content [data-typewriter-wikilink='true']")
-        link.dispatchEvent(new MouseEvent("click", {
-          bubbles: true,
-          cancelable: true
-        }))
-      JS
       expect(page).to have_current_path(note_path(source_note.slug), wait: 2)
-
-      page.execute_script(<<~JS)
-        const link = document.querySelector(".cm-content [data-typewriter-wikilink='true']")
-        link.dispatchEvent(new MouseEvent("click", {
-          bubbles: true,
-          cancelable: true,
-          ctrlKey: true
-        }))
-      JS
-
-      expect(page).to have_current_path(note_path(target.slug), wait: 5)
-      source_note.reload
-      expect(source_note.note_revisions.where(revision_kind: :draft)).to exist
+      expect(page.evaluate_script("document.querySelector('.cm-content').innerText")).to include("[[#{target_title}|#{target.id}]]")
     end
 
     it "turns a completed promise wikilink into creation actions" do

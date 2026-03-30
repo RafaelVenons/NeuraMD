@@ -1,8 +1,16 @@
 #!/usr/bin/env sh
 
+USER_GEM_BIN="$HOME/.local/share/gem/ruby/$(ruby -e 'print RbConfig::CONFIG["ruby_version"]')/bin"
+if [ -d "$USER_GEM_BIN" ]; then
+  export PATH="$USER_GEM_BIN:$PATH"
+fi
+
+export LANG="${LANG:-C.UTF-8}"
+export LC_ALL="${LC_ALL:-C.UTF-8}"
+
 if ! gem list foreman -i --silent; then
   echo "Installing foreman..."
-  gem install foreman
+  gem install foreman --no-document --user-install
 fi
 
 # Default to port 3000 if not specified

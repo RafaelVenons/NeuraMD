@@ -2,7 +2,7 @@ const { test, expect } = require("@playwright/test")
 const { runRailsScript } = require("./helpers/rails")
 const { signIn } = require("./helpers/session")
 
-test("typewriter keeps the cursor above the preview overlay", async ({ page }) => {
+test("typewriter keeps the native cursor visible in the centered editor", async ({ page }) => {
   page.on("pageerror", (error) => {
     console.log(`PAGEERROR: ${error.message}`)
   })
@@ -28,43 +28,35 @@ test("typewriter keeps the cursor above the preview overlay", async ({ page }) =
     const previewPane = document.getElementById("preview-pane")
     const cursor = document.querySelector(".cm-cursor")
     const cursorLayer = document.querySelector(".cm-cursorLayer")
-    const visualCursor = document.querySelector(".typewriter-visual-cursor")
-    const cursorRect = visualCursor?.getBoundingClientRect() || cursor?.getBoundingClientRect()
-    const previewText = document.querySelector(".preview-prose p, .preview-prose h2, .preview-prose h1")
-    const previewRect = previewText?.getBoundingClientRect()
-    const previewProse = document.querySelector(".preview-prose")
-    const previewProseRect = previewProse?.getBoundingClientRect()
+    const cursorRect = cursor?.getBoundingClientRect()
+    const codemirrorHost = document.getElementById("codemirror-host")
+    const hostRect = codemirrorHost?.getBoundingClientRect()
 
     return {
       viewportWidth: window.innerWidth,
       viewportHeight: window.innerHeight,
       stimulusControllers: window.Stimulus?.controllers?.map((controller) => controller.identifier) || [],
       editorZ: getComputedStyle(editorPane).zIndex,
-      previewZ: getComputedStyle(previewPane).zIndex,
+      previewDisplay: getComputedStyle(previewPane).display,
       cursorBorderLeftColor: getComputedStyle(cursor).borderLeftColor,
       cursorBorderLeftWidth: getComputedStyle(cursor).borderLeftWidth,
       cursorLayerZ: getComputedStyle(cursorLayer).zIndex,
       cursorLayerTransform: getComputedStyle(cursorLayer).transform,
-      visualCursorDisplay: visualCursor ? getComputedStyle(visualCursor).display : null,
       cursorLeft: cursorRect?.left ?? null,
       cursorTop: cursorRect?.top ?? null,
       cursorRight: cursorRect?.right ?? null,
       cursorBottom: cursorRect?.bottom ?? null,
-      previewLeft: previewRect?.left ?? null,
-      previewTop: previewRect?.top ?? null,
-      previewProseLeft: previewProseRect?.left ?? null,
-      previewProseRight: previewProseRect?.right ?? null,
-      previewProseTop: previewProseRect?.top ?? null,
-      previewProseBottom: previewProseRect?.bottom ?? null
+      hostLeft: hostRect?.left ?? null,
+      hostRight: hostRect?.right ?? null,
+      hostTop: hostRect?.top ?? null,
+      hostBottom: hostRect?.bottom ?? null
     }
   })
 
   console.log(JSON.stringify(diagnostics, null, 2))
 
-  expect(Number(diagnostics.previewZ)).toBeGreaterThan(Number(diagnostics.editorZ))
-  expect(Number(diagnostics.cursorLayerZ)).toBeGreaterThan(Number(diagnostics.previewZ))
+  expect(diagnostics.previewDisplay).toBe("none")
   expect(parseInt(diagnostics.cursorBorderLeftWidth, 10)).toBeGreaterThan(0)
-  expect(diagnostics.visualCursorDisplay).toBe("block")
   expect(diagnostics.cursorLeft).not.toBeNull()
   expect(diagnostics.cursorTop).not.toBeNull()
   expect(diagnostics.cursorRight).not.toBeNull()
@@ -73,8 +65,8 @@ test("typewriter keeps the cursor above the preview overlay", async ({ page }) =
   expect(diagnostics.cursorTop).toBeGreaterThanOrEqual(0)
   expect(diagnostics.cursorRight).toBeLessThanOrEqual(diagnostics.viewportWidth)
   expect(diagnostics.cursorBottom).toBeLessThanOrEqual(diagnostics.viewportHeight)
-  expect(diagnostics.cursorLeft).toBeGreaterThanOrEqual(diagnostics.previewProseLeft - 24)
-  expect(diagnostics.cursorRight).toBeLessThanOrEqual(diagnostics.previewProseRight + 24)
-  expect(diagnostics.cursorTop).toBeGreaterThanOrEqual(diagnostics.previewProseTop - 24)
-  expect(diagnostics.cursorBottom).toBeLessThanOrEqual(diagnostics.previewProseBottom + 24)
+  expect(diagnostics.cursorLeft).toBeGreaterThanOrEqual(diagnostics.hostLeft)
+  expect(diagnostics.cursorRight).toBeLessThanOrEqual(diagnostics.hostRight)
+  expect(diagnostics.cursorTop).toBeGreaterThanOrEqual(diagnostics.hostTop)
+  expect(diagnostics.cursorBottom).toBeLessThanOrEqual(diagnostics.hostBottom)
 })

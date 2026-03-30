@@ -28,14 +28,14 @@ class NotesController < ApplicationController
     # UUID-based URLs (from client-side wiki-link preview) → redirect to slug URL
     if params[:slug] != @note.slug
       if request.format.json?
-        @revision = @note.note_revisions.find_by(revision_kind: :draft) || @note.head_revision
+        @revision = readable_current_revision(@note)
         return render json: note_shell_payload(@note, @revision)
       end
 
       redirect_to note_path(@note.slug), status: :moved_permanently and return
     end
     # Load draft for crash recovery if one exists; otherwise use head checkpoint
-    @revision = @note.note_revisions.find_by(revision_kind: :draft) || @note.head_revision
+    @revision = readable_current_revision(@note)
     respond_to do |format|
       format.html
       format.json { render json: note_shell_payload(@note, @revision) }
@@ -304,5 +304,28 @@ class NotesController < ApplicationController
     note.outgoing_links.includes(:tags).each_with_object({}) do |link, payload|
       payload[link.dst_note_id.to_s] = link.tags.map(&:id).map(&:to_s)
     end
+  end
+
+  def readable_current_revision(note)
+    candidates = []
+    draft = note.note_revisions.find_by(revision_kind: :draft)
+    candidates << draft if draft.present?
+    candidates << note.head_revision if note.head_revision.present?
+
+    note.note_revisions.where(revision_kind: :checkpoint).where.not(id: candidates.compact.map(&:id)).order(created_at: :desc).find_each do |revision|
+      candidates << revision
+    end
+
+    candidates.compact.find do |revision|
+      readable_revision?(revision)
+    end
+  end
+
+  def readable_revision?(revision)
+    revision.content_markdown
+    true
+  rescue ActiveRecord::Encryption::Errors::Decryption => e
+    Rails.logger.warn("[NotesController] unreadable revision #{revision.id} for note #{revision.note_id}: #{e.class}")
+    false
   end
 end

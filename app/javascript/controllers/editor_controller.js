@@ -398,11 +398,14 @@ export default class extends Controller {
       }
 
       this._typewriterFocusMode = true
-      this.showPreview()
+      this._previewVisible = false
+      this.previewPaneTarget.classList.add("hidden")
       this.contextModeTarget.value = "hidden"
       this._applyContextMode("hidden")
-      this.previewPaneTarget.style.flex = "1 1 auto"
+      this.previewPaneTarget.style.flex = this._storedTypewriterLayout?.previewPaneFlex || ""
       this.previewResizeHandleTarget.classList.add("hidden")
+      this.editorPaneTarget.style.flex = "1 1 100%"
+      this.previewToggleBtnTarget.classList.remove("toolbar-btn--active")
       if (this.hasTypewriterExitBtnTarget) {
         this.typewriterExitBtnTarget.setAttribute("aria-hidden", "false")
       }
