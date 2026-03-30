@@ -1,8 +1,5 @@
 # PLAN — NeuraMD (Rails 8, Hotwire, PostgreSQL, Self-Hosted)
 
-> LEGADO / BOOTSTRAP: a fonte viva do plano deve ficar nas notas do banco tagueadas com `plan`.
-> Este arquivo permanece apenas como artefato de migração, referência histórica e insumo para bootstrap/importação.
-
 > **Inspiração base:** FrankMD (`../FrankMD`) — editor Markdown self-hosted em Rails 8, sem banco de dados, filesystem-based.
 > **NeuraMD** evolui o conceito adicionando PostgreSQL, versionamento de conteúdo, grafo semântico de notas, tags, mídia e IA plugável.
 

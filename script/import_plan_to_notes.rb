@@ -4,9 +4,6 @@ class PlanToNotesImporter
   SOURCE_PATH = Rails.root.join("PLAN.md")
   IMPORT_USER_EMAIL = "plan-import@neuramd.local"
   IMPORT_USER_PASSWORD = "password123"
-  ROOT_TITLE = "PLAN — NeuraMD (Rails 8, Hotwire, PostgreSQL, Self-Hosted)"
-  GOVERNANCE_TITLE = "Governança do Plano"
-  LEGACY_TITLE = "PLAN.md — Legado e Bootstrap"
   MIN_LINES = 10
   MAX_LINES = 80
   BODY_TARGET = 46
@@ -53,7 +50,6 @@ class PlanToNotesImporter
       delete_previous_import!
       create_note_shells!(items)
       write_note_contents!(items)
-      create_auxiliary_notes!(items)
     end
 
     print_report(items)
@@ -277,12 +273,6 @@ class PlanToNotesImporter
     end
   end
 
-  def attach_note_tags!(note, tag_names)
-    tag_names.each do |tag_name|
-      NoteTag.find_or_create_by!(note:, tag: ensure_tag!(tag_name))
-    end
-  end
-
   def tag_names_for(item)
     tags = IMPORT_TAGS.dup
     tags << "plan-h#{item.node.level}"
@@ -297,97 +287,6 @@ class PlanToNotesImporter
     @tag_cache[name] ||= Tag.find_or_create_by!(name:) do |tag|
       tag.tag_scope = "note"
     end
-  end
-
-  def create_auxiliary_notes!(items)
-    root_item = items.find { |item| item.title == ROOT_TITLE }
-    return unless root_item
-
-    governance_note = Note.create!(
-      title: GOVERNANCE_TITLE,
-      note_kind: "markdown",
-      detected_language: "pt-BR"
-    )
-    attach_note_tags!(governance_note, IMPORT_TAGS + %w[plan-governanca plan-processo plan-ci plan-testes-validacao])
-    Notes::CheckpointService.call(
-      note: governance_note,
-      content: governance_content(root_item.note),
-      author: @import_user
-    )
-
-    legacy_note = Note.create!(
-      title: LEGACY_TITLE,
-      note_kind: "markdown",
-      detected_language: "pt-BR"
-    )
-    attach_note_tags!(legacy_note, IMPORT_TAGS + %w[plan-legado plan-bootstrap])
-    Notes::CheckpointService.call(
-      note: legacy_note,
-      content: legacy_content(root_item.note, governance_note),
-      author: @import_user
-    )
-  end
-
-  def governance_content(root_note)
-    [
-      "# #{GOVERNANCE_TITLE}",
-      "",
-      "Status: esta nota e a fonte operacional de verdade para o plano dentro do NeuraMD.",
-      "Escopo: governanca de manutencao, testes, commits, dependencias minimas e CI.",
-      "Vinculo estrutural: #{wikilink_title_and_id(root_note, :f)}",
-      "",
-      "Regras principais:",
-      "1. O plano deve ser mantido primeiro no banco, via notas tagueadas com `plan`.",
-      "2. O `PLAN.md` do repositorio e apenas legado/bootstrap; nao e mais a referencia viva do produto.",
-      "3. Toda feature/fix exige teste principal, teste(s) minimo(s) de dependencia e validacao de regressao pertinente.",
-      "4. Usar `c:` para listas sequenciais no pai, `f:` para apontamento ao pai/conceito em indices nao sequenciais e `b:` para semelhancas laterais sem duplicidade.",
-      "5. Antes de commit, avaliar dependencias minimas pelos links estruturais e pelas camadas tecnicas tocadas.",
-      "6. Antes de push, validar testes locais pertinentes e acompanhar a CI do GitHub ate `success`.",
-      "",
-      "Checklist antes de commit:",
-      "- teste principal da feature ou bug passando",
-      "- ao menos uma regressao de dependencia ou navegacao relacionada",
-      "- browser real validado quando a mudanca tocar editor, navegacao, shell, preview ou fluxo operacional",
-      "",
-      "Checklist antes de push:",
-      "- suite local pertinente verde",
-      "- CI remota observada ate `success`",
-      "- nenhum trabalho considerado concluido apenas com validacao local",
-      "",
-      "Relacionadas:",
-      "- #{wikilink_title_and_id(root_note, :b)}"
-    ].join("\n")
-  end
-
-  def legacy_content(root_note, governance_note)
-    [
-      "# #{LEGACY_TITLE}",
-      "",
-      "Status: legado.",
-      "O arquivo `PLAN.md` ainda existe no repositorio apenas como bootstrap de importacao, referencia historica e artefato de migracao.",
-      "A manutencao corrente do plano deve acontecer nas notas do banco com a tag `plan`.",
-      "",
-      "Regras:",
-      "- nao usar o `PLAN.md` como fonte viva de decisao",
-      "- novas regras de processo devem ir para #{wikilink_title_and_id(governance_note, :b)}",
-      "- novas estruturas, fases, gotchas e testes devem nascer ou ser atualizados no acervo do banco",
-      "",
-      "Vinculos:",
-      "- raiz do acervo: #{wikilink_title_and_id(root_note, :f)}",
-      "- governanca: #{wikilink_title_and_id(governance_note, :b)}"
-    ].join("\n")
-  end
-
-  def wikilink_title_and_id(note, role)
-    role_prefix = case role
-                  when :f then "f:"
-                  when :c then "c:"
-                  when :b then "b:"
-                  else nil
-                  end
-
-    payload = role_prefix ? "#{role_prefix}#{note.id}" : note.id
-    "[[#{note.title}|#{payload}]]"
   end
 
   def pad_short_note(lines, item)
