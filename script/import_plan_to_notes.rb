@@ -307,11 +307,11 @@ class PlanToNotesImporter
 
   def wikilink_for(item, role)
     role_prefix = case role
-                  when :f then "f:"
-                  when :c then "c:"
-                  when :b then "b:"
-                  else nil
-                  end
+    when :f then "f:"
+    when :c then "c:"
+    when :b then "b:"
+    else nil
+    end
 
     payload = role_prefix ? "#{role_prefix}#{item.note.id}" : item.note.id
     "[[#{item.title}|#{payload}]]"
