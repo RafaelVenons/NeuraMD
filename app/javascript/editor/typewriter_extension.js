@@ -87,8 +87,15 @@ class TypewriterPlugin {
     this.view = view
     this.pending = new Set()
     this.decorations = Decoration.none
+    this._overlayAlignmentFrame = null
+    this._domObserver = new MutationObserver(() => {
+      this.applyRawTextMask()
+    })
+    this._domObserver.observe(this.view.dom, { childList: true, subtree: true })
     this.refresh()
     this.updatePadding()
+    this.applyRawTextMask()
+    this.scheduleOverlayAlignment()
   }
 
   update(update) {
@@ -107,6 +114,10 @@ class TypewriterPlugin {
     }
 
     if (modeChanged || update.geometryChanged) this.updatePadding()
+    if (update.docChanged || update.viewportChanged || modeChanged || update.selectionSet) this.applyRawTextMask()
+    if (update.docChanged || update.selectionSet || update.geometryChanged || modeChanged || update.viewportChanged) {
+      this.scheduleOverlayAlignment()
+    }
 
     const enabled = update.state.field(typewriterState)
     const isSelecting = update.state.field(selectingState)
@@ -120,6 +131,8 @@ class TypewriterPlugin {
     if (!enabled && modeChanged) {
       update.view.scrollDOM.style.paddingBottom = ""
       update.view.dom.classList.remove("typewriter-mode")
+      this.clearRawTextMask()
+      this.clearOverlayAlignment()
     }
 
     if (selectingChanged && !isSelecting && enabled && !hasTextSelection && !update.view.composing) {
@@ -131,6 +144,10 @@ class TypewriterPlugin {
     if (!this.view) return
     this.view.scrollDOM.style.paddingBottom = ""
     this.view.dom.classList.remove("typewriter-mode")
+    this.clearRawTextMask()
+    if (this._overlayAlignmentFrame) cancelAnimationFrame(this._overlayAlignmentFrame)
+    this.clearOverlayAlignment()
+    this._domObserver?.disconnect()
     this.pending.clear()
     this.view = null
   }
@@ -146,12 +163,112 @@ class TypewriterPlugin {
     if (!this.view.state.field(typewriterState)) {
       this.view.scrollDOM.style.paddingBottom = ""
       this.view.dom.classList.remove("typewriter-mode")
+      this.clearRawTextMask()
       return
     }
 
     const padding = Math.round(this.view.scrollDOM.clientHeight * 0.5)
     this.view.scrollDOM.style.paddingBottom = `${padding}px`
     this.view.dom.classList.add("typewriter-mode")
+  }
+
+  applyRawTextMask() {
+    if (!this.view) return
+
+    const enabled = this.view.state.field(typewriterState)
+    const contentDOM = this.view.contentDOM
+    if (!enabled) {
+      this.clearRawTextMask()
+      return
+    }
+
+    if (contentDOM) {
+      contentDOM.style.color = "transparent"
+      contentDOM.style.webkitTextFillColor = "transparent"
+      contentDOM.style.opacity = "0"
+    }
+
+    this.view.dom.querySelectorAll(".cm-content").forEach((content) => {
+      content.style.color = "transparent"
+      content.style.webkitTextFillColor = "transparent"
+      content.style.opacity = "0"
+    })
+
+    this.view.dom.querySelectorAll(".cm-line").forEach((line) => {
+      line.style.color = "transparent"
+      line.style.webkitTextFillColor = "transparent"
+      line.style.visibility = "hidden"
+    })
+  }
+
+  clearRawTextMask() {
+    if (!this.view) return
+
+    const contentDOM = this.view.contentDOM
+    if (contentDOM) {
+      contentDOM.style.removeProperty("color")
+      contentDOM.style.removeProperty("-webkit-text-fill-color")
+      contentDOM.style.removeProperty("opacity")
+    }
+
+    this.view.dom.querySelectorAll(".cm-content").forEach((content) => {
+      content.style.removeProperty("color")
+      content.style.removeProperty("-webkit-text-fill-color")
+      content.style.removeProperty("opacity")
+    })
+
+    this.view.dom.querySelectorAll(".cm-line").forEach((line) => {
+      line.style.removeProperty("color")
+      line.style.removeProperty("-webkit-text-fill-color")
+      line.style.removeProperty("visibility")
+    })
+  }
+
+  updateOverlayAlignment() {
+    if (!this.view) return
+
+    const enabled = this.view.state.field(typewriterState)
+    if (!enabled) {
+      this.clearOverlayAlignment()
+      return
+    }
+
+    const firstLine = this.view.dom.querySelector(".cm-line")
+    const previewAnchor = document.querySelector("#preview-pane .preview-prose h1, #preview-pane .preview-prose h2, #preview-pane .preview-prose h3, #preview-pane .preview-prose h4, #preview-pane .preview-prose p, #preview-pane .preview-prose li, #preview-pane .preview-prose blockquote, #preview-pane .preview-prose pre")
+    if (!firstLine || !previewAnchor) {
+      this.clearOverlayAlignment()
+      return
+    }
+
+    const lineRect = firstLine.getBoundingClientRect()
+    const previewRect = previewAnchor.getBoundingClientRect()
+    if (!lineRect || !previewRect) {
+      this.clearOverlayAlignment()
+      return
+    }
+
+    const dx = Math.round((previewRect.left - lineRect.left) * 100) / 100
+    const dy = Math.round((previewRect.top - lineRect.top) * 100) / 100
+
+    this.view.dom.querySelectorAll(".cm-cursorLayer, .cm-selectionLayer").forEach((layer) => {
+      layer.style.setProperty("transform", `translate(${dx}px, ${dy}px)`)
+    })
+  }
+
+  clearOverlayAlignment() {
+    if (!this.view) return
+    this.view.dom.querySelectorAll(".cm-cursorLayer, .cm-selectionLayer").forEach((layer) => {
+      layer.style.removeProperty("transform")
+    })
+  }
+
+  scheduleOverlayAlignment() {
+    if (!this.view) return
+    if (this._overlayAlignmentFrame) cancelAnimationFrame(this._overlayAlignmentFrame)
+    this._overlayAlignmentFrame = requestAnimationFrame(() => {
+      this._overlayAlignmentFrame = null
+      this.updateOverlayAlignment()
+    })
   }
 
   queueValidation() {
@@ -200,9 +317,9 @@ export function createTypewriterExtension(enabled = false) {
     typewriterPlugin,
     EditorView.theme({
       "&.typewriter-mode .cm-content": {
-        maxWidth: "100%",
+        maxWidth: "none",
         margin: "0",
-        padding: "1rem 2rem"
+        padding: "0"
       }
     })
   ]
@@ -213,7 +330,16 @@ export function toggleTypewriter(view, enabled) {
     effects: setTypewriterModeEffect.of(!!enabled)
   })
 
-  if (enabled) setTimeout(() => maintainTypewriterScroll(view), 0)
+  if (enabled) {
+    setTimeout(() => {
+      const head = view.state.selection.main.head
+      view.dispatch({
+        selection: { anchor: head, head },
+        scrollIntoView: true
+      })
+      maintainTypewriterScroll(view)
+    }, 0)
+  }
 }
 
 export function setTypewriterSelecting(view, selecting) {
@@ -271,11 +397,12 @@ function buildDecorations(view) {
   const doc = view.state.doc.toString()
   const selection = view.state.selection.main
   const validationCache = view.state.field(validationState)
+  const decorations = []
   const builder = new RangeSetBuilder()
   const fencedRanges = collectFencedRanges(doc)
 
-  buildStructuralMarkdownDecorations(doc, selection, builder)
-  buildInlineMarkdownDecorations(doc, selection, builder, fencedRanges)
+  buildStructuralMarkdownDecorations(doc, selection, decorations)
+  buildInlineMarkdownDecorations(doc, selection, decorations, fencedRanges)
 
   for (const link of extractWikilinks(doc)) {
     const overlapsSelection = rangesOverlap(link.from, link.to, selection.from, selection.to) ||
@@ -298,32 +425,40 @@ function buildDecorations(view) {
             "data-typewriter-wikilink": "true"
           })
 
-    builder.add(link.from, link.displayFrom, hiddenSyntaxDecoration)
-    builder.add(link.displayFrom, link.displayTo, Decoration.mark({
+    queueDecoration(decorations, link.from, link.displayFrom, hiddenSyntaxDecoration)
+    queueDecoration(decorations, link.displayFrom, link.displayTo, Decoration.mark({
       class: displayClass,
       attributes
     }))
-    builder.add(link.displayTo, link.to, hiddenSyntaxDecoration)
+    queueDecoration(decorations, link.displayTo, link.to, hiddenSyntaxDecoration)
   }
+
+  decorations
+    .sort((a, b) => {
+      if (a.from !== b.from) return a.from - b.from
+      if (a.decoration.startSide !== b.decoration.startSide) return a.decoration.startSide - b.decoration.startSide
+      return a.to - b.to
+    })
+    .forEach(({ from, to, decoration }) => builder.add(from, to, decoration))
 
   return builder.finish()
 }
 
-function buildStructuralMarkdownDecorations(doc, selection, builder) {
+function buildStructuralMarkdownDecorations(doc, selection, decorations) {
   const lines = doc.split("\n")
   let offset = 0
   let inFence = false
 
   lines.forEach((line) => {
     if (/^\s*```/.test(line)) {
-      addHiddenSyntaxRange(builder, offset, offset + line.length, selection)
+      addHiddenSyntaxRange(decorations, offset, offset + line.length, selection)
       inFence = !inFence
       offset += line.length + 1
       return
     }
 
     if (inFence) {
-      addVisibleContentMark(builder, offset, offset + line.length, "typewriter-block-code")
+      addVisibleContentMark(decorations, offset, offset + line.length, "typewriter-block-code")
       offset += line.length + 1
       return
     }
@@ -331,30 +466,30 @@ function buildStructuralMarkdownDecorations(doc, selection, builder) {
     const headingMatch = line.match(/^(\s{0,3}#{1,6}\s+)/)
     if (headingMatch) {
       const contentFrom = offset + headingMatch[1].length
-      addHiddenSyntaxRange(builder, offset, contentFrom, selection)
-      addVisibleContentMark(builder, contentFrom, offset + line.length, `typewriter-block-heading typewriter-block-heading-${headingMatch[1].trim().length}`)
+      addHiddenSyntaxRange(decorations, offset, contentFrom, selection)
+      addVisibleContentMark(decorations, contentFrom, offset + line.length, `typewriter-block-heading typewriter-block-heading-${headingMatch[1].trim().length}`)
     }
 
     const quoteMatch = line.match(/^(\s*>+\s?)/)
     if (quoteMatch) {
       const contentFrom = offset + quoteMatch[1].length
-      addHiddenSyntaxRange(builder, offset, contentFrom, selection)
-      addVisibleContentMark(builder, contentFrom, offset + line.length, "typewriter-block-quote")
+      addHiddenSyntaxRange(decorations, offset, contentFrom, selection)
+      addVisibleContentMark(decorations, contentFrom, offset + line.length, "typewriter-block-quote")
     }
 
     const listMatch = line.match(/^(\s*(?:[-*+]\s+|\d+\.\s+))/)
     if (listMatch) {
       const contentFrom = offset + listMatch[1].length
       const marker = extractListMarker(listMatch[1])
-      addListMarkerDecoration(builder, offset, contentFrom, selection, marker)
-      addVisibleContentMark(builder, contentFrom, offset + line.length, "typewriter-block-list")
+      addListMarkerDecoration(decorations, offset, contentFrom, selection, marker)
+      addVisibleContentMark(decorations, contentFrom, offset + line.length, "typewriter-block-list")
     }
 
     offset += line.length + 1
   })
 }
 
-function buildInlineMarkdownDecorations(doc, selection, builder, fencedRanges) {
+function buildInlineMarkdownDecorations(doc, selection, decorations, fencedRanges) {
   INLINE_PATTERNS.forEach(({ regex, delimiterLength, contentClass }) => {
     regex.lastIndex = 0
     let match
@@ -368,44 +503,49 @@ function buildInlineMarkdownDecorations(doc, selection, builder, fencedRanges) {
       const openTo = from + delimiterLength
       const closeFrom = to - delimiterLength
 
-      addHiddenSyntaxRange(builder, from, openTo, selection)
+      addHiddenSyntaxRange(decorations, from, openTo, selection)
       if (closeFrom > openTo) {
-        builder.add(openTo, closeFrom, Decoration.mark({
+        queueDecoration(decorations, openTo, closeFrom, Decoration.mark({
           tagName: "span",
           class: contentClass,
           attributes: { "data-typewriter-inline": contentClass }
         }))
       }
-      addHiddenSyntaxRange(builder, closeFrom, to, selection)
+      addHiddenSyntaxRange(decorations, closeFrom, to, selection)
     }
   })
 }
 
-function addHiddenSyntaxRange(builder, from, to, selection) {
+function addHiddenSyntaxRange(decorations, from, to, selection) {
   if (to <= from) return
   const overlapsSelection = rangesOverlap(from, to, selection.from, selection.to) ||
     cursorTouchesRange(selection, from, to)
   if (overlapsSelection) return
-  builder.add(from, to, hiddenSyntaxDecoration)
+  queueDecoration(decorations, from, to, hiddenSyntaxDecoration)
 }
 
-function addListMarkerDecoration(builder, from, to, selection, marker) {
+function addListMarkerDecoration(decorations, from, to, selection, marker) {
   if (to <= from) return
   const overlapsSelection = rangesOverlap(from, to, selection.from, selection.to) ||
     cursorTouchesRange(selection, from, to)
   if (overlapsSelection) return
-  builder.add(from, to, Decoration.replace({
+  queueDecoration(decorations, from, to, Decoration.replace({
     widget: new ListMarkerWidget(marker),
     inclusive: false
   }))
 }
 
-function addVisibleContentMark(builder, from, to, className) {
+function addVisibleContentMark(decorations, from, to, className) {
   if (to <= from) return
-  builder.add(from, to, Decoration.mark({
+  queueDecoration(decorations, from, to, Decoration.mark({
     tagName: "span",
     class: className
   }))
+}
+
+function queueDecoration(decorations, from, to, decoration) {
+  if (to <= from) return
+  decorations.push({ from, to, decoration })
 }
 
 function collectFencedRanges(doc) {

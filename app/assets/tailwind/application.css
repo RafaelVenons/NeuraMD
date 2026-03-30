@@ -1884,19 +1884,22 @@
   }
   body.typewriter-mode #editor-pane {
     position: relative;
-    z-index: 5;
+    z-index: 4;
     flex: 1 1 auto;
     align-items: center;
     justify-content: stretch;
   }
   body.typewriter-mode #codemirror-host {
     width: 100%;
-    max-width: calc(72ch + 4rem);
+    max-width: 72ch;
+    box-sizing: border-box;
+    padding-top: 8vh;
+    padding-bottom: 12vh;
     background: transparent;
   }
   body.typewriter-mode #preview-pane {
     position: absolute;
-    z-index: 4;
+    z-index: 5;
     flex: none !important;
     display: flex !important;
     width: 100%;
@@ -1930,15 +1933,31 @@
     width: 100%;
   }
   .cm-editor.typewriter-mode .cm-content {
-    max-width: 100%;
+    width: 100%;
+    max-width: 72ch;
     margin: 0;
+    box-sizing: border-box;
+    padding: 0 !important;
+  }
+  body.typewriter-mode .cm-editor .cm-content {
+    opacity: 0 !important;
+    visibility: visible !important;
   }
   body.typewriter-mode .cm-editor {
     background: transparent;
   }
+  body.typewriter-mode .cm-editor,
+  body.typewriter-mode .cm-editor .cm-content,
+  body.typewriter-mode .cm-editor .cm-line,
+  body.typewriter-mode .cm-editor .cm-content * {
+    color: transparent !important;
+    -webkit-text-fill-color: transparent;
+  }
   body.typewriter-mode .cm-editor .cm-cursorLayer,
   body.typewriter-mode .cm-editor .cm-selectionLayer {
-    z-index: 6;
+    z-index: 200 !important;
+    visibility: visible !important;
+    pointer-events: none;
   }
   body.typewriter-mode .cm-editor .cm-gutters {
     display: none !important;
@@ -1950,8 +1969,9 @@
     background: transparent;
   }
   body.typewriter-mode .cm-editor .cm-line {
-    color: transparent;
+    color: transparent !important;
     text-shadow: none;
+    visibility: hidden !important;
   }
   body.typewriter-mode .cm-editor .cm-selectionBackground,
   body.typewriter-mode .cm-editor ::selection {
@@ -1959,37 +1979,55 @@
   }
   body.typewriter-mode .cm-editor .cm-cursor {
     border-left-color: var(--theme-accent-hover) !important;
-    border-left-width: 2px !important;
+    border-left-width: 3px !important;
     opacity: 1 !important;
     visibility: visible !important;
     animation: none !important;
-    filter: drop-shadow(0 0 6px color-mix(in srgb, var(--theme-accent-hover) 45%, transparent));
+    background: color-mix(in srgb, var(--theme-accent-hover) 28%, transparent) !important;
+    box-shadow:
+      0 0 0 1px color-mix(in srgb, var(--theme-accent-hover) 50%, transparent),
+      0 0 12px color-mix(in srgb, var(--theme-accent-hover) 38%, transparent);
+    filter: none;
+  }
+  body.typewriter-mode .cm-editor .typewriter-cursor-beacon {
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--theme-accent-hover) 94%, white 6%);
+    box-shadow:
+      0 0 0 1px color-mix(in srgb, white 28%, transparent),
+      0 0 14px color-mix(in srgb, var(--theme-accent-hover) 68%, transparent),
+      0 0 24px color-mix(in srgb, var(--theme-accent-hover) 32%, transparent);
+    opacity: 1;
   }
   body.typewriter-mode .cm-editor .typewriter-inline-code {
     font-family: var(--font-mono);
-    color: color-mix(in srgb, var(--theme-text-primary) 92%, var(--theme-accent) 8%);
+    color: color-mix(in srgb, var(--theme-text-primary) 92%, var(--theme-accent) 8%) !important;
+    -webkit-text-fill-color: color-mix(in srgb, var(--theme-text-primary) 92%, var(--theme-accent) 8%);
     background: color-mix(in srgb, var(--theme-code-bg) 68%, transparent);
     border: 1px solid color-mix(in srgb, var(--theme-border) 70%, transparent);
     border-radius: 0.45rem;
     padding: 0.05rem 0.35rem;
   }
   body.typewriter-mode .cm-editor .typewriter-inline-strong {
-    color: color-mix(in srgb, var(--theme-text-primary) 96%, white 4%);
+    color: color-mix(in srgb, var(--theme-text-primary) 96%, white 4%) !important;
+    -webkit-text-fill-color: color-mix(in srgb, var(--theme-text-primary) 96%, white 4%);
     font-weight: 700;
   }
   body.typewriter-mode .cm-editor .typewriter-inline-emphasis {
-    color: color-mix(in srgb, var(--theme-text-primary) 94%, var(--theme-accent) 6%);
+    color: color-mix(in srgb, var(--theme-text-primary) 94%, var(--theme-accent) 6%) !important;
+    -webkit-text-fill-color: color-mix(in srgb, var(--theme-text-primary) 94%, var(--theme-accent) 6%);
     font-style: italic;
   }
   body.typewriter-mode .cm-editor .typewriter-inline-strike {
-    color: color-mix(in srgb, var(--theme-text-secondary) 92%, var(--theme-text-faint) 8%);
+    color: color-mix(in srgb, var(--theme-text-secondary) 92%, var(--theme-text-faint) 8%) !important;
+    -webkit-text-fill-color: color-mix(in srgb, var(--theme-text-secondary) 92%, var(--theme-text-faint) 8%);
     text-decoration: line-through;
     text-decoration-thickness: 1.5px;
     text-decoration-color: color-mix(in srgb, var(--theme-accent) 42%, currentColor);
   }
   body.typewriter-mode .cm-editor .typewriter-block-heading {
     display: inline-block;
-    color: color-mix(in srgb, var(--theme-text-primary) 94%, white 6%);
+    color: color-mix(in srgb, var(--theme-text-primary) 94%, white 6%) !important;
+    -webkit-text-fill-color: color-mix(in srgb, var(--theme-text-primary) 94%, white 6%);
     font-weight: 700;
     letter-spacing: -0.015em;
     line-height: 1.3;
@@ -2010,7 +2048,8 @@
   }
   body.typewriter-mode .cm-editor .typewriter-block-quote {
     display: inline-block;
-    color: color-mix(in srgb, var(--theme-text-secondary) 92%, white 8%);
+    color: color-mix(in srgb, var(--theme-text-secondary) 92%, white 8%) !important;
+    -webkit-text-fill-color: color-mix(in srgb, var(--theme-text-secondary) 92%, white 8%);
     border-left: 3px solid color-mix(in srgb, var(--theme-accent) 40%, transparent);
     padding-left: 0.85rem;
     font-style: italic;
@@ -2022,7 +2061,8 @@
   body.typewriter-mode .cm-editor .typewriter-list-bullet {
     display: inline-block;
     min-width: 1rem;
-    color: color-mix(in srgb, var(--theme-accent) 75%, white 25%);
+    color: color-mix(in srgb, var(--theme-accent) 75%, white 25%) !important;
+    -webkit-text-fill-color: color-mix(in srgb, var(--theme-accent) 75%, white 25%);
     font-weight: 600;
   }
   body.typewriter-mode .cm-editor .typewriter-block-code {
@@ -2030,12 +2070,28 @@
     width: 100%;
     box-sizing: border-box;
     font-family: var(--font-mono);
-    color: color-mix(in srgb, var(--theme-text-primary) 92%, white 8%);
+    color: color-mix(in srgb, var(--theme-text-primary) 92%, white 8%) !important;
+    -webkit-text-fill-color: color-mix(in srgb, var(--theme-text-primary) 92%, white 8%);
     background: color-mix(in srgb, var(--theme-code-bg) 84%, transparent);
     border: 1px solid color-mix(in srgb, var(--theme-border) 70%, transparent);
     border-radius: 0.55rem;
     padding: 0.2rem 0.65rem;
   }
+  body.typewriter-mode .cm-editor .wikilink,
+  body.typewriter-mode .cm-editor .wikilink-father,
+  body.typewriter-mode .cm-editor .wikilink-child,
+  body.typewriter-mode .cm-editor .wikilink-brother,
+  body.typewriter-mode .cm-editor .wikilink-null,
+  body.typewriter-mode .cm-editor .wikilink-promise,
+  body.typewriter-mode .cm-editor .wikilink-broken {
+    -webkit-text-fill-color: currentColor;
+  }
+  body.typewriter-mode .cm-editor .wikilink-father { color: var(--wikilink-father) !important; }
+  body.typewriter-mode .cm-editor .wikilink-child { color: var(--wikilink-child) !important; }
+  body.typewriter-mode .cm-editor .wikilink-brother { color: var(--wikilink-brother) !important; }
+  body.typewriter-mode .cm-editor .wikilink-null,
+  body.typewriter-mode .cm-editor .wikilink-promise { color: var(--wikilink-null) !important; }
+  body.typewriter-mode .cm-editor .wikilink-broken { color: #fca5a5 !important; }
   .preview-typewriter-mode {
     padding-bottom: 50vh !important;
   }

@@ -222,6 +222,20 @@ export default class extends Controller {
     return { line: line.number, col: pos - line.from + 1 }
   }
 
+  getCursorClientRect() {
+    if (!this._view) return null
+    const head = this._view.state.selection.main.head
+    const coords = this._view.coordsAtPos(head)
+    if (!coords) return null
+
+    return {
+      left: coords.left,
+      top: coords.top,
+      right: coords.right,
+      bottom: coords.bottom
+    }
+  }
+
   setTypewriterMode(enabled) {
     if (!this._view) return
     toggleTypewriter(this._view, enabled)
