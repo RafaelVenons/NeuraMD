@@ -312,7 +312,12 @@ class NotesController < ApplicationController
     candidates << draft if draft.present?
     candidates << note.head_revision if note.head_revision.present?
 
-    note.note_revisions.where(revision_kind: :checkpoint).where.not(id: candidates.compact.map(&:id)).order(created_at: :desc).find_each do |revision|
+    remaining_checkpoints = note.note_revisions
+      .where(revision_kind: :checkpoint)
+      .where.not(id: candidates.compact.map(&:id))
+      .order(created_at: :desc)
+
+    remaining_checkpoints.find_each do |revision|
       candidates << revision
     end
 
