@@ -6,6 +6,7 @@ module Links
   # - Skips self-links and links to non-existent notes (broken links are valid in content)
   # - Idempotent: safe to call multiple times with the same content
   class SyncService
+    include DomainEvents
     Result = Struct.new(:graph_changed, keyword_init: true)
 
     def self.call(src_note:, revision:, content:)
@@ -43,26 +44,29 @@ module Links
         existing_link = NoteLink.find_by(src_note_id: @src_note.id, dst_note_id: link[:dst_note_id])
 
         if existing_link
-          graph_changed = existing_link.hier_role != link[:hier_role] || !existing_link.active?
+          was_inactive = !existing_link.active?
+          graph_changed = existing_link.hier_role != link[:hier_role] || was_inactive
 
           if existing_link.created_in_revision_id != @revision.id ||
               existing_link.hier_role != link[:hier_role] ||
-              !existing_link.active?
+              was_inactive
             existing_link.update!(
               hier_role: link[:hier_role],
               created_in_revision: @revision,
               active: true
             )
+            publish_event("link.created", link_id: existing_link.id, src_note_id: @src_note.id, dst_note_id: link[:dst_note_id]) if was_inactive
           end
 
           changed ||= graph_changed
         else
-          @src_note.outgoing_links.create!(
+          new_link = @src_note.outgoing_links.create!(
             dst_note_id: link[:dst_note_id],
             hier_role: link[:hier_role],
             created_in_revision: @revision,
             active: true
           )
+          publish_event("link.created", link_id: new_link.id, src_note_id: @src_note.id, dst_note_id: link[:dst_note_id])
           changed = true
         end
       end
@@ -72,10 +76,16 @@ module Links
 
     def delete_removed(desired)
       desired_ids = desired.map { |link| link[:dst_note_id] }.uniq
-      updated = NoteLink
+      to_deactivate = NoteLink
         .where(src_note_id: @src_note.id, active: true)
         .where.not(dst_note_id: desired_ids)
-        .update_all(active: false, updated_at: Time.current)
+
+      deactivated_dst_ids = to_deactivate.pluck(:dst_note_id)
+      updated = to_deactivate.update_all(active: false, updated_at: Time.current)
+
+      if updated.positive?
+        publish_event("link.deleted", src_note_id: @src_note.id, dst_note_ids: deactivated_dst_ids)
+      end
 
       updated.positive?
     end

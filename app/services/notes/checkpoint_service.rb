@@ -5,6 +5,7 @@ module Notes
   #
   # Returns the new NoteRevision checkpoint and whether the active link graph changed.
   class CheckpointService
+    include DomainEvents
     Result = Struct.new(:revision, :graph_changed, keyword_init: true)
 
     def self.call(note:, content:, author: nil, accepted_ai_request: nil)
@@ -46,6 +47,8 @@ module Notes
         end
 
         annotate_ai_acceptance!(revision) if @accepted_ai_request.present?
+
+        publish_event("note.updated", note_id: @note.id, slug: @note.slug, revision_id: revision.id)
 
         Result.new(revision:, graph_changed: sync_result.graph_changed)
       end

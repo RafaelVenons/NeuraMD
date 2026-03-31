@@ -1,5 +1,6 @@
 module Notes
   class TranslationNoteService
+    include DomainEvents
     LANGUAGE_LABELS = {
       "pt-BR" => "Português",
       "en-US" => "English",
@@ -67,11 +68,13 @@ module Notes
     end
 
     def build_translated_note!
-      Note.create!(
+      note = Note.create!(
         title: resolved_title,
         note_kind: @source_note.note_kind,
         detected_language: @target_language
       )
+      publish_event("note.created", note_id: note.id, slug: note.slug, title: note.title)
+      note
     end
 
     def resolved_title

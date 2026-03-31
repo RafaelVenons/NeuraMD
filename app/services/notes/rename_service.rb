@@ -1,5 +1,6 @@
 module Notes
   class RenameService
+    include DomainEvents
     Result = Struct.new(:note, :old_slug, :new_slug, :slug_changed, keyword_init: true)
 
     def self.call(note:, new_title:)
@@ -20,12 +21,16 @@ module Notes
       return no_change_result if @note.title == @new_title && new_slug == old_slug
       return no_change_result if new_slug == old_slug
 
+      old_title = @note.title
+
       ActiveRecord::Base.transaction do
         SlugRedirect.where(slug: new_slug).delete_all
         SlugRedirect.where(slug: old_slug).delete_all
         @note.slug_redirects.create!(slug: old_slug)
         @note.update_columns(title: @new_title, slug: new_slug, updated_at: Time.current)
       end
+
+      publish_event("note.renamed", note_id: @note.id, old_slug:, new_slug:, old_title:, new_title: @new_title)
 
       Result.new(note: @note, old_slug:, new_slug:, slug_changed: true)
     end

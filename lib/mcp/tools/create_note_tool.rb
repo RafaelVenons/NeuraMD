@@ -5,6 +5,8 @@ require "mcp"
 module Mcp
   module Tools
     class CreateNoteTool < MCP::Tool
+      include DomainEvents
+
       tool_name "create_note"
       description "Create a new note in NeuraMD with title, markdown content, and optional tags."
 
@@ -32,6 +34,7 @@ module Mcp
           revision_kind: :checkpoint
         )
         note.update!(head_revision_id: revision.id)
+        publish_event("note.created", note_id: note.id, slug: note.slug, title: note.title)
 
         Links::SyncService.call(src_note: note, revision: revision, content: content_markdown)
 

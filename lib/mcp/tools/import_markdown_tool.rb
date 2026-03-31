@@ -5,6 +5,8 @@ require "mcp"
 module Mcp
   module Tools
     class ImportMarkdownTool < MCP::Tool
+      include DomainEvents
+
       tool_name "import_markdown"
       description "Import a markdown file into NeuraMD notes. Each heading becomes a note. Parent-child links are created via wikilinks. Previous import batch (by import_tag) is cleaned before reimport."
 
@@ -114,6 +116,7 @@ module Mcp
       def create_notes!(sections)
         sections.each do |section|
           note = Note.create!(title: section.title, note_kind: "markdown")
+          publish_event("note.created", note_id: note.id, slug: note.slug, title: note.title)
           section.instance_variable_set(:@note, note)
           attach_tags!(section)
           @created_notes << {slug: note.slug, title: note.title, note: note}

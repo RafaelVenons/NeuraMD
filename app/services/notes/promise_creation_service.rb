@@ -1,5 +1,6 @@
 module Notes
   class PromiseCreationService
+    include DomainEvents
     AI_CAPABILITY = "seed_note".freeze
     Result = Struct.new(:note, :created, :seeded, :request, keyword_init: true)
 
@@ -26,6 +27,7 @@ module Notes
         note_kind: "markdown",
         detected_language: @source_note.detected_language
       )
+      publish_event("note.created", note_id: note.id, slug: note.slug, title: note.title)
 
       return Result.new(note:, created: true, seeded: false, request: nil) if @mode == "blank"
 

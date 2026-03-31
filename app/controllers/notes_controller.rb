@@ -1,4 +1,5 @@
 class NotesController < ApplicationController
+  include DomainEvents
   before_action :set_note, only: [:show, :edit, :update, :destroy, :autosave, :draft, :checkpoint, :revisions, :show_revision, :restore_revision, :link_info, :create_from_promise]
   layout "editor", only: [:show, :show_revision]
 
@@ -17,6 +18,7 @@ class NotesController < ApplicationController
     authorize @note
 
     if @note.save
+      publish_event("note.created", note_id: @note.id, slug: @note.slug, title: @note.title)
       redirect_to note_path(@note.slug, focus: "title"), notice: "Nota criada."
     else
       render :new, status: :unprocessable_entity

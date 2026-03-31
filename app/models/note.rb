@@ -1,4 +1,6 @@
 class Note < ApplicationRecord
+  include DomainEvents
+
   NOTE_KINDS = %w[markdown mixed].freeze
   SUPPORTED_LANGUAGES = %w[pt-BR en-US zh-CN zh-TW ja-JP ko-KR es de fr it].freeze
 
@@ -41,10 +43,12 @@ class Note < ApplicationRecord
 
   def soft_delete!
     update!(deleted_at: Time.current)
+    publish_event("note.deleted", note_id: id, slug: slug)
   end
 
   def restore!
     update!(deleted_at: nil)
+    publish_event("note.restored", note_id: id, slug: slug)
   end
 
   def deleted?
