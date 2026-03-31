@@ -1,0 +1,29 @@
+#!/usr/bin/env -S bash --norc --noprofile
+set -euo pipefail
+
+# Ensure mise shims are in PATH for non-interactive spawns (e.g. Claude Code MCP)
+export PATH="$HOME/.local/share/mise/shims:$HOME/.local/bin:$PATH"
+
+# Disable zoxide hook noise
+unset _ZO_DATA_DIR 2>/dev/null || true
+export _ZO_DOCTOR=0
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+NEURAMD_DIR="$(dirname "$SCRIPT_DIR")"
+
+exec ruby -C "$NEURAMD_DIR" -e '
+ENV["RAILS_ENV"] ||= "development"
+$stderr.reopen(File.open(File::NULL, "w"))
+
+require_relative "config/environment"
+require "mcp"
+
+server = MCP::Server.new(
+  name: "neuramd",
+  version: "1.0.0",
+  tools: Mcp::Tools.all
+)
+
+transport = MCP::Server::Transports::StdioTransport.new(server)
+transport.open
+'

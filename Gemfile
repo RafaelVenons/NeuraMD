@@ -26,6 +26,9 @@ gem "pundit"
 # Search
 gem "pg_search"
 
+# MCP (Model Context Protocol)
+gem "mcp"
+
 # StandardRB (replaces rubocop-omakase)
 gem "standard", require: false
 gem "rubocop-rails-omakase", require: false

@@ -28,6 +28,18 @@ RSpec.describe Note, type: :model do
       note.slug = ""
       expect(note).not_to be_valid
     end
+
+    it "prevents slug change after creation" do
+      note = create(:note, title: "Original")
+      note.slug = "hacked-slug"
+      expect(note).not_to be_valid
+      expect(note.errors[:slug]).to include("cannot be changed after creation")
+    end
+
+    it "allows slug to be set on create" do
+      note = create(:note, title: "Qualquer", slug: "custom-slug")
+      expect(note.slug).to eq("custom-slug")
+    end
   end
 
   describe "slug generation" do

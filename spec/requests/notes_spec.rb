@@ -307,6 +307,42 @@ RSpec.describe "Notes", type: :request do
       patch note_path(note.slug), params: {note: {title: ""}}
       expect(response).to have_http_status(:unprocessable_entity)
     end
+
+    it "ignores slug parameter in update params" do
+      original_slug = note.slug
+      patch note_path(note.slug), params: {note: {slug: "hacked-slug"}}
+      expect(note.reload.slug).to eq(original_slug)
+    end
+
+    it "changes slug and creates redirect when title changes" do
+      old_slug = note.slug
+      patch note_path(note.slug), params: {note: {title: "Titulo Completamente Novo"}}
+      note.reload
+      expect(note.slug).to eq("titulo-completamente-novo")
+      expect(SlugRedirect.find_by(slug: old_slug, note: note)).to be_present
+    end
+  end
+
+  describe "GET /notes/:old_slug (slug redirect)" do
+    it "redirects old slug to new slug after rename (301)" do
+      note = create(:note, title: "Antes")
+      old_slug = note.slug
+      Notes::RenameService.call(note: note, new_title: "Depois")
+
+      get note_path(old_slug)
+      expect(response).to have_http_status(:moved_permanently)
+      expect(response).to redirect_to(note_path("depois"))
+    end
+
+    it "redirects chain of old slugs to current slug" do
+      note = create(:note, title: "A")
+      Notes::RenameService.call(note: note, new_title: "B")
+      Notes::RenameService.call(note: note, new_title: "C")
+
+      get note_path("a")
+      expect(response).to have_http_status(:moved_permanently)
+      expect(response).to redirect_to(note_path("c"))
+    end
   end
 
   describe "DELETE /notes/:slug" do
@@ -316,6 +352,27 @@ RSpec.describe "Notes", type: :request do
       delete note_path(note.slug)
       expect(response).to have_http_status(:redirect)
       expect(note.reload.deleted?).to be(true)
+    end
+  end
+
+  describe "POST /notes/:slug/restore" do
+    it "restores a soft-deleted note" do
+      note = create(:note, title: "Restauravel")
+      note.soft_delete!
+      post restore_note_path(note.slug)
+      expect(response).to have_http_status(:redirect)
+      expect(note.reload.deleted?).to be(false)
+    end
+
+    it "returns 404 for unknown slug" do
+      post restore_note_path("inexistente")
+      expect(response).to have_http_status(:not_found)
+    end
+
+    it "returns 404 for active (non-deleted) note" do
+      note = create(:note)
+      post restore_note_path(note.slug)
+      expect(response).to have_http_status(:not_found)
     end
   end
 
@@ -545,6 +602,66 @@ RSpec.describe "Notes", type: :request do
       json = response.parsed_body
       expect(json).to be_an(Array)
       expect(json.first).to include("id", "created_at", "is_head")
+    end
+  end
+
+  describe "rename integrity (EPIC-00.1)" do
+    let!(:author) { create(:user) }
+
+    it "wikilinks survive rename — NoteLink stays active" do
+      source = create(:note, title: "Source")
+      target = create(:note, title: "Target")
+      revision = create(:note_revision, note: source, revision_kind: :checkpoint,
+        content_markdown: "Link to [[Target|#{target.id}]]", author: author)
+      source.update_columns(head_revision_id: revision.id)
+      NoteLink.create!(src_note_id: source.id, dst_note_id: target.id, created_in_revision: revision)
+
+      Notes::RenameService.call(note: target, new_title: "Target Renomeado")
+
+      link = NoteLink.find_by(src_note_id: source.id, dst_note_id: target.id)
+      expect(link).to be_present
+      expect(source.head_revision.content_markdown).to include(target.id)
+    end
+
+    it "search finds note by new title after rename" do
+      note = create(:note, title: "Cardio Geral")
+      Notes::CheckpointService.call(note: note, content: "conteudo", author: author)
+      Notes::RenameService.call(note: note, new_title: "Cardiologia Basica")
+
+      get search_notes_path(q: "Cardiologia", format: :json)
+      titles = response.parsed_body.map { |n| n["title"] }
+      expect(titles).to include("Cardiologia Basica")
+    end
+
+    it "search does not find note by old title after rename" do
+      note = create(:note, title: "Titulo Unico Antigo")
+      Notes::CheckpointService.call(note: note, content: "conteudo", author: author)
+      Notes::RenameService.call(note: note, new_title: "Titulo Unico Novo")
+
+      get search_notes_path(q: "Titulo Unico Antigo", format: :json)
+      titles = response.parsed_body.map { |n| n["title"] }
+      expect(titles).not_to include("Titulo Unico Antigo")
+    end
+
+    it "graph API uses current slug after rename" do
+      note = create(:note, title: "Grafo Nota")
+      Notes::CheckpointService.call(note: note, content: "conteudo grafo", author: author)
+      Notes::RenameService.call(note: note, new_title: "Grafo Renomeado")
+
+      get api_graph_path, headers: {"Accept" => "application/json"}
+      json = response.parsed_body
+      node = json["notes"]&.find { |n| n["id"] == note.id }
+      expect(node).to be_present
+      expect(node["slug"]).to eq("grafo-renomeado")
+    end
+
+    it "old slug redirect works after note is accessed via UUID" do
+      note = create(:note, :with_head_revision, title: "UUID Test")
+      Notes::RenameService.call(note: note, new_title: "UUID Test Renamed")
+
+      get note_path(note.id)
+      expect(response).to have_http_status(:moved_permanently)
+      expect(response).to redirect_to(note_path("uuid-test-renamed"))
     end
   end
 end

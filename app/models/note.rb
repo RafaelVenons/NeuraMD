@@ -8,6 +8,7 @@ class Note < ApplicationRecord
   has_many :incoming_links, class_name: "NoteLink", foreign_key: :dst_note_id, dependent: :destroy
   has_many :active_outgoing_links, -> { active }, class_name: "NoteLink", foreign_key: :src_note_id
   has_many :active_incoming_links, -> { active }, class_name: "NoteLink", foreign_key: :dst_note_id
+  has_many :slug_redirects, dependent: :destroy
   has_many :note_tags, dependent: :destroy
   has_many :tags, through: :note_tags
 
@@ -16,6 +17,7 @@ class Note < ApplicationRecord
   validates :note_kind, inclusion: {in: NOTE_KINDS}
 
   before_validation :generate_slug, on: :create
+  validate :slug_immutable, on: :update
 
   scope :active, -> { where(deleted_at: nil) }
   scope :with_latest_content, -> { active.where.not(head_revision_id: nil) }
@@ -50,6 +52,10 @@ class Note < ApplicationRecord
   end
 
   private
+
+  def slug_immutable
+    errors.add(:slug, "cannot be changed after creation") if slug_changed?
+  end
 
   def generate_slug
     return if slug.present?

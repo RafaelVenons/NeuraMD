@@ -44,6 +44,7 @@ Rails.application.routes.draw do
       post "ai_requests/:request_id/retry", to: "ai#retry", as: :retry_ai_request
       delete "ai_requests/:request_id", to: "ai#destroy"
       post "ai_requests/:request_id/create_translated_note", to: "ai#create_translated_note", as: :ai_request_translated_note
+      post :restore
       post :autosave    # legacy — kept for compatibility during transition
       post :draft       # server-side draft (60s debounce, no history)
       post :checkpoint  # manual save (permanent, appears in history)

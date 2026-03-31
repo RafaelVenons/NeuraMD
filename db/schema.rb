@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_03_26_015235) do
+ActiveRecord::Schema[8.1].define(version: 2026_03_31_021159) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
   enable_extension "pg_trgm"
@@ -186,6 +186,15 @@ ActiveRecord::Schema[8.1].define(version: 2026_03_26_015235) do
     t.index ["title"], name: "index_notes_on_title", opclass: :gin_trgm_ops, using: :gin
   end
 
+  create_table "slug_redirects", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.datetime "created_at", null: false
+    t.uuid "note_id", null: false
+    t.string "slug", null: false
+    t.datetime "updated_at", null: false
+    t.index ["note_id"], name: "index_slug_redirects_on_note_id"
+    t.index ["slug"], name: "index_slug_redirects_on_slug", unique: true
+  end
+
   create_table "tags", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
     t.string "color_hex"
     t.datetime "created_at", null: false
@@ -228,4 +237,5 @@ ActiveRecord::Schema[8.1].define(version: 2026_03_26_015235) do
   add_foreign_key "note_tags", "tags"
   add_foreign_key "note_tts_assets", "note_revisions"
   add_foreign_key "notes", "note_revisions", column: "head_revision_id", on_delete: :nullify
+  add_foreign_key "slug_redirects", "notes"
 end

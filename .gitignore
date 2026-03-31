@@ -202,3 +202,12 @@ docker-compose.local.yml
 
 # Documentação operacional local da iniciativa/importação do plano
 INITI.md
+PLAN.md
+QUEUE.md
+new_specs.md
+
+# Scripts de importação de .md para NeuraMD (one-shot, não versionados)
+script/import_*.rb
+script/check_imported_orphans.rb
+script/e2e/bootstrap_new_specs_navigation.rb
+bin/import-notes

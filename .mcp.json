@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "neuramd": {
+      "command": "/home/venom/projects/NeuraMD/bin/mcp-server",
+      "args": []
+    }
+  }
+}

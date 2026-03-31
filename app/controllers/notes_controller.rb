@@ -48,7 +48,15 @@ class NotesController < ApplicationController
 
   def update
     authorize @note
-    if @note.update(note_params)
+    new_title = note_params[:title]
+    title_changed = new_title.present? && new_title != @note.title
+
+    if title_changed
+      result = Notes::RenameService.call(note: @note, new_title: new_title)
+      remaining = note_params.except(:title)
+      @note.update!(remaining) if remaining.keys.any?
+      redirect_to note_path(result.new_slug), notice: "Nota atualizada."
+    elsif @note.update(note_params)
       redirect_to note_path(@note.slug), notice: "Nota atualizada."
     else
       render :edit, status: :unprocessable_entity
@@ -59,6 +67,13 @@ class NotesController < ApplicationController
     authorize @note
     @note.soft_delete!
     redirect_to graph_path, notice: "Nota arquivada."
+  end
+
+  def restore
+    @note = Note.deleted.find_by!(slug: params[:slug])
+    authorize @note, :update?
+    @note.restore!
+    redirect_to note_path(@note.slug), notice: "Nota restaurada."
   end
 
   def search
@@ -207,11 +222,21 @@ class NotesController < ApplicationController
 
   def set_note
     @note = Note.active.find_by(slug: params[:slug]) ||
-      Note.active.find_by!(id: params[:slug])
+      Note.active.find_by(id: params[:slug])
+
+    return if @note
+
+    redirect_record = SlugRedirect.includes(:note).find_by(slug: params[:slug])
+    if redirect_record&.note && !redirect_record.note.deleted?
+      redirect_to note_path(redirect_record.note.slug), status: :moved_permanently
+      return
+    end
+
+    raise ActiveRecord::RecordNotFound
   end
 
   def note_params
-    params.require(:note).permit(:title, :slug, :note_kind, :detected_language)
+    params.require(:note).permit(:title, :note_kind, :detected_language)
   end
 
   def finder_payload(note)

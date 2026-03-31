@@ -1,127 +1,62 @@
 # NeuraMD
 
-## AIrch watcher
+A self-hosted, structured knowledge platform built with Rails 8 and PostgreSQL.
+NeuraMD turns plain Markdown notes into a richly connected knowledge graph with full-text search, AI-powered capabilities, and text-to-speech — all under your control.
 
-O stack em [docker-compose.airch.yml](/home/venom/projects/NeuraMD/docker-compose.airch.yml) agora sobe um watcher real em Python para processar jobs assíncronos via filesystem compartilhado.
+## Features
 
-### Pastas observadas
+- **Markdown editor** — CodeMirror 6 with live preview, typewriter mode, and structural reveal
+- **Wiki-links** — `[[bidirectional links]]` with automatic backlink tracking and link promises
+- **Knowledge graph** — interactive Sigma.js visualization with recursive CTEs and tag filters
+- **Full-text search** — PostgreSQL `tsvector` + `pg_trgm` trigram fuzzy matching, regex support
+- **Tags** — hierarchical tagging with global and per-note scoping
+- **Versioning** — immutable revision history for every note
+- **AI capabilities** — pluggable provider architecture (Ollama, OpenAI-compatible), grammar review, rewrite, suggestions, and translation (pt-BR / en)
+- **Text-to-Speech** — 4 TTS providers, SHA-256 audio cache, karaoke highlighting with MFA alignment
+- **MCP server** — Model Context Protocol (stdio) exposing notes to any AI agent or IDE
+- **Slug redirects** — rename notes without breaking links, bookmarks, or external references
+- **E2E testing** — Playwright browser tests for critical user flows
 
-- `exchange/inbound`: entrada de jobs `.json`
-- `exchange/outbound`: resultado final por job
-- `exchange/archive/processed`: cópia arquivada de jobs concluídos
-- `exchange/archive/failed`: cópia arquivada de jobs que falharam no provider
-- `exchange/archive/invalid`: jobs inválidos
-- `exchange/status/status.json`: estado completo do watcher
-- `exchange/status/waybar.json`: payload pronto para `custom/*` do Waybar
+## Stack
 
-### Formato mínimo do job
+| Layer | Technology |
+|-------|-----------|
+| Framework | Rails 8.1, Hotwire (Turbo + Stimulus) |
+| Database | PostgreSQL with `pg_search`, encrypted attributes |
+| Frontend | Tailwind CSS, Importmap, CodeMirror 6 |
+| Background | Solid Queue, Solid Cache |
+| Auth | Devise + Pundit |
+| Graph | Sigma.js + recursive CTEs |
+| AI | Ollama / OpenAI-compatible providers |
+| TTS | Kokoro, with MFA alignment pipeline |
+| Deploy | Kamal, self-hosted |
+| Tests | RSpec, Playwright |
 
-```json
-{
-  "id": "job-123",
-  "capability": "grammar_review",
-  "text": "teh texto",
-  "language": "pt-BR",
-  "model": "qwen2.5:1.5b",
-  "metadata": {
-    "source": "manual-test"
-  }
-}
-```
-
-Campos suportados:
-
-- `id`: opcional, mas recomendado
-- `capability`: `grammar_review`, `suggest` ou `rewrite`
-- `text`: obrigatório
-- `language`: opcional
-- `model`: opcional; usa `OLLAMA_MODEL` por padrão
-- `metadata`: opcional; volta no `outbound`
-
-### Saída para Waybar
-
-O watcher mantém [script/airch_watcher.py](/home/venom/projects/NeuraMD/script/airch_watcher.py) em execução contínua e também aceita leitura pontual:
+## Getting started
 
 ```bash
-python3 script/airch_watcher.py status
-python3 script/airch_watcher.py waybar
-```
-
-`waybar` retorna JSON estável com:
-
-- `text`
-- `tooltip`
-- `class`
-- `alt`
-- `percentage`
-
-Isso permite usar retorno direto no `return-type: "json"` sem parser intermediário.
-
-### Exemplo de módulo no Waybar
-
-```json
-{
-  "custom/airch": {
-    "format": "{}",
-    "return-type": "json",
-    "interval": 2,
-    "exec": "cat /mnt/neuramd-share/exchange/status/waybar.json",
-    "on-click": "foot -e sh -lc 'sed -n \"1,220p\" /mnt/neuramd-share/exchange/status/status.json; printf \"\\n\"; read -r _'"
-  }
-}
-```
-
-O watcher emite as classes:
-
-- `idle`
-- `busy`
-- `error`
-- `offline`
-
-Se preferir não depender do arquivo já gerado:
-
-```json
-{
-  "custom/airch": {
-    "format": "{}",
-    "return-type": "json",
-    "interval": 2,
-    "exec": "python3 /caminho/para/NeuraMD/script/airch_watcher.py waybar"
-  }
-}
-```
-
-### Variáveis de ambiente
-
-Veja [.env.example](/home/venom/projects/NeuraMD/.env.example):
-
-- `OLLAMA_API_BASE`
-- `OLLAMA_MODEL`
-- `AI_WATCHER_POLL_INTERVAL`
-- `AI_WATCHER_HEALTH_TIMEOUT`
-- `AI_WATCHER_REQUEST_TIMEOUT`
-- `AI_WATCHER_TOOLTIP_JOBS`
-
-## Playwright E2E
-
-O projeto agora também tem uma camada mínima de E2E em browser real com Playwright para fluxos críticos do shell de `/notes` e da queue de IA.
-
-Comandos:
-
-```bash
+# Dependencies
+bundle install
 npm install
+
+# Database
+bin/rails db:setup
+
+# Start development server
+bin/dev
+```
+
+## Testing
+
+```bash
+# Unit and integration specs
+bundle exec rspec
+
+# E2E browser tests
 npx playwright install chromium
 npm run e2e
 ```
 
-Modo debug:
+## License
 
-```bash
-npm run e2e:headed
-npm run e2e:debug
-```
-
-Artefatos gerados:
-
-- `playwright-report/`: relatório HTML
-- `test-results/`: screenshots, vídeo e trace por teste com falha
+Private — all rights reserved.
