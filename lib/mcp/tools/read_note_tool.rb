@@ -43,6 +43,7 @@ module Mcp
           title: note.title,
           body: note.head_revision&.content_markdown.to_s,
           tags: note.tags.pluck(:name),
+          properties: note.current_properties,
           links: outgoing,
           backlinks: backlinks,
           created_at: note.created_at.iso8601,

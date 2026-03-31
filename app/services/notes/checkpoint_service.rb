@@ -8,15 +8,16 @@ module Notes
     include ::DomainEvents
     Result = Struct.new(:revision, :graph_changed, keyword_init: true)
 
-    def self.call(note:, content:, author: nil, accepted_ai_request: nil)
-      new(note:, content:, author:, accepted_ai_request:).call
+    def self.call(note:, content:, author: nil, accepted_ai_request: nil, properties_data: nil)
+      new(note:, content:, author:, accepted_ai_request:, properties_data:).call
     end
 
-    def initialize(note:, content:, author:, accepted_ai_request:)
+    def initialize(note:, content:, author:, accepted_ai_request:, properties_data:)
       @note = note
       @content = content
       @author = author
       @accepted_ai_request = accepted_ai_request
+      @properties_data = properties_data
     end
 
     def call
@@ -34,7 +35,8 @@ module Notes
           revision_kind: :checkpoint,
           ai_generated: @accepted_ai_request.present?,
           author: @author,
-          base_revision_id: latest_checkpoint_id
+          base_revision_id: latest_checkpoint_id,
+          properties_data: resolve_properties_data
         )
 
         @note.update!(head_revision_id: revision.id)
@@ -55,6 +57,11 @@ module Notes
     end
 
     private
+
+    def resolve_properties_data
+      return @properties_data if @properties_data
+      @note.head_revision&.properties_data || {}
+    end
 
     def annotate_ai_acceptance!(revision)
       metadata = @accepted_ai_request.metadata.merge(

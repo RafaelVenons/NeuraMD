@@ -41,6 +41,10 @@ class Note < ApplicationRecord
       .limit(10)
   }
 
+  def current_properties
+    head_revision&.properties_data || {}
+  end
+
   def soft_delete!
     update!(deleted_at: Time.current)
     publish_event("note.deleted", note_id: id, slug: slug)

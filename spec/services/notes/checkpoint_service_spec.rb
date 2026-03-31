@@ -67,6 +67,24 @@ RSpec.describe Notes::CheckpointService do
       expect(revision.base_revision_id).to eq(old_head_id)
     end
 
+    it "carries forward properties_data from the previous head revision" do
+      note.head_revision.update!(properties_data: {"status" => "draft"})
+      revision = call.revision
+      expect(revision.properties_data).to eq({"status" => "draft"})
+    end
+
+    it "uses explicit properties_data when provided" do
+      note.head_revision.update!(properties_data: {"status" => "draft"})
+      revision = call("content", properties_data: {"status" => "published", "priority" => 1}).revision
+      expect(revision.properties_data).to eq({"status" => "published", "priority" => 1})
+    end
+
+    it "defaults to empty hash when note has no head revision" do
+      note.update_columns(head_revision_id: nil)
+      revision = call.revision
+      expect(revision.properties_data).to eq({})
+    end
+
     it "marks the checkpoint as AI-generated when linked to an accepted ai request" do
       request = create(:ai_request, note_revision: note.head_revision, status: "succeeded", metadata: {"language" => "pt-BR"})
 

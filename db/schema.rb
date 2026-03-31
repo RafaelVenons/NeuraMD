@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_03_31_021159) do
+ActiveRecord::Schema[8.1].define(version: 2026_03_31_130642) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
   enable_extension "pg_trgm"
@@ -133,6 +133,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_03_31_021159) do
     t.text "content_plain"
     t.datetime "created_at", null: false
     t.uuid "note_id", null: false
+    t.jsonb "properties_data", default: {}, null: false
     t.enum "revision_kind", default: "checkpoint", null: false, enum_type: "note_revision_kind"
     t.datetime "updated_at", null: false
     t.index "to_tsvector('simple'::regconfig, COALESCE(content_plain, ''::text))", name: "index_note_revisions_on_content_plain_tsvector", using: :gin
@@ -141,6 +142,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_03_31_021159) do
     t.index ["created_at"], name: "index_note_revisions_on_created_at"
     t.index ["note_id", "revision_kind"], name: "index_note_revisions_draft_per_note", where: "(revision_kind = 'draft'::note_revision_kind)"
     t.index ["note_id"], name: "index_note_revisions_on_note_id"
+    t.index ["properties_data"], name: "index_note_revisions_on_properties_data", using: :gin
   end
 
   create_table "note_tags", id: false, force: :cascade do |t|
@@ -184,6 +186,20 @@ ActiveRecord::Schema[8.1].define(version: 2026_03_31_021159) do
     t.index ["head_revision_id"], name: "index_notes_on_head_revision_id"
     t.index ["slug"], name: "index_notes_on_slug", unique: true
     t.index ["title"], name: "index_notes_on_title", opclass: :gin_trgm_ops, using: :gin
+  end
+
+  create_table "property_definitions", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.boolean "archived", default: false, null: false
+    t.jsonb "config", default: {}, null: false
+    t.datetime "created_at", null: false
+    t.string "description"
+    t.string "key", null: false
+    t.string "label"
+    t.integer "position", default: 0, null: false
+    t.boolean "system", default: false, null: false
+    t.datetime "updated_at", null: false
+    t.string "value_type", null: false
+    t.index ["key"], name: "index_property_definitions_on_key", unique: true
   end
 
   create_table "slug_redirects", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
