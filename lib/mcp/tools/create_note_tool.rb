@@ -5,7 +5,7 @@ require "mcp"
 module Mcp
   module Tools
     class CreateNoteTool < MCP::Tool
-      include DomainEvents
+      include ::DomainEvents
 
       tool_name "create_note"
       description "Create a new note in NeuraMD with title, markdown content, and optional tags."

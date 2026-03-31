@@ -1,6 +1,6 @@
 module Notes
   class RenameService
-    include DomainEvents
+    include ::DomainEvents
     Result = Struct.new(:note, :old_slug, :new_slug, :slug_changed, keyword_init: true)
 
     def self.call(note:, new_title:)

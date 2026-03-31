@@ -1,5 +1,5 @@
 class NotesController < ApplicationController
-  include DomainEvents
+  include ::DomainEvents
   before_action :set_note, only: [:show, :edit, :update, :destroy, :autosave, :draft, :checkpoint, :revisions, :show_revision, :restore_revision, :link_info, :create_from_promise]
   layout "editor", only: [:show, :show_revision]
 

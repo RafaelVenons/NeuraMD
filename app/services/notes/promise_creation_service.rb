@@ -1,6 +1,6 @@
 module Notes
   class PromiseCreationService
-    include DomainEvents
+    include ::DomainEvents
     AI_CAPABILITY = "seed_note".freeze
     Result = Struct.new(:note, :created, :seeded, :request, keyword_init: true)
 

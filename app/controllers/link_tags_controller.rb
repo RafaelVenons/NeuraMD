@@ -1,5 +1,5 @@
 class LinkTagsController < ApplicationController
-  include DomainEvents
+  include ::DomainEvents
 
   # POST /link_tags  { note_link_id:, tag_id: }
   def create

@@ -1,5 +1,5 @@
 class NoteTagsController < ApplicationController
-  include DomainEvents
+  include ::DomainEvents
 
   def create
     note = Note.find(params[:note_id])

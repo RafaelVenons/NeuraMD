@@ -1,6 +1,6 @@
 module Notes
   class TranslationNoteService
-    include DomainEvents
+    include ::DomainEvents
     LANGUAGE_LABELS = {
       "pt-BR" => "Português",
       "en-US" => "English",

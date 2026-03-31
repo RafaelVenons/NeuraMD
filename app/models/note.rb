@@ -1,5 +1,5 @@
 class Note < ApplicationRecord
-  include DomainEvents
+  include ::DomainEvents
 
   NOTE_KINDS = %w[markdown mixed].freeze
   SUPPORTED_LANGUAGES = %w[pt-BR en-US zh-CN zh-TW ja-JP ko-KR es de fr it].freeze

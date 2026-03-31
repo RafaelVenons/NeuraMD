@@ -5,7 +5,7 @@ require "mcp"
 module Mcp
   module Tools
     class ImportMarkdownTool < MCP::Tool
-      include DomainEvents
+      include ::DomainEvents
 
       tool_name "import_markdown"
       description "Import a markdown file into NeuraMD notes. Each heading becomes a note. Parent-child links are created via wikilinks. Previous import batch (by import_tag) is cleaned before reimport."

@@ -6,7 +6,7 @@ module Links
   # - Skips self-links and links to non-existent notes (broken links are valid in content)
   # - Idempotent: safe to call multiple times with the same content
   class SyncService
-    include DomainEvents
+    include ::DomainEvents
     Result = Struct.new(:graph_changed, keyword_init: true)
 
     def self.call(src_note:, revision:, content:)
