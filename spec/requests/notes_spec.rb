@@ -663,5 +663,32 @@ RSpec.describe "Notes", type: :request do
       expect(response).to have_http_status(:moved_permanently)
       expect(response).to redirect_to(note_path("uuid-test-renamed"))
     end
+
+    it "shell JSON request via old slug redirects to current slug" do
+      note = create(:note, :with_head_revision, title: "Shell Test")
+      old_slug = note.slug
+      Notes::RenameService.call(note: note, new_title: "Shell Renamed")
+
+      get note_path(old_slug), headers: {"Accept" => "application/json"}
+      expect(response).to have_http_status(:moved_permanently)
+      expect(response).to redirect_to(note_path("shell-renamed"))
+
+      # Following the redirect returns the full shell payload
+      get note_path("shell-renamed"), headers: {"Accept" => "application/json"}
+      expect(response).to have_http_status(:ok)
+      json = response.parsed_body
+      expect(json.dig("note", "slug")).to eq("shell-renamed")
+      expect(json.dig("note", "title")).to eq("Shell Renamed")
+    end
+
+    it "HTML request to old slug redirects to new slug" do
+      note = create(:note, :with_head_revision, title: "Redirect HTML")
+      old_slug = note.slug
+      Notes::RenameService.call(note: note, new_title: "Redirect HTML New")
+
+      get note_path(old_slug)
+      expect(response).to have_http_status(:moved_permanently)
+      expect(response).to redirect_to(note_path("redirect-html-new"))
+    end
   end
 end
