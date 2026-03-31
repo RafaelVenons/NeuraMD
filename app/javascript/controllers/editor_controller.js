@@ -3,7 +3,7 @@ import { Controller } from "@hotwired/stimulus"
 // Orchestrates all sub-controllers: codemirror, preview, autosave, scroll-sync
 export default class extends Controller {
   static targets = [
-    "mainArea", "editorPane", "previewPane", "previewContent",
+    "mainArea", "editorColumn", "editorPane", "previewPane", "previewContent",
     "contextPanel", "graphPanel", "backlinksPanel", "contextMode",
     "previewResizeHandle", "contextResizeHandle",
     "titleInput", "langBadge", "saveStatus",
@@ -488,8 +488,8 @@ export default class extends Controller {
     }
 
     if (this._resizeMode === "context") {
-      const previewRect = this.previewPaneTarget.getBoundingClientRect()
-      const height = previewRect.bottom - event.clientY
+      const colRect = this.editorColumnTarget.getBoundingClientRect()
+      const height = colRect.bottom - event.clientY
       this._applyContextHeight(height)
     }
   }

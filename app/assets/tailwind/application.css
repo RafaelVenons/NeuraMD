@@ -432,18 +432,22 @@
     color: var(--theme-accent-hover);
   }
 
-  /* Note tag chips */
-  .note-tag-chip {
-    @apply inline-flex items-center gap-0.5 rounded-full px-2 py-0.5 text-xs font-medium;
-    line-height: 1.2;
+  /* Note tag dropdown */
+  .note-tag-dropdown-item {
+    @apply flex items-center gap-2 w-full px-3 py-1.5 text-xs;
+    color: var(--theme-text-primary);
+  }
+  .note-tag-dropdown-item:hover {
+    background: var(--theme-bg-hover);
   }
   .note-tag-chip-remove {
-    @apply ml-0.5 cursor-pointer text-current opacity-60 hover:opacity-100;
+    @apply ml-auto cursor-pointer opacity-60 hover:opacity-100;
     font-size: 14px;
     line-height: 1;
     background: none;
     border: none;
     padding: 0;
+    color: var(--theme-text-muted);
   }
   .note-tag-option {
     @apply flex items-center gap-2 w-full px-3 py-1.5 text-xs text-left cursor-pointer;
@@ -1866,6 +1870,7 @@
   body.typewriter-mode .editor-stats-bar,
   body.typewriter-mode .pane-divider,
   body.typewriter-mode .preview-context-resize-handle,
+  body.typewriter-mode .context-panel-resize-handle,
   body.typewriter-mode .note-context-panel,
   body.typewriter-mode [data-ai-review-target="queueDock"],
   body.typewriter-mode [data-tts-target="player"] {
@@ -2003,14 +2008,16 @@
     padding: 4px 8px;
     outline: none;
   }
-  .preview-context-resize-handle {
+  .preview-context-resize-handle,
+  .context-panel-resize-handle {
     position: relative;
     height: 8px;
     flex-shrink: 0;
     cursor: row-resize;
     background: transparent;
   }
-  .preview-context-resize-handle::before {
+  .preview-context-resize-handle::before,
+  .context-panel-resize-handle::before {
     content: "";
     position: absolute;
     left: 0;
@@ -2019,7 +2026,8 @@
     height: 2px;
     background: var(--toolbar-border);
   }
-  .preview-context-resize-handle:hover::before {
+  .preview-context-resize-handle:hover::before,
+  .context-panel-resize-handle:hover::before {
     background: var(--theme-accent);
   }
   .note-context-panel {

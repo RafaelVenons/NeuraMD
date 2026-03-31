@@ -1,11 +1,11 @@
 import { Controller } from "@hotwired/stimulus"
 
-// Manages note-level tag chips in the editor toolbar.
-// Shows colored chips for tags attached to the current note.
-// Dropdown to add tags, × button to remove.
+// Manages note-level tags via a compact dropdown in the toolbar.
+// Shows a tag icon + count badge. Dropdown lists current tags (removable)
+// and available tags (addable).
 export default class extends Controller {
   static values  = { noteId: String, initialTags: { type: Array, default: [] } }
-  static targets = ["chipContainer", "addButton", "dropdown"]
+  static targets = ["toggleButton", "badge", "dropdown"]
 
   connect() {
     this._tags = [...this.initialTagsValue]
@@ -15,12 +15,12 @@ export default class extends Controller {
     this._onDocClick = (e) => {
       if (!this._dropdownOpen) return
       if (this.dropdownTarget.contains(e.target)) return
-      if (this.addButtonTarget.contains(e.target)) return
+      if (this.toggleButtonTarget.contains(e.target)) return
       this._closeDropdown()
     }
     document.addEventListener("click", this._onDocClick)
 
-    this._renderChips()
+    this._renderBadge()
     this._loadAllTags()
   }
 
@@ -31,7 +31,7 @@ export default class extends Controller {
   hydrateNoteContext(payload) {
     this.noteIdValue = payload.note?.id || this.noteIdValue
     this._tags = payload.note_tags || []
-    this._renderChips()
+    this._renderBadge()
     this._closeDropdown()
   }
 
@@ -51,25 +51,11 @@ export default class extends Controller {
     } catch (_) {}
   }
 
-  _renderChips() {
-    if (!this.hasChipContainerTarget) return
-    this.chipContainerTarget.innerHTML = ""
-
-    for (const tag of this._tags) {
-      const chip = document.createElement("span")
-      chip.className = "note-tag-chip"
-      chip.style.cssText = `background: ${tag.color_hex || "#6b7280"}20; color: ${tag.color_hex || "#6b7280"}; border: 1px solid ${tag.color_hex || "#6b7280"}40;`
-      chip.dataset.tagId = tag.id
-      chip.innerHTML = `
-        <span class="note-tag-chip-label">${this._escapeHtml(tag.name)}</span>
-        <button type="button" class="note-tag-chip-remove" title="Remover tag">&times;</button>
-      `
-      chip.querySelector(".note-tag-chip-remove").addEventListener("click", (e) => {
-        e.stopPropagation()
-        this._removeTag(tag.id)
-      })
-      this.chipContainerTarget.appendChild(chip)
-    }
+  _renderBadge() {
+    if (!this.hasBadgeTarget) return
+    const count = this._tags.length
+    this.badgeTarget.textContent = count > 0 ? count : ""
+    this.badgeTarget.classList.toggle("hidden", count === 0)
   }
 
   _openDropdown() {
@@ -83,13 +69,45 @@ export default class extends Controller {
 
     this.dropdownTarget.innerHTML = ""
 
-    if (available.length === 0) {
-      const empty = document.createElement("p")
-      empty.className = "px-3 py-2 text-xs"
-      empty.style.color = "var(--theme-text-faint)"
-      empty.textContent = "Nenhuma tag disponível"
-      this.dropdownTarget.appendChild(empty)
-    } else {
+    // Current tags section
+    if (this._tags.length > 0) {
+      const header = document.createElement("p")
+      header.className = "px-3 pt-2 pb-1 text-[10px] uppercase tracking-wider font-semibold"
+      header.style.color = "var(--theme-text-faint)"
+      header.textContent = "Tags da nota"
+      this.dropdownTarget.appendChild(header)
+
+      for (const tag of this._tags) {
+        const row = document.createElement("div")
+        row.className = "note-tag-dropdown-item"
+        row.innerHTML = `
+          <span class="note-tag-option-dot" style="background: ${tag.color_hex || "#6b7280"};"></span>
+          <span class="flex-1 text-sm truncate">${this._escapeHtml(tag.name)}</span>
+          <button type="button" class="note-tag-chip-remove" title="Remover tag">&times;</button>
+        `
+        row.querySelector(".note-tag-chip-remove").addEventListener("click", (e) => {
+          e.stopPropagation()
+          this._removeTag(tag.id)
+        })
+        this.dropdownTarget.appendChild(row)
+      }
+    }
+
+    // Available tags section
+    if (available.length > 0) {
+      if (this._tags.length > 0) {
+        const divider = document.createElement("div")
+        divider.className = "my-1"
+        divider.style.cssText = "height: 1px; background: var(--toolbar-border);"
+        this.dropdownTarget.appendChild(divider)
+      }
+
+      const header = document.createElement("p")
+      header.className = "px-3 pt-2 pb-1 text-[10px] uppercase tracking-wider font-semibold"
+      header.style.color = "var(--theme-text-faint)"
+      header.textContent = "Adicionar"
+      this.dropdownTarget.appendChild(header)
+
       for (const tag of available) {
         const btn = document.createElement("button")
         btn.type = "button"
@@ -103,6 +121,14 @@ export default class extends Controller {
       }
     }
 
+    if (this._tags.length === 0 && available.length === 0) {
+      const empty = document.createElement("p")
+      empty.className = "px-3 py-2 text-xs"
+      empty.style.color = "var(--theme-text-faint)"
+      empty.textContent = "Nenhuma tag disponível"
+      this.dropdownTarget.appendChild(empty)
+    }
+
     this.dropdownTarget.classList.remove("hidden")
   }
 
@@ -113,9 +139,9 @@ export default class extends Controller {
   }
 
   async _addTag(tag) {
-    this._closeDropdown()
     this._tags.push({ id: tag.id, name: tag.name, color_hex: tag.color_hex })
-    this._renderChips()
+    this._renderBadge()
+    this._openDropdown() // refresh dropdown contents
 
     const csrf = document.querySelector("meta[name='csrf-token']")?.content
     try {
@@ -133,7 +159,8 @@ export default class extends Controller {
 
   async _removeTag(tagId) {
     this._tags = this._tags.filter(t => t.id !== tagId)
-    this._renderChips()
+    this._renderBadge()
+    if (this._dropdownOpen) this._openDropdown() // refresh dropdown contents
 
     const csrf = document.querySelector("meta[name='csrf-token']")?.content
     try {

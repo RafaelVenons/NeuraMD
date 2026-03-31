@@ -85,23 +85,20 @@
             data-editor-target="langBadge"></span>
     <% end %>
 
-    <%# Note tag chips %>
-    <div class="flex items-center gap-1 flex-shrink-0 flex-wrap" data-note-tags-target="chipContainer">
-    </div>
+    <%# Note tags — compact dropdown %>
     <div class="relative flex-shrink-0">
       <button type="button"
-              title="Adicionar tag à nota"
-              class="toolbar-btn"
-              data-note-tags-target="addButton"
+              title="Tags da nota"
+              class="toolbar-btn flex items-center gap-1"
+              data-note-tags-target="toggleButton"
               data-action="click->note-tags#toggleDropdown">
         <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
           <path d="M20.59 13.41l-7.17 7.17a2 2 0 01-2.83 0L2 12V2h10l8.59 8.59a2 2 0 010 2.82z"/>
           <line x1="7" y1="7" x2="7.01" y2="7"/>
-          <line x1="12" y1="2" x2="12" y2="6"/>
-          <line x1="10" y1="4" x2="14" y2="4"/>
         </svg>
+        <span class="text-xs" data-note-tags-target="badge"></span>
       </button>
-      <div class="hidden absolute left-0 top-full z-40 mt-1 w-48 max-h-60 overflow-y-auto rounded-lg border shadow-xl"
+      <div class="hidden absolute left-0 top-full z-40 mt-1 w-56 max-h-72 overflow-y-auto rounded-lg border shadow-xl"
            style="border-color: var(--toolbar-border); background: var(--theme-bg-secondary);"
            data-note-tags-target="dropdown">
       </div>
@@ -606,32 +603,79 @@
       </div>
     </div>
 
-    <%# Editor pane %>
-    <div id="editor-pane"
-         class="flex-1 min-w-0 flex flex-col relative"
-         data-controller="codemirror text-format stats-panel typewriter jump-to-line wikilink"
-         data-codemirror-initial-value-value="<%= @revision&.content_markdown.to_s %>"
-         data-wikilink-search-url-value="<%= search_notes_path %>"
-         data-wikilink-create-promise-url-value="<%= create_from_promise_note_path(@note.slug) %>"
-         data-wikilink-current-note-id-value="<%= @note.id %>"
-         data-editor-target="editorPane">
-      <div id="codemirror-host"
-           class="flex-1 min-h-0 overflow-hidden"
-           data-codemirror-target="host"
-           data-text-format-target="editor"
-           data-typewriter-target="editor"></div>
+    <%# Editor column (editor + context panel stacked vertically) %>
+    <div class="flex-1 min-w-0 flex flex-col"
+         data-editor-target="editorColumn">
+      <%# Editor pane %>
+      <div id="editor-pane"
+           class="flex-1 min-h-0 flex flex-col relative"
+           data-controller="codemirror text-format stats-panel typewriter jump-to-line wikilink"
+           data-codemirror-initial-value-value="<%= @revision&.content_markdown.to_s %>"
+           data-wikilink-search-url-value="<%= search_notes_path %>"
+           data-wikilink-create-promise-url-value="<%= create_from_promise_note_path(@note.slug) %>"
+           data-wikilink-current-note-id-value="<%= @note.id %>"
+           data-editor-target="editorPane">
+        <div id="codemirror-host"
+             class="flex-1 min-h-0 overflow-hidden"
+             data-codemirror-target="host"
+             data-text-format-target="editor"
+             data-typewriter-target="editor"></div>
 
-      <%# Wiki-link autocomplete dropdown %>
-      <div class="wikilink-dropdown" hidden
-           data-wikilink-target="dropdown"></div>
+        <%# Wiki-link autocomplete dropdown %>
+        <div class="wikilink-dropdown" hidden
+             data-wikilink-target="dropdown"></div>
 
-      <%# Stats bar %>
-      <div class="editor-stats-bar flex items-center gap-4 px-4 py-1 flex-shrink-0"
-           data-stats-panel-target="bar">
-        <span data-stats-panel-target="words">0 palavras</span>
-        <span data-stats-panel-target="lines">0 linhas</span>
-        <span data-stats-panel-target="position">L1, C1</span>
+        <%# Stats bar %>
+        <div class="editor-stats-bar flex items-center gap-4 px-4 py-1 flex-shrink-0"
+             data-stats-panel-target="bar">
+          <span data-stats-panel-target="words">0 palavras</span>
+          <span data-stats-panel-target="lines">0 linhas</span>
+          <span data-stats-panel-target="position">L1, C1</span>
+        </div>
       </div>
+
+      <%# Context panel (graph/backlinks) — below editor, beside preview %>
+      <div class="context-panel-resize-handle flex-shrink-0"
+           data-editor-target="contextResizeHandle"
+           data-action="pointerdown->editor#startContextResize"></div>
+
+      <section class="note-context-panel flex-shrink-0"
+               data-editor-target="contextPanel">
+        <div class="preview-layout-toolbar">
+          <label class="preview-layout-toolbar__field">
+            <span>Rodape</span>
+            <select data-editor-target="contextMode" data-action="change->editor#updateContextMode">
+              <option value="graph">Grafo</option>
+              <option value="backlinks">Backlinks</option>
+              <option value="hidden">Oculto</option>
+            </select>
+          </label>
+        </div>
+
+        <div class="note-graph-panel"
+             data-editor-target="graphPanel">
+          <div class="note-graph-embed"
+             data-controller="graph"
+             data-graph-data-url-value="<%= api_graph_path %>"
+             data-graph-initial-focused-node-id-value="<%= @note.id %>"
+             data-graph-embedded-mode-value="true">
+            <div class="note-graph-embed__meta hidden" data-graph-target="meta">Carregando grafo...</div>
+            <div class="note-graph-embed__canvas">
+              <div class="note-graph-embed__host" data-graph-target="graphHost"></div>
+              <div class="note-graph-embed__tooltip-layer" data-graph-target="tooltipLayer"></div>
+            </div>
+            <div class="note-graph-embed__empty hidden" data-graph-target="empty">
+              Nenhum vizinho ficou visivel no grafo.
+            </div>
+            <div class="note-graph-embed__error hidden" data-graph-target="error"></div>
+          </div>
+        </div>
+
+        <section class="backlinks-panel hidden"
+                 data-editor-target="backlinksPanel">
+          <%= render "notes/backlinks_content", note: @note %>
+        </section>
+      </section>
     </div>
 
     <%# Divider %>
@@ -756,48 +800,6 @@ AI_ENABLED_PROVIDERS=ollama</pre>
             <p style="color: var(--theme-text-faint); font-style: italic;">Comece a digitar para ver o preview...</p>
           </div>
         </div>
-
-        <div class="preview-context-resize-handle"
-             data-editor-target="contextResizeHandle"
-             data-action="pointerdown->editor#startContextResize"></div>
-
-        <section class="note-context-panel"
-                 data-editor-target="contextPanel">
-          <div class="preview-layout-toolbar">
-            <label class="preview-layout-toolbar__field">
-              <span>Rodape</span>
-              <select data-editor-target="contextMode" data-action="change->editor#updateContextMode">
-                <option value="graph">Grafo</option>
-                <option value="backlinks">Backlinks</option>
-                <option value="hidden">Oculto</option>
-              </select>
-            </label>
-          </div>
-
-          <div class="note-graph-panel"
-               data-editor-target="graphPanel">
-            <div class="note-graph-embed"
-               data-controller="graph"
-               data-graph-data-url-value="<%= api_graph_path %>"
-               data-graph-initial-focused-node-id-value="<%= @note.id %>"
-               data-graph-embedded-mode-value="true">
-              <div class="note-graph-embed__meta hidden" data-graph-target="meta">Carregando grafo...</div>
-              <div class="note-graph-embed__canvas">
-                <div class="note-graph-embed__host" data-graph-target="graphHost"></div>
-                <div class="note-graph-embed__tooltip-layer" data-graph-target="tooltipLayer"></div>
-              </div>
-              <div class="note-graph-embed__empty hidden" data-graph-target="empty">
-                Nenhum vizinho ficou visivel no grafo.
-              </div>
-              <div class="note-graph-embed__error hidden" data-graph-target="error"></div>
-            </div>
-          </div>
-
-          <section class="backlinks-panel hidden"
-                   data-editor-target="backlinksPanel">
-            <%= render "notes/backlinks_content", note: @note %>
-          </section>
-        </section>
 
       </div>
     </div>
