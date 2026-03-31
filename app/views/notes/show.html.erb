@@ -250,6 +250,16 @@
       </svg>
     </button>
 
+    <button title="Propriedades (Ctrl+Shift+P)"
+            class="toolbar-btn"
+            data-action="click->editor#toggleProperties"
+            data-editor-target="propertiesToggleBtn">
+      <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M12 3H5a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/>
+        <path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/>
+      </svg>
+    </button>
+
     <%# Divider %>
     <div class="w-px h-5 flex-shrink-0" style="background: var(--toolbar-border)"></div>
 
@@ -801,6 +811,39 @@ AI_ENABLED_PROVIDERS=ollama</pre>
           </div>
         </div>
 
+      </div>
+    </div>
+
+    <%# ── Properties panel (right sidebar) ──────────────────── %>
+    <% props_data = (@revision&.properties_data || {}) %>
+    <div id="properties-panel"
+         class="properties-panel hidden"
+         data-controller="properties-panel"
+         data-properties-panel-properties-url-value="<%= properties_note_path(@note.slug) %>"
+         data-properties-panel-initial-definitions-value="<%= PropertyDefinition.active.order(:position, :key).map { |d| {key: d.key, value_type: d.value_type, label: d.label, description: d.description, config: d.config} }.to_json %>"
+         data-properties-panel-initial-properties-value="<%= props_data.except("_errors").to_json %>"
+         data-properties-panel-initial-errors-value="<%= (props_data.dig("_errors") || {}).to_json %>"
+         data-editor-target="propertiesPanel">
+      <div class="properties-panel-header">
+        <span class="text-xs font-semibold uppercase tracking-wider" style="color: var(--theme-text-faint);">Propriedades</span>
+      </div>
+      <div class="properties-panel-list" data-properties-panel-target="list"></div>
+      <div class="properties-panel-footer">
+        <div class="relative">
+          <button type="button"
+                  class="properties-add-btn"
+                  data-properties-panel-target="addButton"
+                  data-action="click->properties-panel#toggleAddDropdown">
+            <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+            </svg>
+            Adicionar
+          </button>
+          <div class="hidden absolute left-0 bottom-full z-40 mb-1 w-full max-h-48 overflow-y-auto rounded-lg border shadow-xl"
+               style="border-color: var(--toolbar-border); background: var(--theme-bg-secondary);"
+               data-properties-panel-target="addDropdown">
+          </div>
+        </div>
       </div>
     </div>
   </div>

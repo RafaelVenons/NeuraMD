@@ -34,6 +34,7 @@ Rails.application.routes.draw do
       get :search
     end
     member do
+      patch :properties, to: "properties#update"
       post :create_from_promise
       get  :ai_status, to: "ai#status"
       post :ai_review, to: "ai#review"

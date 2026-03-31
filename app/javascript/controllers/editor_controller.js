@@ -7,7 +7,8 @@ export default class extends Controller {
     "contextPanel", "graphPanel", "backlinksPanel", "contextMode",
     "previewResizeHandle", "contextResizeHandle",
     "titleInput", "langBadge", "saveStatus",
-    "previewToggleBtn", "typewriterBtn", "primaryActionButton",
+    "previewToggleBtn", "propertiesToggleBtn", "propertiesPanel",
+    "typewriterBtn", "primaryActionButton",
     "revisionsButton", "revisionsMenu", "revisionsList", "typewriterExitBtn"
   ]
   static values = {
@@ -24,6 +25,7 @@ export default class extends Controller {
 
   connect() {
     this._previewVisible = true
+    this._propertiesVisible = false
     this._revisionsOpen = false
     this._revisionsLoaded = false
     this._revisionsById = new Map()
@@ -87,6 +89,17 @@ export default class extends Controller {
     }
 
     this._syncEditorWidthMode()
+  }
+
+  toggleProperties() {
+    this._propertiesVisible = !this._propertiesVisible
+    if (this.hasPropertiesPanelTarget) {
+      this.propertiesPanelTarget.classList.toggle("hidden", !this._propertiesVisible)
+    }
+    if (this.hasPropertiesToggleBtnTarget) {
+      this.propertiesToggleBtnTarget.classList.toggle("toolbar-btn--active", this._propertiesVisible)
+    }
+    this._persistLayoutState()
   }
 
   showPreview() {
@@ -383,6 +396,13 @@ export default class extends Controller {
     this.contextModeTarget.value = stored.contextMode || "graph"
     this._applyContextHeight(this._contextHeight)
     this._applyContextMode(this.contextModeTarget.value)
+
+    if (stored.propertiesVisible && this.hasPropertiesPanelTarget) {
+      this._propertiesVisible = true
+      this.propertiesPanelTarget.classList.remove("hidden")
+      if (this.hasPropertiesToggleBtnTarget) this.propertiesToggleBtnTarget.classList.add("toolbar-btn--active")
+    }
+
     this._syncEditorWidthMode()
   }
 
@@ -391,6 +411,7 @@ export default class extends Controller {
       if (!this._typewriterFocusMode) {
         this._storedTypewriterLayout = {
           previewVisible: this._previewVisible,
+          propertiesVisible: this._propertiesVisible,
           previewPaneFlex: this.previewPaneTarget.style.flex,
           contextMode: this.contextModeTarget.value,
           contextHeight: this._contextHeight
@@ -406,6 +427,8 @@ export default class extends Controller {
       this.previewResizeHandleTarget.classList.add("hidden")
       this.editorPaneTarget.style.flex = "1 1 100%"
       this.previewToggleBtnTarget.classList.remove("toolbar-btn--active")
+      if (this.hasPropertiesPanelTarget) this.propertiesPanelTarget.classList.add("hidden")
+      if (this.hasPropertiesToggleBtnTarget) this.propertiesToggleBtnTarget.classList.remove("toolbar-btn--active")
       if (this.hasTypewriterExitBtnTarget) {
         this.typewriterExitBtnTarget.setAttribute("aria-hidden", "false")
       }
@@ -434,6 +457,12 @@ export default class extends Controller {
       this.previewPaneTarget.style.flex = stored.previewPaneFlex || ""
       this.editorPaneTarget.style.flex = "1 1 100%"
       this.previewToggleBtnTarget.classList.remove("toolbar-btn--active")
+    }
+
+    if (stored.propertiesVisible && this.hasPropertiesPanelTarget) {
+      this._propertiesVisible = true
+      this.propertiesPanelTarget.classList.remove("hidden")
+      if (this.hasPropertiesToggleBtnTarget) this.propertiesToggleBtnTarget.classList.add("toolbar-btn--active")
     }
 
     this._storedTypewriterLayout = null
@@ -506,7 +535,8 @@ export default class extends Controller {
       previewWidthRatio: this._previewWidthRatio,
       contextHeight: this._contextHeight,
       contextMode: this.contextModeTarget.value,
-      previewVisible: this._previewVisible
+      previewVisible: this._previewVisible,
+      propertiesVisible: this._propertiesVisible
     }
     window.localStorage?.setItem(this._layoutStorageKey, JSON.stringify(payload))
   }
@@ -565,6 +595,11 @@ export default class extends Controller {
       if (ctrl && e.shiftKey && e.key === "E") {
         e.preventDefault()
         this._toggleEmojiPicker()
+        return
+      }
+      if (ctrl && e.shiftKey && e.key === "P") {
+        e.preventDefault()
+        this.toggleProperties()
         return
       }
       if (ctrl && e.key === "p") {

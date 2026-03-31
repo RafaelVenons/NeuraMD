@@ -462,6 +462,112 @@
     @apply inline-block w-2.5 h-2.5 rounded-full flex-shrink-0;
   }
 
+  /* Properties panel */
+  .properties-panel {
+    width: 240px;
+    flex-shrink: 0;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    border-left: 1px solid var(--toolbar-border);
+    background: var(--theme-bg-secondary);
+  }
+  .properties-panel-header {
+    @apply flex items-center px-3 py-2 border-b;
+    border-color: var(--toolbar-border);
+  }
+  .properties-panel-list {
+    @apply flex-1 overflow-y-auto px-3 py-2 space-y-2;
+  }
+  .properties-panel-footer {
+    @apply px-3 py-2 border-t;
+    border-color: var(--toolbar-border);
+  }
+  .properties-empty {
+    @apply text-xs py-4 text-center;
+    color: var(--theme-text-faint);
+  }
+  .properties-row {
+    @apply rounded-lg p-2;
+    background: var(--theme-bg-primary);
+    border: 1px solid transparent;
+  }
+  .properties-row--error {
+    border-color: var(--theme-error, #ef4444);
+  }
+  .properties-row-header {
+    @apply flex items-center justify-between mb-1;
+  }
+  .properties-row-label {
+    @apply text-xs font-medium truncate;
+    color: var(--theme-text-secondary);
+  }
+  .properties-row-remove {
+    @apply cursor-pointer opacity-50 hover:opacity-100;
+    font-size: 14px;
+    line-height: 1;
+    background: none;
+    border: none;
+    padding: 0;
+    color: var(--theme-text-muted);
+  }
+  .properties-row-error {
+    @apply text-xs mt-1;
+    color: var(--theme-error, #ef4444);
+  }
+  .properties-input {
+    @apply w-full rounded border px-2 py-1 text-xs;
+    background: var(--theme-bg-secondary);
+    border-color: var(--theme-border);
+    color: var(--theme-text-primary);
+    outline: none;
+  }
+  .properties-input:focus {
+    border-color: var(--theme-accent);
+  }
+  .properties-textarea {
+    resize: vertical;
+    min-height: 40px;
+  }
+  .properties-checkbox-wrapper {
+    @apply flex items-center gap-2 py-0.5 cursor-pointer;
+  }
+  .properties-checkbox {
+    @apply rounded;
+    accent-color: var(--theme-accent);
+  }
+  .properties-multi-enum {
+    @apply flex flex-wrap gap-1;
+  }
+  .properties-multi-enum-option {
+    @apply flex items-center gap-1 text-xs cursor-pointer;
+    color: var(--theme-text-secondary);
+  }
+  .properties-add-btn {
+    @apply flex items-center gap-1 w-full px-2 py-1.5 text-xs rounded cursor-pointer;
+    color: var(--theme-text-secondary);
+    background: none;
+    border: 1px dashed var(--theme-border);
+  }
+  .properties-add-btn:hover {
+    border-color: var(--theme-accent);
+    color: var(--theme-accent);
+  }
+  .properties-add-option {
+    @apply flex items-center gap-2 w-full px-3 py-1.5 text-xs text-left cursor-pointer;
+    color: var(--theme-text-primary);
+    background: none;
+    border: none;
+  }
+  .properties-add-option:hover {
+    background: var(--theme-bg-hover);
+  }
+  .properties-add-option-type {
+    @apply rounded px-1 py-0.5 text-[10px] font-mono;
+    background: var(--theme-bg-primary);
+    color: var(--theme-text-faint);
+  }
+
   /* TTS dialog & player */
   .tts-select {
     @apply w-full rounded-lg border px-2 py-1.5 text-sm;
@@ -1872,6 +1978,7 @@
   body.typewriter-mode .preview-context-resize-handle,
   body.typewriter-mode .context-panel-resize-handle,
   body.typewriter-mode .note-context-panel,
+  body.typewriter-mode .properties-panel,
   body.typewriter-mode [data-ai-review-target="queueDock"],
   body.typewriter-mode [data-tts-target="player"] {
     display: none !important;

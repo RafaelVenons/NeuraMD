@@ -310,7 +310,8 @@ class NotesController < ApplicationController
         ai_resolve_template: resolve_ai_request_queue_note_path(note.slug, "__REQUEST_ID__"),
         ai_create_translated_note_template: ai_request_translated_note_note_path(note.slug, "__REQUEST_ID__"),
         wikilink_create_promise: create_from_promise_note_path(note.slug),
-        link_info_template: "#{link_info_note_path(note.slug)}?dst_uuid=__DST_UUID__"
+        link_info_template: "#{link_info_note_path(note.slug)}?dst_uuid=__DST_UUID__",
+        properties: properties_note_path(note.slug)
       },
       ai: {
         note_title: note.title,
@@ -325,7 +326,10 @@ class NotesController < ApplicationController
       link_tags_map: outgoing_link_tags_payload(note),
       note_tags: note.tags.where(tag_scope: %w[note both]).map { |t| { id: t.id, name: t.name, color_hex: t.color_hex } },
       properties: (revision&.properties_data || {}).except("_errors"),
-      properties_errors: (revision&.properties_data || {}).dig("_errors") || {}
+      properties_errors: (revision&.properties_data || {}).dig("_errors") || {},
+      property_definitions: PropertyDefinition.active.order(:position, :key).map { |d|
+        {key: d.key, value_type: d.value_type, label: d.label, description: d.description, config: d.config}
+      }
     }
   end
 

@@ -102,6 +102,7 @@ export default class extends Controller {
     this._hydrateController("tag-sidebar", payload)
     this._hydrateController("tts", payload)
     this._hydrateController("note-tags", payload)
+    this._hydrateController("properties-panel", payload)
 
     const embeddedGraph = this.element.querySelector("[data-controller~='graph']")
     const graph = embeddedGraph
