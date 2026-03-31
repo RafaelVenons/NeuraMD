@@ -1,5 +1,6 @@
 require "rails_helper"
 require "securerandom"
+require "rake"
 
 RSpec.describe "Notes", type: :request do
   let(:user) { create(:user) }
@@ -689,6 +690,162 @@ RSpec.describe "Notes", type: :request do
       get note_path(old_slug)
       expect(response).to have_http_status(:moved_permanently)
       expect(response).to redirect_to(note_path("redirect-html-new"))
+    end
+  end
+
+  describe "critical operation regressions (EPIC-00.4)" do
+    before(:all) { Rails.application.load_tasks }
+    let!(:author) { create(:user) }
+
+    # -- delete / restore --
+
+    it "delete hides note from search" do
+      note = create(:note, title: "Deletavel Unico")
+      Notes::CheckpointService.call(note: note, content: "corpo", author: author)
+      note.soft_delete!
+
+      get search_notes_path(q: "Deletavel Unico", format: :json)
+      titles = response.parsed_body.map { |n| n["title"] }
+      expect(titles).not_to include("Deletavel Unico")
+    end
+
+    it "delete hides note from graph" do
+      note = create(:note, title: "Grafo Deletavel")
+      Notes::CheckpointService.call(note: note, content: "corpo grafo", author: author)
+      note.soft_delete!
+
+      get api_graph_path, headers: {"Accept" => "application/json"}
+      ids = response.parsed_body["notes"]&.map { |n| n["id"] } || []
+      expect(ids).not_to include(note.id)
+    end
+
+    it "restore brings note back to search" do
+      note = create(:note, title: "Restauravel Unico")
+      Notes::CheckpointService.call(note: note, content: "corpo", author: author)
+      note.soft_delete!
+      note.restore!
+
+      get search_notes_path(q: "Restauravel Unico", format: :json)
+      titles = response.parsed_body.map { |n| n["title"] }
+      expect(titles).to include("Restauravel Unico")
+    end
+
+    it "restore brings note back to graph" do
+      note = create(:note, title: "Grafo Restauravel")
+      Notes::CheckpointService.call(note: note, content: "corpo", author: author)
+      note.soft_delete!
+      note.restore!
+
+      get api_graph_path, headers: {"Accept" => "application/json"}
+      ids = response.parsed_body["notes"]&.map { |n| n["id"] } || []
+      expect(ids).to include(note.id)
+    end
+
+    # -- add / remove link --
+
+    it "checkpoint creates link and graph reflects it" do
+      source = create(:note, title: "Link Source")
+      target = create(:note, title: "Link Target")
+      Notes::CheckpointService.call(note: target, content: "target body", author: author)
+      Notes::CheckpointService.call(note: source, content: "ref [[Link Target|#{target.id}]]", author: author)
+
+      get api_graph_path, headers: {"Accept" => "application/json"}
+      json = response.parsed_body
+      edge = json["links"]&.find { |l| l["src_note_id"] == source.id && l["dst_note_id"] == target.id }
+      expect(edge).to be_present
+    end
+
+    it "removing link from content deactivates it in graph" do
+      source = create(:note, title: "Unlink Source")
+      target = create(:note, title: "Unlink Target")
+      Notes::CheckpointService.call(note: target, content: "target body", author: author)
+      Notes::CheckpointService.call(note: source, content: "ref [[Unlink Target|#{target.id}]]", author: author)
+
+      # Remove the link from content
+      Notes::CheckpointService.call(note: source, content: "no more links", author: author)
+
+      link = NoteLink.find_by(src_note_id: source.id, dst_note_id: target.id)
+      expect(link.active).to be false
+
+      get api_graph_path, headers: {"Accept" => "application/json"}
+      json = response.parsed_body
+      edge = json["links"]&.find { |l| l["src_note_id"] == source.id && l["dst_note_id"] == target.id }
+      expect(edge).to be_nil
+    end
+
+    # -- reindex --
+
+    it "reindex restores orphaned link" do
+      source = create(:note, title: "Reindex Source")
+      target = create(:note, title: "Reindex Target")
+      Notes::CheckpointService.call(note: target, content: "target", author: author)
+      Notes::CheckpointService.call(note: source, content: "ref [[Reindex Target|#{target.id}]]", author: author)
+
+      # Simulate orphaned state
+      NoteLink.where(src_note_id: source.id).update_all(active: false)
+      expect(NoteLink.find_by(src_note_id: source.id, dst_note_id: target.id).active).to be false
+
+      Rake::Task["notes:reindex"].reenable
+      Rake::Task["notes:reindex"].invoke
+
+      expect(NoteLink.find_by(src_note_id: source.id, dst_note_id: target.id).active).to be true
+    end
+
+    # -- preview (backlinks) --
+
+    it "backlinks include linking note after checkpoint" do
+      source = create(:note, title: "Backlink Source")
+      target = create(:note, title: "Backlink Target")
+      Notes::CheckpointService.call(note: target, content: "target", author: author)
+      Notes::CheckpointService.call(note: source, content: "ref [[Backlink Target|#{target.id}]]", author: author)
+
+      get note_path(target.slug), headers: {"Accept" => "application/json"}
+      html = response.parsed_body.dig("html", "backlinks")
+      expect(html).to include("Backlink Source")
+    end
+
+    it "backlinks update after linking note is renamed" do
+      source = create(:note, title: "Rename Backlink Source")
+      target = create(:note, title: "Rename Backlink Target")
+      Notes::CheckpointService.call(note: target, content: "target", author: author)
+      Notes::CheckpointService.call(note: source, content: "ref [[Rename Backlink Target|#{target.id}]]", author: author)
+
+      Notes::RenameService.call(note: source, new_title: "Source Renomeado")
+
+      get note_path(target.slug), headers: {"Accept" => "application/json"}
+      html = response.parsed_body.dig("html", "backlinks")
+      expect(html).to include("Source Renomeado")
+      expect(html).not_to include("Rename Backlink Source")
+    end
+
+    # -- search basics --
+
+    it "search finds note by content after checkpoint" do
+      note = create(:note, title: "Busca Conteudo")
+      Notes::CheckpointService.call(note: note, content: "mitocondria powerhouse", author: author)
+
+      get search_notes_path(q: "mitocondria", mode: "finder", format: :json)
+      slugs = response.parsed_body["results"]&.map { |n| n["slug"] } || []
+      expect(slugs).to include(note.slug)
+    end
+
+    # -- graph basics --
+
+    it "graph includes note with head revision" do
+      note = create(:note, title: "Grafo Basico")
+      Notes::CheckpointService.call(note: note, content: "conteudo", author: author)
+
+      get api_graph_path, headers: {"Accept" => "application/json"}
+      ids = response.parsed_body["notes"]&.map { |n| n["id"] } || []
+      expect(ids).to include(note.id)
+    end
+
+    it "graph excludes note without head revision" do
+      note = create(:note, title: "Sem Head")
+
+      get api_graph_path, headers: {"Accept" => "application/json"}
+      ids = response.parsed_body["notes"]&.map { |n| n["id"] } || []
+      expect(ids).not_to include(note.id)
     end
   end
 end
