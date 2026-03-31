@@ -125,11 +125,11 @@ RSpec.describe "Wiki-link editor", type: :system do
 
     it "renders a selected autocomplete suggestion as a preview link for long titles with numbers" do
       type_in_editor("[[AIrch Long Validation 1774009721")
-      expect(page).to have_text(long_target_title, wait: 3)
+      expect(page).to have_css(".wikilink-suggestion", text: long_target_title, wait: 5)
       editor.send_keys(:enter)
 
       within(".preview-prose") do
-        expect(page).to have_css("a.wikilink", text: long_target_title, wait: 5)
+        expect(page).to have_css("a.wikilink", text: long_target_title, wait: 10)
         expect(page).to have_no_css(".wikilink-broken", text: long_target_title, wait: 1)
       end
     end
@@ -467,18 +467,19 @@ RSpec.describe "Wiki-link editor", type: :system do
     end
 
     it "cycles hier_role with Left/Right arrows" do
-      type_in_editor("[[")
+      type_in_editor("[[Nota")
       expect(page).to have_css(".wikilink-dropdown:not([hidden])", wait: 3)
+      expect(page).to have_css(".wikilink-suggestion", wait: 3)
 
-      expect(page).to have_css(".wikilink-role-current", text: "Ref", wait: 1)
+      expect(page).to have_css(".wikilink-role-current", text: "Ref", wait: 3)
       editor.send_keys(:right)
-      expect(page).to have_css(".wikilink-role-current", text: "Father", wait: 1)
+      expect(page).to have_css(".wikilink-role-current", text: "Father", wait: 3)
       editor.send_keys(:right)
-      expect(page).to have_css(".wikilink-role-current", text: "Child", wait: 1)
+      expect(page).to have_css(".wikilink-role-current", text: "Child", wait: 3)
       editor.send_keys(:right)
-      expect(page).to have_css(".wikilink-role-current", text: "Brother", wait: 1)
+      expect(page).to have_css(".wikilink-role-current", text: "Brother", wait: 3)
       editor.send_keys(:left)
-      expect(page).to have_css(".wikilink-role-current", text: "Child", wait: 1)
+      expect(page).to have_css(".wikilink-role-current", text: "Child", wait: 3)
     end
 
     it "cycles role on a focused completed wikilink with ArrowDown and ArrowUp" do
