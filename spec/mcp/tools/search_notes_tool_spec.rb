@@ -51,4 +51,39 @@ RSpec.describe Mcp::Tools::SearchNotesTool do
     content = JSON.parse(response.content.first[:text])
     expect(content["notes"]).to be_an(Array)
   end
+
+  context "with property_filters" do
+    let(:user) { create(:user) }
+
+    before do
+      create(:property_definition, key: "status", value_type: "enum", config: {"options" => %w[draft review published]})
+      Properties::SetService.call(note: note1, changes: {"status" => "draft"}, author: user)
+      Properties::SetService.call(note: note2, changes: {"status" => "published"}, author: user)
+      note1.reload
+      note2.reload
+    end
+
+    it "filters by property value" do
+      response = described_class.call(query: "", property_filters: '{"status":"draft"}')
+      content = JSON.parse(response.content.first[:text])
+      titles = content["notes"].map { |n| n["title"] }
+
+      expect(titles).to include("Arquitetura do sistema")
+      expect(titles).not_to include("Busca textual avancada")
+    end
+
+    it "combines text search with property filter" do
+      response = described_class.call(query: "arquitetura", property_filters: '{"status":"published"}')
+      content = JSON.parse(response.content.first[:text])
+
+      expect(content["notes"]).to be_empty
+    end
+
+    it "ignores invalid property_filters JSON" do
+      response = described_class.call(query: "arquitetura", property_filters: "not-json")
+      content = JSON.parse(response.content.first[:text])
+
+      expect(content["notes"].length).to eq(1)
+    end
+  end
 end

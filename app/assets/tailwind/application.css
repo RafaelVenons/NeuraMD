@@ -568,6 +568,172 @@
     color: var(--theme-text-faint);
   }
 
+  /* Property definitions settings page */
+  .propdef-page {
+    max-width: 720px;
+    margin: 0 auto;
+  }
+  .propdef-header {
+    @apply mb-6;
+  }
+  .propdef-title {
+    @apply text-lg font-semibold;
+    color: var(--theme-text-primary);
+  }
+  .propdef-subtitle {
+    @apply text-sm mt-1;
+    color: var(--theme-text-secondary);
+  }
+  .propdef-list {
+    @apply space-y-2 mb-8;
+  }
+  .propdef-row {
+    @apply flex items-start gap-3 rounded-lg p-3;
+    background: var(--theme-bg-secondary);
+    border: 1px solid var(--toolbar-border);
+  }
+  .propdef-row--archived {
+    opacity: 0.5;
+  }
+  .propdef-row--dragging {
+    opacity: 0.7;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+  }
+  .propdef-row-drag {
+    @apply cursor-grab flex-shrink-0 pt-0.5;
+    color: var(--theme-text-faint);
+  }
+  .propdef-row-info {
+    @apply flex-1 min-w-0;
+  }
+  .propdef-row-main {
+    @apply flex items-center gap-2 flex-wrap;
+  }
+  .propdef-row-label {
+    @apply text-sm font-medium;
+    color: var(--theme-text-primary);
+  }
+  .propdef-row-key {
+    @apply text-xs px-1.5 py-0.5 rounded;
+    background: var(--theme-bg-primary);
+    color: var(--theme-text-faint);
+  }
+  .propdef-row-type {
+    @apply text-xs px-1.5 py-0.5 rounded font-mono;
+    background: var(--theme-bg-primary);
+    color: var(--theme-accent);
+  }
+  .propdef-row-badge {
+    @apply text-[10px] px-1.5 py-0.5 rounded uppercase font-semibold tracking-wider;
+  }
+  .propdef-row-badge--archived {
+    background: var(--theme-bg-primary);
+    color: var(--theme-text-faint);
+  }
+  .propdef-row-badge--system {
+    background: var(--theme-bg-primary);
+    color: var(--theme-accent);
+  }
+  .propdef-row-desc {
+    @apply text-xs mt-1;
+    color: var(--theme-text-secondary);
+  }
+  .propdef-row-config {
+    @apply text-xs mt-1 font-mono;
+    color: var(--theme-text-faint);
+  }
+  .propdef-row-actions {
+    @apply flex gap-1 flex-shrink-0;
+  }
+  .propdef-btn {
+    @apply inline-flex items-center gap-1 px-3 py-1.5 text-xs rounded-lg cursor-pointer;
+    background: var(--theme-bg-primary);
+    border: 1px solid var(--toolbar-border);
+    color: var(--theme-text-secondary);
+  }
+  .propdef-btn:hover {
+    border-color: var(--theme-accent);
+    color: var(--theme-text-primary);
+  }
+  .propdef-btn--sm {
+    @apply px-2 py-1;
+  }
+  .propdef-btn--primary {
+    background: var(--theme-accent);
+    border-color: var(--theme-accent);
+    color: #fff;
+  }
+  .propdef-btn--primary:hover {
+    opacity: 0.9;
+  }
+  .propdef-btn--danger:hover {
+    border-color: var(--theme-error, #ef4444);
+    color: var(--theme-error, #ef4444);
+  }
+  .propdef-create {
+    @apply rounded-lg p-4;
+    background: var(--theme-bg-secondary);
+    border: 1px solid var(--toolbar-border);
+  }
+  .propdef-create-title {
+    @apply text-sm font-semibold mb-3;
+    color: var(--theme-text-primary);
+  }
+  .propdef-create-grid {
+    @apply grid grid-cols-2 gap-3;
+  }
+  .propdef-field {
+    @apply mb-2;
+  }
+  .propdef-label {
+    @apply block text-xs font-medium mb-1;
+    color: var(--theme-text-secondary);
+  }
+  .propdef-input {
+    @apply w-full rounded-lg border px-2.5 py-1.5 text-sm;
+    background: var(--theme-bg-primary);
+    border-color: var(--theme-border);
+    color: var(--theme-text-primary);
+    outline: none;
+  }
+  .propdef-input:focus {
+    border-color: var(--theme-accent);
+  }
+  .propdef-hint {
+    @apply text-[11px] mt-0.5;
+    color: var(--theme-text-faint);
+  }
+  .propdef-error-text {
+    @apply text-xs;
+    color: var(--theme-error, #ef4444);
+  }
+  .propdef-config-number-row {
+    @apply flex gap-2;
+  }
+  .propdef-config-options {
+    resize: vertical;
+    min-height: 60px;
+  }
+  .propdef-modal {
+    @apply fixed inset-0 z-50 flex items-center justify-center;
+  }
+  .propdef-modal-backdrop {
+    @apply absolute inset-0;
+    background: rgba(0,0,0,0.6);
+  }
+  .propdef-modal-content {
+    @apply relative rounded-xl p-5 w-full max-w-md;
+    background: var(--theme-bg-secondary);
+    border: 1px solid var(--toolbar-border);
+  }
+  .propdef-modal-title {
+    @apply text-sm font-semibold mb-4;
+    color: var(--theme-text-primary);
+  }
+  .propdef-modal-actions {
+    @apply flex justify-end gap-2 mt-4;
+  }
+
   /* TTS dialog & player */
   .tts-select {
     @apply w-full rounded-lg border px-2 py-1.5 text-sm;

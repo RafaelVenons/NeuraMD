@@ -41,6 +41,19 @@ class Note < ApplicationRecord
       .limit(10)
   }
 
+  scope :with_property, ->(key, value) {
+    joins("INNER JOIN note_revisions ON note_revisions.id = notes.head_revision_id")
+      .where("note_revisions.properties_data @> ?", {key => value}.to_json)
+  }
+
+  scope :with_property_in, ->(key, values) {
+    joins("INNER JOIN note_revisions ON note_revisions.id = notes.head_revision_id")
+      .where(
+        "note_revisions.properties_data ->> ? IN (?)",
+        key, values.map(&:to_s)
+      )
+  }
+
   def current_properties
     head_revision&.properties_data || {}
   end

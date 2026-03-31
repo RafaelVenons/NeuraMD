@@ -20,6 +20,12 @@ Rails.application.routes.draw do
   get "graph", to: "graphs#show", as: :graph
   get "api/graph", to: "api/graphs#show", as: :api_graph
 
+  resources :property_definitions, path: "settings/properties", only: [:index, :create, :update, :destroy] do
+    collection do
+      patch :reorder
+    end
+  end
+
   resources :tags, only: [:index, :create, :destroy]
 
   post   "note_tags", to: "note_tags#create", as: :note_tags

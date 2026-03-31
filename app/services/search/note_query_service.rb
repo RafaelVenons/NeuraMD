@@ -15,17 +15,18 @@ module Search
       keyword_init: true
     )
 
-    def self.call(scope:, query:, regex: false, page: 1, limit: DEFAULT_LIMIT)
-      new(scope:, query:, regex:, page:, limit:).call
+    def self.call(scope:, query:, regex: false, page: 1, limit: DEFAULT_LIMIT, property_filters: nil)
+      new(scope:, query:, regex:, page:, limit:, property_filters:).call
     end
 
-    def initialize(scope:, query:, regex:, page:, limit:)
+    def initialize(scope:, query:, regex:, page:, limit:, property_filters: nil)
       @scope = scope
       @query = query.to_s.strip
       @regex = ActiveModel::Type::Boolean.new.cast(regex)
       @page = [page.to_i, 1].max
       @limit = [[limit.to_i, 1].max, MAX_LIMIT].min
       @limit = DEFAULT_LIMIT if limit.to_i <= 0
+      @property_filters = property_filters.is_a?(Hash) ? property_filters.select { |_, v| v.present? || v == false } : {}
     end
 
     def call
@@ -44,7 +45,7 @@ module Search
 
     private
 
-    attr_reader :scope, :query, :regex, :page, :limit
+    attr_reader :scope, :query, :regex, :page, :limit, :property_filters
 
     def empty_query_result
       relation = joined_scope.order(updated_at: :desc)
@@ -78,10 +79,22 @@ module Search
     end
 
     def joined_scope
-      @joined_scope ||= scope
-        .merge(Note.with_latest_content)
-        .joins("LEFT JOIN note_revisions search_revisions ON search_revisions.id = notes.head_revision_id")
-        .includes(:head_revision)
+      @joined_scope ||= begin
+        base = scope
+          .merge(Note.with_latest_content)
+          .joins("LEFT JOIN note_revisions search_revisions ON search_revisions.id = notes.head_revision_id")
+          .includes(:head_revision)
+        apply_property_filters(base)
+      end
+    end
+
+    def apply_property_filters(relation)
+      return relation if property_filters.blank?
+
+      property_filters.each do |key, value|
+        relation = relation.where("search_revisions.properties_data @> ?", {key => value}.to_json)
+      end
+      relation
     end
 
     def load_page(relation)

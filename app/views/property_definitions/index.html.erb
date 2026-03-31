@@ -1,0 +1,154 @@
+<% content_for :title, "Propriedades — NeuraMD" %>
+
+<div class="propdef-page" data-controller="property-definitions"
+     data-property-definitions-create-url-value="<%= property_definitions_path %>"
+     data-property-definitions-reorder-url-value="<%= reorder_property_definitions_path %>">
+
+  <div class="propdef-header">
+    <h1 class="propdef-title">Definições de Propriedades</h1>
+    <p class="propdef-subtitle">Gerencie os campos de propriedade disponíveis para todas as notas.</p>
+  </div>
+
+  <%# ── Definitions list ──────────────────────────── %>
+  <div class="propdef-list" data-property-definitions-target="list">
+    <% @definitions.each do |d| %>
+      <div class="propdef-row<%= " propdef-row--archived" if d.archived %>"
+           data-id="<%= d.id %>"
+           data-property-definitions-target="row">
+        <div class="propdef-row-drag" data-action="mousedown->property-definitions#startDrag" title="Arrastar para reordenar">
+          <svg class="w-4 h-4" viewBox="0 0 24 24" fill="currentColor"><circle cx="9" cy="6" r="1.5"/><circle cx="15" cy="6" r="1.5"/><circle cx="9" cy="12" r="1.5"/><circle cx="15" cy="12" r="1.5"/><circle cx="9" cy="18" r="1.5"/><circle cx="15" cy="18" r="1.5"/></svg>
+        </div>
+
+        <div class="propdef-row-info">
+          <div class="propdef-row-main">
+            <span class="propdef-row-label"><%= d.label.presence || d.key %></span>
+            <code class="propdef-row-key"><%= d.key %></code>
+            <span class="propdef-row-type"><%= d.value_type %></span>
+            <% if d.archived %>
+              <span class="propdef-row-badge propdef-row-badge--archived">arquivada</span>
+            <% end %>
+            <% if d.system %>
+              <span class="propdef-row-badge propdef-row-badge--system">sistema</span>
+            <% end %>
+          </div>
+          <% if d.description.present? %>
+            <p class="propdef-row-desc"><%= d.description %></p>
+          <% end %>
+          <% if d.config.present? && d.config != {} %>
+            <p class="propdef-row-config">
+              <% if d.config["options"].present? %>
+                Opções: <%= d.config["options"].join(", ") %>
+              <% end %>
+              <% if d.config["min"].present? || d.config["max"].present? %>
+                Range: <%= d.config["min"] || "−∞" %> — <%= d.config["max"] || "∞" %>
+              <% end %>
+            </p>
+          <% end %>
+        </div>
+
+        <div class="propdef-row-actions">
+          <button type="button" class="propdef-btn propdef-btn--sm"
+                  data-action="click->property-definitions#editRow"
+                  title="Editar">
+            <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3H5a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+          </button>
+          <% unless d.archived %>
+            <button type="button" class="propdef-btn propdef-btn--sm propdef-btn--danger"
+                    data-action="click->property-definitions#archiveRow"
+                    title="Arquivar">
+              <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 8v13H3V8"/><path d="M1 3h22v5H1z"/><path d="M10 12h4"/></svg>
+            </button>
+          <% end %>
+        </div>
+      </div>
+    <% end %>
+  </div>
+
+  <%# ── Edit modal (hidden, reused) ──────────────── %>
+  <div class="propdef-modal hidden" data-property-definitions-target="editModal">
+    <div class="propdef-modal-backdrop" data-action="click->property-definitions#closeEdit"></div>
+    <div class="propdef-modal-content">
+      <h2 class="propdef-modal-title" data-property-definitions-target="editTitle">Editar Definição</h2>
+      <form data-action="submit->property-definitions#saveEdit">
+        <input type="hidden" data-property-definitions-target="editId">
+
+        <div class="propdef-field">
+          <label class="propdef-label">Label</label>
+          <input type="text" class="propdef-input" data-property-definitions-target="editLabel" placeholder="Nome visível">
+        </div>
+
+        <div class="propdef-field">
+          <label class="propdef-label">Descrição</label>
+          <input type="text" class="propdef-input" data-property-definitions-target="editDescription" placeholder="Descrição opcional">
+        </div>
+
+        <div class="propdef-field" data-property-definitions-target="editConfigField">
+          <label class="propdef-label">Configuração</label>
+          <div data-property-definitions-target="editConfigContainer"></div>
+        </div>
+
+        <div class="propdef-modal-actions">
+          <button type="button" class="propdef-btn" data-action="click->property-definitions#closeEdit">Cancelar</button>
+          <button type="submit" class="propdef-btn propdef-btn--primary">Salvar</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <%# ── Create form ───────────────────────────────── %>
+  <div class="propdef-create">
+    <h2 class="propdef-create-title">Nova Definição</h2>
+    <form data-action="submit->property-definitions#create">
+      <div class="propdef-create-grid">
+        <div class="propdef-field">
+          <label class="propdef-label">Chave (key)</label>
+          <input type="text" class="propdef-input" data-property-definitions-target="createKey"
+                 placeholder="ex: status" pattern="[a-z][a-z0-9_]*" required>
+          <p class="propdef-hint">Lowercase, sem espaços. Imutável após criação.</p>
+        </div>
+
+        <div class="propdef-field">
+          <label class="propdef-label">Tipo</label>
+          <select class="propdef-input" data-property-definitions-target="createType"
+                  data-action="change->property-definitions#onTypeChange" required>
+            <option value="">Selecione...</option>
+            <option value="text">text</option>
+            <option value="long_text">long_text</option>
+            <option value="number">number</option>
+            <option value="boolean">boolean</option>
+            <option value="date">date</option>
+            <option value="datetime">datetime</option>
+            <option value="enum">enum</option>
+            <option value="multi_enum">multi_enum</option>
+            <option value="url">url</option>
+            <option value="note_reference">note_reference</option>
+            <option value="list">list</option>
+          </select>
+        </div>
+
+        <div class="propdef-field">
+          <label class="propdef-label">Label</label>
+          <input type="text" class="propdef-input" data-property-definitions-target="createLabel"
+                 placeholder="Nome visível (opcional)">
+        </div>
+
+        <div class="propdef-field">
+          <label class="propdef-label">Descrição</label>
+          <input type="text" class="propdef-input" data-property-definitions-target="createDescription"
+                 placeholder="Descrição opcional">
+        </div>
+      </div>
+
+      <div class="propdef-field hidden" data-property-definitions-target="createConfigField">
+        <label class="propdef-label">Configuração</label>
+        <div data-property-definitions-target="createConfigContainer"></div>
+      </div>
+
+      <div class="propdef-field" data-property-definitions-target="createError" style="display:none;">
+        <p class="propdef-error-text" data-property-definitions-target="createErrorText"></p>
+      </div>
+
+      <button type="submit" class="propdef-btn propdef-btn--primary mt-3">Criar Definição</button>
+    </form>
+  </div>
+</div>
