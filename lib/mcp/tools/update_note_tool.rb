@@ -100,7 +100,7 @@ module Mcp
 
       def self.set_properties!(note, properties_json)
         changes = JSON.parse(properties_json)
-        Properties::SetService.call(note: note, changes: changes)
+        Properties::SetService.call(note: note, changes: changes, strict: false)
       rescue JSON::ParserError => e
         raise "Invalid JSON for set_properties: #{e.message}"
       end

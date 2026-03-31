@@ -7,6 +7,11 @@ module Properties
         raw.to_s.strip
       end
 
+      def self.normalize(value, _config = {})
+        return value unless value.is_a?(String)
+        value.strip
+      end
+
       def self.validate(value, _config = {})
         errors = []
         errors << "must be a string" unless value.is_a?(String)

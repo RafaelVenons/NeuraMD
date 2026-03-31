@@ -45,6 +45,14 @@ class Note < ApplicationRecord
     head_revision&.properties_data || {}
   end
 
+  def properties_errors
+    current_properties.dig("_errors") || {}
+  end
+
+  def properties_valid?
+    properties_errors.empty?
+  end
+
   def soft_delete!
     update!(deleted_at: Time.current)
     publish_event("note.deleted", note_id: id, slug: slug)

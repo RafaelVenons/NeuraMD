@@ -11,19 +11,21 @@ module Properties
       end
     end
 
-    def self.call(note:, changes:, author: nil)
-      new(note:, changes:, author:).call
+    def self.call(note:, changes:, author: nil, strict: true)
+      new(note:, changes:, author:, strict:).call
     end
 
-    def initialize(note:, changes:, author:)
+    def initialize(note:, changes:, author:, strict:)
       @note = note
       @changes = changes
       @author = author
+      @strict = strict
     end
 
     def call
       registry = PropertyDefinition.registry
       current = @note.head_revision&.properties_data&.dup || {}
+      current_errors = current.delete("_errors") || {}
       errors = {}
       casted_changes = {}
 
@@ -37,25 +39,35 @@ module Properties
         end
 
         casted = TypeRegistry.cast(definition.value_type, value, definition.config)
-        type_errors = TypeRegistry.validate(definition.value_type, casted, definition.config)
+        normalized = TypeRegistry.normalize(definition.value_type, casted, definition.config)
+        type_errors = TypeRegistry.validate(definition.value_type, normalized, definition.config)
 
         if type_errors.any?
-          errors[key] = type_errors
+          if @strict
+            errors[key] = type_errors
+          else
+            casted_changes[key] = normalized
+            current_errors[key] = type_errors
+          end
         else
-          casted_changes[key] = casted
+          casted_changes[key] = normalized
+          current_errors.delete(key)
         end
       end
 
-      raise ValidationError, errors if errors.any?
+      raise ValidationError, errors if @strict && errors.any?
 
       new_properties = current.dup
       casted_changes.each do |key, value|
         if value.nil?
           new_properties.delete(key)
+          current_errors.delete(key)
         else
           new_properties[key] = value
         end
       end
+
+      new_properties["_errors"] = current_errors if current_errors.any?
 
       content = @note.head_revision&.content_markdown || ""
 

@@ -29,11 +29,18 @@ RSpec.describe Properties::TypeRegistry do
     end
   end
 
+  describe ".normalize" do
+    it "delegates to the type handler" do
+      expect(described_class.normalize("enum", " Draft ")).to eq("draft")
+    end
+  end
+
   describe "all V1 types are registered" do
     PropertyDefinition::VALUE_TYPES.each do |type_name|
-      it "has a handler for '#{type_name}'" do
+      it "has a handler for '#{type_name}' with cast, normalize, validate" do
         handler = described_class.handler_for(type_name)
         expect(handler).to respond_to(:cast)
+        expect(handler).to respond_to(:normalize)
         expect(handler).to respond_to(:validate)
       end
     end
@@ -164,6 +171,10 @@ RSpec.describe "Properties::Types" do
       expect(described_class.cast(" draft ")).to eq("draft")
     end
 
+    it "normalizes to downcase" do
+      expect(described_class.normalize("Draft")).to eq("draft")
+    end
+
     it "validates value is in options" do
       expect(described_class.validate("draft", config)).to be_empty
     end
@@ -183,6 +194,10 @@ RSpec.describe "Properties::Types" do
 
     it "passes through arrays" do
       expect(described_class.cast(%w[tag_a])).to eq(%w[tag_a])
+    end
+
+    it "normalizes: downcase, uniq, sort" do
+      expect(described_class.normalize(%w[Tag_B tag_a Tag_B])).to eq(%w[tag_a tag_b])
     end
 
     it "validates all values in options" do
@@ -236,6 +251,10 @@ RSpec.describe "Properties::Types" do
 
     it "passes through arrays" do
       expect(described_class.cast(%w[x y])).to eq(%w[x y])
+    end
+
+    it "normalizes: strips items, rejects blanks" do
+      expect(described_class.normalize(["a ", " ", "b"])).to eq(%w[a b])
     end
 
     it "validates array of strings" do

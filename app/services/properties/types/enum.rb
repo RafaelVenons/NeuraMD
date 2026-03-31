@@ -5,6 +5,11 @@ module Properties
         raw.to_s.strip
       end
 
+      def self.normalize(value, _config = {})
+        return value unless value.is_a?(String)
+        value.strip.downcase
+      end
+
       def self.validate(value, config = {})
         errors = []
         unless value.is_a?(String)

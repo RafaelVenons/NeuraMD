@@ -22,6 +22,10 @@ module Properties
       handler_for(type_name).cast(raw_value, config)
     end
 
+    def self.normalize(type_name, value, config = {})
+      handler_for(type_name).normalize(value, config)
+    end
+
     def self.validate(type_name, value, config = {})
       handler_for(type_name).validate(value, config)
     end

@@ -117,5 +117,76 @@ RSpec.describe Properties::SetService do
 
       expect(events.first[:action]).to eq("removed")
     end
+
+    it "normalizes values before storing" do
+      revision = described_class.call(note: note, changes: {"status" => " Draft "}, author: user)
+      expect(revision.properties_data["status"]).to eq("draft")
+    end
+  end
+
+  describe "lenient mode (strict: false)" do
+    it "stores invalid values without raising" do
+      revision = described_class.call(
+        note: note,
+        changes: {"status" => "bad_value"},
+        author: user,
+        strict: false
+      )
+
+      expect(revision.properties_data["status"]).to eq("bad_value")
+    end
+
+    it "tracks validation errors in _errors key" do
+      revision = described_class.call(
+        note: note,
+        changes: {"status" => "bad_value"},
+        author: user,
+        strict: false
+      )
+
+      expect(revision.properties_data["_errors"]).to have_key("status")
+      expect(revision.properties_data["_errors"]["status"].first).to include("must be one of")
+    end
+
+    it "clears _errors for a key when it becomes valid" do
+      described_class.call(note: note, changes: {"status" => "bad"}, author: user, strict: false)
+      note.reload
+
+      revision = described_class.call(note: note, changes: {"status" => "draft"}, author: user, strict: false)
+      expect(revision.properties_data["_errors"]).to be_nil
+    end
+
+    it "does not include _errors key when all properties are valid" do
+      revision = described_class.call(
+        note: note,
+        changes: {"status" => "draft"},
+        author: user,
+        strict: false
+      )
+
+      expect(revision.properties_data).not_to have_key("_errors")
+    end
+
+    it "removes _errors for a key when the property is removed" do
+      described_class.call(note: note, changes: {"status" => "bad"}, author: user, strict: false)
+      note.reload
+
+      revision = described_class.call(note: note, changes: {"status" => nil}, author: user, strict: false)
+      expect(revision.properties_data).not_to have_key("_errors")
+    end
+
+    it "preserves _errors for other keys when fixing one" do
+      described_class.call(
+        note: note,
+        changes: {"status" => "bad", "priority" => "not_num"},
+        author: user,
+        strict: false
+      )
+      note.reload
+
+      revision = described_class.call(note: note, changes: {"status" => "draft"}, author: user, strict: false)
+      expect(revision.properties_data["_errors"]).to have_key("priority")
+      expect(revision.properties_data["_errors"]).not_to have_key("status")
+    end
   end
 end

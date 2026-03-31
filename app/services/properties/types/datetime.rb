@@ -12,6 +12,14 @@ module Properties
         raw
       end
 
+      def self.normalize(value, _config = {})
+        return value unless value.is_a?(String)
+        parsed = Time.parse(value)
+        parsed.utc.iso8601
+      rescue ArgumentError
+        value
+      end
+
       def self.validate(value, _config = {})
         errors = []
         unless value.is_a?(String) && value.match?(ISO_PATTERN)

@@ -324,7 +324,8 @@ class NotesController < ApplicationController
       },
       link_tags_map: outgoing_link_tags_payload(note),
       note_tags: note.tags.where(tag_scope: %w[note both]).map { |t| { id: t.id, name: t.name, color_hex: t.color_hex } },
-      properties: revision&.properties_data || {}
+      properties: (revision&.properties_data || {}).except("_errors"),
+      properties_errors: (revision&.properties_data || {}).dig("_errors") || {}
     }
   end
 

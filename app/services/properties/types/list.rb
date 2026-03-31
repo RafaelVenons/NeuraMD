@@ -7,6 +7,11 @@ module Properties
         raw
       end
 
+      def self.normalize(value, _config = {})
+        return value unless value.is_a?(Array)
+        value.map { |v| v.to_s.strip }.reject(&:blank?)
+      end
+
       def self.validate(value, _config = {})
         errors = []
         unless value.is_a?(Array) && value.all? { |v| v.is_a?(String) }

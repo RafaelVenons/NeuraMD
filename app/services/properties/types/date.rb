@@ -10,6 +10,14 @@ module Properties
         raw
       end
 
+      def self.normalize(value, _config = {})
+        return value unless value.is_a?(String)
+        parsed = ::Date.parse(value)
+        parsed.iso8601
+      rescue ::Date::Error
+        value
+      end
+
       def self.validate(value, _config = {})
         errors = []
         unless value.is_a?(String) && value.match?(/\A\d{4}-\d{2}-\d{2}\z/)

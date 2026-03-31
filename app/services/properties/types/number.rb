@@ -11,6 +11,10 @@ module Properties
         raw
       end
 
+      def self.normalize(value, _config = {})
+        value
+      end
+
       def self.validate(value, config = {})
         errors = []
         unless value.is_a?(Numeric)

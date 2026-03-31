@@ -14,6 +14,10 @@ module Properties
         raw
       end
 
+      def self.normalize(value, _config = {})
+        value
+      end
+
       def self.validate(value, _config = {})
         return [] if value.is_a?(TrueClass) || value.is_a?(FalseClass)
         ["must be a boolean"]
