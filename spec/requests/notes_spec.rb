@@ -604,6 +604,63 @@ RSpec.describe "Notes", type: :request do
       expect(json).to be_an(Array)
       expect(json.first).to include("id", "created_at", "is_head")
     end
+
+    it "includes properties_data in each revision" do
+      Notes::CheckpointService.call(
+        note: note, content: "v2", author: user,
+        properties_data: {"status" => "draft"}
+      )
+
+      get revisions_note_path(note.slug),
+        headers: {"Accept" => "application/json"}
+
+      json = response.parsed_body
+      expect(json.first).to have_key("properties_data")
+      expect(json.first["properties_data"]).to include("status" => "draft")
+    end
+
+    it "includes properties_diff showing changes between revisions" do
+      Notes::CheckpointService.call(
+        note: note, content: "v2", author: user,
+        properties_data: {"status" => "draft"}
+      )
+      Notes::CheckpointService.call(
+        note: note, content: "v3", author: user,
+        properties_data: {"status" => "published", "priority" => 1}
+      )
+
+      get revisions_note_path(note.slug),
+        headers: {"Accept" => "application/json"}
+
+      json = response.parsed_body
+      latest = json.first
+      expect(latest).to have_key("properties_diff")
+      expect(latest["properties_diff"]["added"]).to include("priority")
+      expect(latest["properties_diff"]["changed"]).to include("status")
+    end
+  end
+
+  describe "POST /notes/:slug/revisions/:revision_id/restore" do
+    let(:note) { create(:note, :with_head_revision) }
+
+    it "restores properties_data from the source revision" do
+      rev_a = Notes::CheckpointService.call(
+        note: note, content: "content A", author: user,
+        properties_data: {"status" => "draft", "priority" => 1}
+      ).revision
+
+      Notes::CheckpointService.call(
+        note: note, content: "content B", author: user,
+        properties_data: {"status" => "published"}
+      )
+
+      post restore_revision_note_path(note.slug, rev_a.id),
+        headers: {"Accept" => "application/json"}
+
+      expect(response).to have_http_status(:ok)
+      new_head = note.reload.head_revision
+      expect(new_head.properties_data).to eq({"status" => "draft", "priority" => 1})
+    end
   end
 
   describe "rename integrity (EPIC-00.1)" do

@@ -215,4 +215,30 @@ RSpec.describe "Note navigation via links", type: :system do
       expect(page).to have_button("Restaurar", wait: 5)
     end
   end
+
+  describe "revision property diff badges" do
+    let!(:note_with_props) do
+      note = create(:note)
+      Notes::CheckpointService.call(note: note, content: "v1", author: user,
+        properties_data: {"status" => "draft"})
+      Notes::CheckpointService.call(note: note, content: "v2", author: user,
+        properties_data: {"status" => "published", "priority" => 1})
+      note
+    end
+
+    before do
+      visit note_path(note_with_props.slug)
+      expect(page).to have_css(".cm-editor", wait: 5)
+    end
+
+    it "shows property diff badges in the revision dropdown" do
+      find("[data-editor-target='revisionsButton']").click
+      expect(page).to have_css("[data-editor-target='revisionsMenu']:not(.hidden)", wait: 3)
+
+      within("[data-editor-target='revisionsMenu']") do
+        expect(page).to have_text("+priority")
+        expect(page).to have_text("~status")
+      end
+    end
+  end
 end

@@ -228,6 +228,7 @@ export default class extends Controller {
 
     this._hoveredRevisionId = revision.id
     this._applyContentToWorkspace(revision.content_markdown || "")
+    this._previewRevisionProperties(revision.properties_data || {})
   }
 
   clearRevisionPreview(event) {
@@ -236,6 +237,7 @@ export default class extends Controller {
 
     this._hoveredRevisionId = null
     this._applyContentToWorkspace(this._workingContent)
+    this._getPropertiesPanelController()?.clearPreview()
   }
 
   selectRevision(event) {
@@ -778,6 +780,7 @@ export default class extends Controller {
         dateStyle: "short",
         timeStyle: "short"
       })
+      const diffBadges = this._renderPropsDiffBadges(revision.properties_diff)
       return `
         <li class="border-b last:border-b-0"
             style="border-color: var(--toolbar-border)">
@@ -790,6 +793,7 @@ export default class extends Controller {
                 <span class="text-xs font-semibold text-gray-200">${createdAt}</span>
                 ${revision.is_head ? '<span class="rounded px-1.5 py-0.5 text-[10px] font-semibold text-green-200" style="background: rgba(34, 197, 94, 0.16)">Atual</span>' : ""}
               </span>
+              ${diffBadges}
             </span>
           </button>
         </li>
@@ -841,6 +845,32 @@ export default class extends Controller {
     return this._revisionsById.get(String(revisionId)) || null
   }
 
+  _renderPropsDiffBadges(diff) {
+    if (!diff) return ""
+    const badges = []
+    for (const key of Object.keys(diff.added || {})) {
+      badges.push(`<span class="text-green-400">+${key}</span>`)
+    }
+    for (const key of Object.keys(diff.removed || {})) {
+      badges.push(`<span class="text-red-400">-${key}</span>`)
+    }
+    for (const key of Object.keys(diff.changed || {})) {
+      badges.push(`<span class="text-yellow-400">~${key}</span>`)
+    }
+    if (!badges.length) return ""
+    return `<span class="flex flex-wrap gap-1 mt-0.5 text-[10px] font-mono">${badges.join("")}</span>`
+  }
+
+  _previewRevisionProperties(props) {
+    this._getPropertiesPanelController()?.previewProperties(props)
+  }
+
+  _getPropertiesPanelController() {
+    const panel = document.querySelector("[data-controller~='properties-panel']")
+    if (!panel) return null
+    return this.application.getControllerForElementAndIdentifier(panel, "properties-panel")
+  }
+
   _hasPendingEdits() {
     return this._workingContent !== this._selectedRevisionContent
   }
@@ -857,7 +887,7 @@ export default class extends Controller {
   async _restoreSelectedRevision() {
     const revisionId = this._selectedRevision?.id
     if (!revisionId) return
-    if (!window.confirm("Restaurar esta versão como a versão atual?")) return
+    if (!window.confirm("Restaurar esta versão? O conteúdo e as propriedades serão restaurados.")) return
 
     const csrfToken = document.querySelector("meta[name='csrf-token']")?.content
 

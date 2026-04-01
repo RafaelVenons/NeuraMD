@@ -325,4 +325,26 @@ export default class extends Controller {
     div.textContent = str
     return div.innerHTML
   }
+
+  // ── Revision preview ──────────────────────────────────────
+
+  previewProperties(props) {
+    if (!this.hasListTarget) return
+    this._previewActive = true
+    this._savedProperties = this._properties
+    this._savedErrors = this._errors
+    this._properties = props
+    this._errors = {}
+    this._render()
+    this.listTarget.classList.add("opacity-60", "pointer-events-none")
+  }
+
+  clearPreview() {
+    if (!this._previewActive || !this.hasListTarget) return
+    this._previewActive = false
+    this._properties = this._savedProperties
+    this._errors = this._savedErrors
+    this._render()
+    this.listTarget.classList.remove("opacity-60", "pointer-events-none")
+  }
 }
