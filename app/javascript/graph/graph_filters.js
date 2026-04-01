@@ -85,18 +85,19 @@ export function computeDisplayState(state) {
       visibleIncidentNodeIds.add(target)
     }
 
-    // Hover-aware: hide edges where either endpoint is depth 3+
+    // Hover-aware: hide edges where either endpoint is depth 3+ (only at full fade)
     const sourceHoverDepth = hoverDepths?.get(source)
     const targetHoverDepth = hoverDepths?.get(target)
-    const edgeHoverHidden = hoverDepths !== null && ((sourceHoverDepth === undefined || sourceHoverDepth > 2) || (targetHoverDepth === undefined || targetHoverDepth > 2))
+    const eitherEndpointFar = hoverDepths !== null && ((sourceHoverDepth === undefined || sourceHoverDepth > 2) || (targetHoverDepth === undefined || targetHoverDepth > 2))
+    const edgeHoverHidden = eitherEndpointFar && hoverFade >= 0.95
     const edgeHoverModerate = hoverDepths !== null && !edgeHoverHidden && (sourceHoverDepth === 2 || targetHoverDepth === 2)
 
     const isGhost = ghostedByTagFilter || state.ui.focusedNodeId !== null && (!withinFocus || !incidentToFocus && sourceNode.depthFromFocus >= 1 && targetNode.depthFromFocus >= 1)
 
     let edgeColor
     if (edgeHoverModerate) {
-      const edgeModAlpha = 0.45 + (1 - hoverFade) * 0.55
-      edgeColor = `rgba(100, 116, 139, ${edgeModAlpha.toFixed(2)})`
+      const edgeModAlpha = 0.40 + (1 - hoverFade) * 0.60
+      edgeColor = `rgba(160, 170, 180, ${edgeModAlpha.toFixed(2)})`
     } else {
       edgeColor = colorForEdge(
         priorityTagId,
@@ -146,14 +147,14 @@ export function computeDisplayState(state) {
       filterState = hasVisibleIncidentEdge ? "ghost" : "hidden"
     }
 
-    // Hover depth highlight: depth 0–2 visible, depth 3+ hidden
+    // Hover depth highlight: depth 0–2 visible, depth 3+ hidden (only at full fade)
     let hoverState = null
     if (hoverDepths) {
       const hd = hoverDepths.get(nodeId)
       if (hd === 0) hoverState = "highlight"
       else if (hd === 1) hoverState = "neighbor"
       else if (hd === 2) hoverState = "moderate"
-      else hoverState = "hidden"
+      else hoverState = hoverFade >= 0.95 ? "hidden" : "fading"
     }
 
     const hidden = !base.matchesSearch || filterState === "hidden" || hoverState === "hidden"

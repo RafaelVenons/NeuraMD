@@ -459,6 +459,9 @@ export default class extends Controller {
   }
 
   scheduleHoverHighlight(nodeId) {
+    // Don't let hover events interfere with focus highlight
+    if (this.focusHighlightActive) return
+
     if (this.hoverHighlightTimer) {
       clearTimeout(this.hoverHighlightTimer)
       this.hoverHighlightTimer = null
@@ -482,7 +485,7 @@ export default class extends Controller {
       this.hoverHighlightTimer = null
       if (this.state.ui.hoveredNodeId !== nodeId) return
       this.animateHoverFadeIn(nodeId)
-    }, 3000)
+    }, 1500)
   }
 
   animateHoverFadeIn(nodeId) {
@@ -548,6 +551,7 @@ export default class extends Controller {
 
     this.state.ui.hoveredNodeId = null
     this.scheduleHoverHighlight(null)
+    this.clearFocusHighlightTimers()
     this.state.ui.focusedNodeId = null
     this.state.ui.pinnedTooltipNodeId = null
     this.renderSidebar()
@@ -718,6 +722,7 @@ export default class extends Controller {
   }
 
   resetFocus() {
+    this.clearFocusHighlightTimers()
     this.state.ui.focusedNodeId = null
     this.state.ui.pinnedTooltipNodeId = null
     this.renderSidebar()
@@ -1053,6 +1058,7 @@ export default class extends Controller {
 
   releaseFocusForStagePan() {
     this.state.layout.basePositions = captureNodePositions(this.state.graph)
+    this.clearFocusHighlightTimers()
     this.state.ui.focusedNodeId = null
     this.state.ui.pinnedTooltipNodeId = null
     this.state.ui.hoveredNodeId = null
@@ -1183,6 +1189,62 @@ export default class extends Controller {
     this.prioritizeFocusedNodeTags(nodeId)
     this.renderSidebar()
     this.applyDisplayState({ relayout: true, animateFocus: true })
+    this.scheduleFocusHighlight(nodeId)
+  }
+
+  scheduleFocusHighlight(nodeId) {
+    this.clearFocusHighlightTimers()
+    this.focusHighlightActive = true
+
+    // Activate highlight immediately for focus mode
+    this.state.ui.hoverHighlightNodeId = nodeId
+    this.state.ui.hoverHighlightFade = 1
+    this.applyDisplayState({ relayout: false, animateFocus: false })
+
+    // After 10s, fade out to reveal the full network
+    this.focusHighlightTimer = setTimeout(() => {
+      this.focusHighlightTimer = null
+      if (this.state.ui.focusedNodeId !== nodeId) return
+      this.animateFocusHighlightOut(nodeId)
+    }, 10000)
+  }
+
+  animateFocusHighlightOut(nodeId) {
+    const duration = 600
+    const startedAt = performance.now()
+
+    const step = (now) => {
+      if (this.state.ui.hoverHighlightNodeId !== nodeId) return
+      if (this.state.ui.focusedNodeId !== nodeId) return
+
+      const progress = Math.min(1, (now - startedAt) / duration)
+      this.state.ui.hoverHighlightFade = 1 - progress
+      this.applyDisplayState({ relayout: false, animateFocus: false })
+
+      if (progress < 1) {
+        this.focusFadeAnimationId = requestAnimationFrame(step)
+      } else {
+        this.focusFadeAnimationId = null
+        this.focusHighlightActive = false
+        this.state.ui.hoverHighlightNodeId = null
+        this.state.ui.hoverHighlightFade = 0
+        this.applyDisplayState({ relayout: false, animateFocus: false })
+      }
+    }
+
+    this.focusFadeAnimationId = requestAnimationFrame(step)
+  }
+
+  clearFocusHighlightTimers() {
+    this.focusHighlightActive = false
+    if (this.focusHighlightTimer) {
+      clearTimeout(this.focusHighlightTimer)
+      this.focusHighlightTimer = null
+    }
+    if (this.focusFadeAnimationId) {
+      cancelAnimationFrame(this.focusFadeAnimationId)
+      this.focusFadeAnimationId = null
+    }
   }
 
   recordRecentClick(nodeId, pointer) {
