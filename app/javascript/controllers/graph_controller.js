@@ -442,6 +442,7 @@ export default class extends Controller {
     }
 
     this.state.ui.hoveredNodeId = nodeId
+    this.scheduleHoverHighlight(nodeId)
 
     if (!this.state.ui.pinnedTooltipNodeId) this.applyDisplayState({ relayout: false, animateFocus: false })
     else this.positionTooltip()
@@ -451,9 +452,59 @@ export default class extends Controller {
     if (this.dragState?.nodeId) return
 
     this.state.ui.hoveredNodeId = null
+    this.scheduleHoverHighlight(null)
 
     if (!this.state.ui.pinnedTooltipNodeId) this.applyDisplayState({ relayout: false, animateFocus: false })
     else this.positionTooltip()
+  }
+
+  scheduleHoverHighlight(nodeId) {
+    if (this.hoverHighlightTimer) {
+      clearTimeout(this.hoverHighlightTimer)
+      this.hoverHighlightTimer = null
+    }
+
+    if (this.hoverFadeAnimationId) {
+      cancelAnimationFrame(this.hoverFadeAnimationId)
+      this.hoverFadeAnimationId = null
+    }
+
+    if (!nodeId) {
+      if (this.state.ui.hoverHighlightNodeId) {
+        this.state.ui.hoverHighlightNodeId = null
+        this.state.ui.hoverHighlightFade = 0
+        this.applyDisplayState({ relayout: false, animateFocus: false })
+      }
+      return
+    }
+
+    this.hoverHighlightTimer = setTimeout(() => {
+      this.hoverHighlightTimer = null
+      if (this.state.ui.hoveredNodeId !== nodeId) return
+      this.animateHoverFadeIn(nodeId)
+    }, 3000)
+  }
+
+  animateHoverFadeIn(nodeId) {
+    const duration = 400
+    const startedAt = performance.now()
+    this.state.ui.hoverHighlightNodeId = nodeId
+
+    const step = (now) => {
+      if (this.state.ui.hoverHighlightNodeId !== nodeId) return
+
+      const progress = Math.min(1, (now - startedAt) / duration)
+      this.state.ui.hoverHighlightFade = progress
+      this.applyDisplayState({ relayout: false, animateFocus: false })
+
+      if (progress < 1) {
+        this.hoverFadeAnimationId = requestAnimationFrame(step)
+      } else {
+        this.hoverFadeAnimationId = null
+      }
+    }
+
+    this.hoverFadeAnimationId = requestAnimationFrame(step)
   }
 
   handleMouseLayerDown(event) {
@@ -486,6 +537,7 @@ export default class extends Controller {
     }
 
     this.state.ui.hoveredNodeId = nodeId
+    this.scheduleHoverHighlight(nodeId)
     event.preventDefault()
     event.stopPropagation()
   }
@@ -495,6 +547,7 @@ export default class extends Controller {
     if (nodeId) return
 
     this.state.ui.hoveredNodeId = null
+    this.scheduleHoverHighlight(null)
     this.state.ui.focusedNodeId = null
     this.state.ui.pinnedTooltipNodeId = null
     this.renderSidebar()
@@ -962,6 +1015,7 @@ export default class extends Controller {
       event?.preventDefault?.()
 
       this.state.ui.hoveredNodeId = nodeId
+      this.scheduleHoverHighlight(nodeId)
       this.applyDisplayState({ relayout: false, animateFocus: false })
       return
     }
@@ -1002,6 +1056,7 @@ export default class extends Controller {
     this.state.ui.focusedNodeId = null
     this.state.ui.pinnedTooltipNodeId = null
     this.state.ui.hoveredNodeId = null
+    this.scheduleHoverHighlight(null)
     this.state.layout.animationToken += 1
     this.renderSidebar()
     this.applyDisplayState({ relayout: false, animateFocus: false })
@@ -1119,6 +1174,7 @@ export default class extends Controller {
     if (!nodeId) return
 
     this.state.ui.hoveredNodeId = nodeId
+    this.scheduleHoverHighlight(null)
     this.state.ui.focusedNodeId = nodeId
     this.state.ui.pinnedTooltipNodeId = nodeId
     this.state.ui.focusDepth = 2

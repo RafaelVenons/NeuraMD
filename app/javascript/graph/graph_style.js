@@ -1,20 +1,32 @@
-export function colorForNode(priorityTag, filterState, tagMetaById, isFocused, isHovered) {
+export function colorForNode(priorityTag, filterState, tagMetaById, isFocused, isHovered, hoverState, hoverFade = 1) {
   if (isFocused) return "#fde68a"
   if (isHovered) return "#bfdbfe"
+  if (hoverState === "moderate") {
+    const alpha = 0.55 + (1 - hoverFade) * 0.45
+    return `rgba(125, 211, 252, ${alpha.toFixed(2)})`
+  }
   if (filterState === "ghost") return "#516178"
   return tagMetaById.get(priorityTag)?.color_hex || "#7dd3fc"
 }
 
-export function borderColorForNode(priorityTag, filterState, tagMetaById, isFocused, isHovered) {
+export function borderColorForNode(priorityTag, filterState, tagMetaById, isFocused, isHovered, hoverState, hoverFade = 1) {
   if (isFocused) return "#fff7cc"
   if (isHovered) return "#e0f2fe"
+  if (hoverState === "moderate") {
+    const alpha = 0.55 + (1 - hoverFade) * 0.45
+    return `rgba(219, 234, 254, ${alpha.toFixed(2)})`
+  }
   if (filterState === "ghost") return "#94a3b8"
   return tagMetaById.get(priorityTag)?.color_hex || "#dbeafe"
 }
 
-export function labelColorForNode(filterState, isFocused, isHovered) {
+export function labelColorForNode(filterState, isFocused, isHovered, hoverState, hoverFade = 1) {
   if (isFocused) return "#fff7cc"
   if (isHovered) return "#f8fafc"
+  if (hoverState === "moderate") {
+    const alpha = 0.55 + (1 - hoverFade) * 0.45
+    return `rgba(248, 250, 252, ${alpha.toFixed(2)})`
+  }
   if (filterState === "ghost") return "#cbd5e1"
   return "#f8fafc"
 }

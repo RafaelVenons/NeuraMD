@@ -26,6 +26,7 @@ export function buildGraph(dataset) {
       promiseTitles: note.promise_titles || [],
       promiseCount: note.promise_count || 0,
       hasPromises: note.has_promises === true,
+      properties: note.properties || {},
       noteTags: [],
       x: 0,
       y: 0,
@@ -102,5 +103,5 @@ function edgeTargetPaddingForRole(hierRole, edgeSize) {
 }
 
 function resolveNodeBaseSize(degree) {
-  return Math.max(7.2, Math.min(16.5, 7.2 + (Math.sqrt(Math.max(0, degree)) * 2.4)))
+  return Math.max(4.5, Math.min(10, 4.5 + (Math.sqrt(Math.max(0, degree)) * 1.4)))
 }

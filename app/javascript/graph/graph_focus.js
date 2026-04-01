@@ -10,6 +10,31 @@ export function resolveNodeDepth(nodeId, focusedNodeId, indexes, maxDepth) {
   return 999
 }
 
+/**
+ * BFS from hovered node up to depth 2. Returns Map<nodeId, depth> or null.
+ */
+export function computeHoverDepths(hoveredNodeId, graph) {
+  if (!hoveredNodeId || !graph?.hasNode(hoveredNodeId)) return null
+
+  const depths = new Map()
+  depths.set(hoveredNodeId, 0)
+
+  // BFS level 1
+  graph.forEachNeighbor(hoveredNodeId, (neighborId) => {
+    if (!depths.has(neighborId)) depths.set(neighborId, 1)
+  })
+
+  // BFS level 2
+  for (const [nodeId, depth] of depths) {
+    if (depth !== 1) continue
+    graph.forEachNeighbor(nodeId, (neighborId) => {
+      if (!depths.has(neighborId)) depths.set(neighborId, 2)
+    })
+  }
+
+  return depths
+}
+
 export function animateCameraToNode(renderer, state) {
   if (!renderer || !state.ui.focusedNodeId) return
 

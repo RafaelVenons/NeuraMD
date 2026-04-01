@@ -31,7 +31,8 @@ module Graph
         has_links: has_links?,
         promise_titles: promise_titles,
         promise_count: promise_titles.size,
-        has_promises: promise_titles.any?
+        has_promises: promise_titles.any?,
+        properties: properties
       }
     end
 
@@ -45,6 +46,10 @@ module Graph
 
     def has_links?
       incoming_link_count.positive? || outgoing_link_count.positive?
+    end
+
+    def properties
+      (note.head_revision&.properties_data || {}).except("_errors")
     end
   end
 end

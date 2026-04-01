@@ -1293,6 +1293,19 @@
   .nm-graph-tooltip__excerpt {
     color: #e2e8f0;
   }
+  .nm-graph-tooltip__properties {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px 8px;
+    margin-top: 4px;
+    font-size: 0.72rem;
+    color: #94a3b8;
+  }
+  .nm-graph-tooltip__prop {
+    background: rgba(148, 163, 184, 0.12);
+    padding: 1px 5px;
+    border-radius: 3px;
+  }
   .nm-graph-tooltip__tags {
     color: #94a3b8;
   }

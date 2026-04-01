@@ -12,20 +12,22 @@ export function applyLayout(graph, state, options = {}) {
     graphologyLayout.random.assign(graph)
 
     const settings = forceAtlas2.inferSettings(graph)
-    settings.gravity = 0.08
-    settings.scalingRatio = Math.max(settings.scalingRatio || 10, 12)
-    settings.slowDown = 2.2
+    settings.gravity = 1.2
+    settings.strongGravityMode = true
+    settings.scalingRatio = Math.max(settings.scalingRatio || 10, 14)
+    settings.slowDown = 2.4
+    settings.barnesHutOptimize = graph.order > 80
 
     forceAtlas2.assign(graph, {
-      iterations: graph.order < 60 ? 120 : 80,
+      iterations: graph.order < 60 ? 160 : 100,
       settings
     })
 
     noverlap.assign(graph, {
       maxIterations: 160,
       settings: {
-        margin: 14,
-        expansion: 1.2,
+        margin: 12,
+        expansion: 1.15,
         gridSize: 20
       }
     })
@@ -37,15 +39,94 @@ export function applyLayout(graph, state, options = {}) {
 
   compactAroundFocus(graph, state)
   arrangeFocusDepthRings(graph, state)
-  constrainViewportExtent(graph)
+  constrainViewportExtent(graph, state.ui.focusedNodeId)
   applyManualPositions(graph, state)
 
   if (isLayoutDegenerate(graph)) {
     relaxForces(graph, { iterations: 80, temperature: 0.18 })
-    constrainViewportExtent(graph)
+    constrainViewportExtent(graph, state.ui.focusedNodeId)
   }
 
   return captureNodePositions(graph)
+}
+
+/**
+ * Position depth-2 nodes in semi-arcs around their depth-1 parents,
+ * always on the external side (further from focus than the parent).
+ */
+function arrangeSemiRings(graph, state, focus, focusedNodeId, ringOneRadius, depthOneNodeIdSet) {
+  const depth2NodeIds = [...(state.indexes.neighborDepthCache.get(focusedNodeId)?.[2] || new Set())]
+    .filter((id) => graph.hasNode(id) && resolveNodeDepth(id, focusedNodeId, state.indexes, 2) === 2)
+
+  if (depth2NodeIds.length === 0) return
+
+  // Group depth-2 nodes by their closest depth-1 parent
+  const parentGroups = new Map()
+  for (const d1Id of depthOneNodeIdSet) parentGroups.set(d1Id, [])
+
+  for (const d2Id of depth2NodeIds) {
+    const bestParent = findClosestDepthOneParent(graph, state, d2Id, depthOneNodeIdSet, focus)
+    if (bestParent && parentGroups.has(bestParent)) {
+      parentGroups.get(bestParent).push(d2Id)
+    }
+  }
+
+  const semiRingRadius = ringOneRadius * 1.8
+  const ARC_HALF_SPAN = Math.PI / 3 // ±60°
+
+  for (const [parentId, children] of parentGroups) {
+    if (children.length === 0) continue
+
+    const parentAngle = angleFromFocus(graph.getNodeAttributes(parentId), focus)
+
+    if (children.length === 1) {
+      graph.mergeNodeAttributes(children[0], {
+        x: focus.x + Math.cos(parentAngle) * semiRingRadius,
+        y: focus.y + Math.sin(parentAngle) * semiRingRadius
+      })
+      continue
+    }
+
+    const arcStep = (ARC_HALF_SPAN * 2) / (children.length - 1)
+    const startAngle = parentAngle - ARC_HALF_SPAN
+
+    children.forEach((childId, i) => {
+      const angle = startAngle + arcStep * i
+      graph.mergeNodeAttributes(childId, {
+        x: focus.x + Math.cos(angle) * semiRingRadius,
+        y: focus.y + Math.sin(angle) * semiRingRadius
+      })
+    })
+  }
+}
+
+function findClosestDepthOneParent(graph, state, d2NodeId, depthOneNodeIdSet, focus) {
+  let bestParent = null
+  let bestAngleDist = Infinity
+  const d2Angle = normalizeAngle(angleFromFocus(graph.getNodeAttributes(d2NodeId), focus))
+
+  for (const edgeId of state.indexes.outEdgesByNodeId.get(d2NodeId) || []) {
+    const targetId = graph.target(edgeId)
+    if (depthOneNodeIdSet.has(targetId)) {
+      const dist = angularDistance(d2Angle, normalizeAngle(angleFromFocus(graph.getNodeAttributes(targetId), focus)))
+      if (dist < bestAngleDist) { bestAngleDist = dist; bestParent = targetId }
+    }
+  }
+
+  for (const edgeId of state.indexes.inEdgesByNodeId.get(d2NodeId) || []) {
+    const sourceId = graph.source(edgeId)
+    if (depthOneNodeIdSet.has(sourceId)) {
+      const dist = angularDistance(d2Angle, normalizeAngle(angleFromFocus(graph.getNodeAttributes(sourceId), focus)))
+      if (dist < bestAngleDist) { bestAngleDist = dist; bestParent = sourceId }
+    }
+  }
+
+  return bestParent
+}
+
+function angularDistance(a, b) {
+  const diff = Math.abs(a - b)
+  return Math.min(diff, Math.PI * 2 - diff)
 }
 
 function compactAroundFocus(graph, state) {
@@ -54,22 +135,24 @@ function compactAroundFocus(graph, state) {
 
   const focus = graph.getNodeAttributes(focusedNodeId)
   const intensity = resolveFocusLayoutIntensity(state)
+  const originX = focus.x
+  const originY = focus.y
+
+  // Move focus to origin so rings are centered
+  graph.mergeNodeAttributes(focusedNodeId, { x: 0, y: 0 })
 
   graph.forEachNode((nodeId, attributes) => {
-    if (nodeId === focusedNodeId) {
-      graph.mergeNodeAttributes(nodeId, { x: focus.x, y: focus.y })
-      return
-    }
+    if (nodeId === focusedNodeId) return
 
-    const dx = attributes.x - focus.x
-    const dy = attributes.y - focus.y
+    const dx = attributes.x - originX
+    const dy = attributes.y - originY
     const depth = resolveNodeDepth(nodeId, focusedNodeId, state.indexes, 4)
     const targetBias = depth === 1 ? 0.74 : depth === 2 ? 0.84 : depth === 3 ? 0.92 : 1
     const bias = 1 - ((1 - targetBias) * intensity)
 
     graph.mergeNodeAttributes(nodeId, {
-      x: focus.x + dx * bias,
-      y: focus.y + dy * bias
+      x: dx * bias,
+      y: dy * bias
     })
   })
 }
@@ -107,20 +190,34 @@ function arrangeFocusDepthRings(graph, state) {
     minGap
   )
 
+  // Distribute depth-1 across sub-rings when crowded (interleave radii)
+  const subRingCount = Math.max(1, Math.ceil(anchoredNodeIds.length / 8))
+
   barycentricEntries.forEach((entry, index) => {
+    let radius = ringOneRadius
+    if (subRingCount > 1) {
+      const subRing = index % subRingCount
+      const radiusFactor = 0.82 + 0.36 * (subRing / (subRingCount - 1))
+      radius = ringOneRadius * radiusFactor
+    }
     graph.mergeNodeAttributes(entry.nodeId, {
-      x: focus.x + Math.cos(spacedAngles[index]) * ringOneRadius,
-      y: focus.y + Math.sin(spacedAngles[index]) * ringOneRadius
+      x: focus.x + Math.cos(spacedAngles[index]) * radius,
+      y: focus.y + Math.sin(spacedAngles[index]) * radius
     })
   })
 
-  // --- Arrange outer depth rings (depth 2+) ---
-  for (let depth = 2; depth <= maxDepth; depth += 1) {
+  // --- Depth-2: semi-rings around their depth-1 parents (external only) ---
+  if (maxDepth >= 2) {
+    arrangeSemiRings(graph, state, focus, focusedNodeId, ringOneRadius, depthOneNodeIdSet)
+  }
+
+  // --- Arrange outer depth rings (depth 3+) ---
+  for (let depth = 3; depth <= maxDepth; depth += 1) {
     arrangeOuterDepthRing(graph, state, focus, focusedNodeId, depth, depthRadii.get(depth), ringSpacing)
   }
 
-  // --- Exclusion zone: push depth-2+ nodes outside ring-1 buffer ---
-  const exclusionRadius = ringOneRadius * 1.35
+  // --- Exclusion zone: push depth-3+ nodes outside ring-2 buffer ---
+  const exclusionRadius = ringOneRadius * 2.2
   enforceExclusionZone(graph, state, focus, focusedNodeId, depthOneNodeIdSet, exclusionRadius)
 }
 
@@ -407,49 +504,6 @@ function distributeAnglesWithMinimumGap(angles, minGap) {
   return result
 }
 
-function enforceRingAngularSpacing(graph, focus, nodeIds, radius, minGap) {
-  if (!nodeIds || nodeIds.length < 2) return
-
-  const entries = nodeIds
-    .filter((nodeId) => graph.hasNode(nodeId))
-    .map((nodeId) => {
-      const node = graph.getNodeAttributes(nodeId)
-      const dx = node.x - focus.x
-      const dy = node.y - focus.y
-      return {
-        nodeId,
-        angle: normalizeAngle(angleFromFocus(node, focus)),
-        radius: Math.max(Math.sqrt(dx * dx + dy * dy), radius)
-      }
-    })
-    .sort((left, right) => left.angle - right.angle)
-
-  if (entries.length < 2) return
-
-  for (let index = 1; index < entries.length; index += 1) {
-    if (entries[index].angle - entries[index - 1].angle < minGap) {
-      entries[index].angle = entries[index - 1].angle + minGap
-    }
-  }
-
-  const totalSpan = entries[entries.length - 1].angle - entries[0].angle
-  const fullCircle = Math.PI * 2
-
-  if (totalSpan > fullCircle - minGap) {
-    const compressedGap = (fullCircle - minGap) / Math.max(entries.length - 1, 1)
-    entries.forEach((entry, index) => {
-      entry.angle = entries[0].angle + index * compressedGap
-    })
-  }
-
-  entries.forEach((entry) => {
-    graph.mergeNodeAttributes(entry.nodeId, {
-      x: focus.x + Math.cos(entry.angle) * entry.radius,
-      y: focus.y + Math.sin(entry.angle) * entry.radius
-    })
-  })
-}
-
 function normalizeAngle(angle) {
   const fullCircle = Math.PI * 2
   let normalized = angle % fullCircle
@@ -481,7 +535,7 @@ function interpolate(min, max, t) {
   return min + ((max - min) * t)
 }
 
-function constrainViewportExtent(graph) {
+function constrainViewportExtent(graph, focusedNodeId) {
   if (!graph || graph.order === 0) return
 
   let minX = Infinity
@@ -496,8 +550,16 @@ function constrainViewportExtent(graph) {
     maxY = Math.max(maxY, attributes.y)
   })
 
-  const centerX = (minX + maxX) / 2
-  const centerY = (minY + maxY) / 2
+  // Center on focus node when in focus mode (not bounding box center)
+  let centerX, centerY
+  if (focusedNodeId && graph.hasNode(focusedNodeId)) {
+    const focus = graph.getNodeAttributes(focusedNodeId)
+    centerX = focus.x
+    centerY = focus.y
+  } else {
+    centerX = (minX + maxX) / 2
+    centerY = (minY + maxY) / 2
+  }
   const halfWidth = Math.max((maxX - minX) / 2, 0.0001)
   const halfHeight = Math.max((maxY - minY) / 2, 0.0001)
   const aspect = typeof window === "undefined" ? 1.6 : Math.max(window.innerWidth / Math.max(window.innerHeight, 1), 1)
