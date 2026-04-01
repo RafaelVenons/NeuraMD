@@ -1244,12 +1244,12 @@
     z-index: 3;
   }
   .nm-graph__tooltip-anchor.is-docked {
-    left: 24px;
+    left: 304px;
     right: auto;
     top: auto;
     bottom: 24px;
     transform: none;
-    max-width: min(320px, calc(100% - 48px));
+    max-width: min(320px, calc(100% - 328px));
   }
   .nm-graph__tooltip-anchor.is-left {
     transform: translate(calc(-100% - 18px), -50%);
