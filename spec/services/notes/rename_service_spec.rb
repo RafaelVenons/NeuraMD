@@ -87,5 +87,18 @@ RSpec.describe Notes::RenameService, type: :service do
       expect(result.new_slug).to eq("resultado")
       expect(result.note).to eq(note)
     end
+
+    it "updates wikilink display text in notes linking to the renamed note" do
+      target = create(:note, title: "Alvo")
+      src_revision = create(:note_revision, note: note, revision_kind: :checkpoint,
+        content_markdown: "Veja [[Alvo|#{target.id}]] para mais.")
+      note.update_columns(head_revision_id: src_revision.id)
+      NoteLink.create!(src_note_id: note.id, dst_note_id: target.id, created_in_revision: src_revision)
+
+      described_class.call(note: target, new_title: "Alvo Renomeado")
+      note.reload
+
+      expect(note.head_revision.content_markdown).to include("[[Alvo Renomeado|#{target.id}]]")
+    end
   end
 end

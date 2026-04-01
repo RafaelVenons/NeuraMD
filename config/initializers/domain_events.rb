@@ -9,6 +9,13 @@ DOMAIN_EVENTS = %w[
   neuramd.property.changed
 ].freeze
 
+ActiveSupport::Notifications.subscribe("neuramd.note.renamed") do |*, payload|
+  Links::DisplayTextUpdateService.call(
+    renamed_note_id: payload[:note_id],
+    new_title: payload[:new_title]
+  )
+end
+
 if Rails.env.development? || Rails.env.test?
   DOMAIN_EVENTS.each do |event_name|
     ActiveSupport::Notifications.subscribe(event_name) do |name, _start, _finish, _id, payload|
