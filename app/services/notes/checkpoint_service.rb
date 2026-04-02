@@ -42,6 +42,7 @@ module Notes
         @note.update!(head_revision_id: revision.id)
 
         sync_result = Links::SyncService.call(src_note: @note, revision: revision, content: @content)
+        Headings::SyncService.call(note: @note, content: @content)
 
         if draft_ids.any?
           @note.outgoing_links.where(created_in_revision_id: draft_ids).update_all(created_in_revision_id: revision.id)

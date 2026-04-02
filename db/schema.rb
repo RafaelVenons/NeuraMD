@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_04_02_120000) do
+ActiveRecord::Schema[8.1].define(version: 2026_04_02_130000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
   enable_extension "pg_trgm"
@@ -124,6 +124,20 @@ ActiveRecord::Schema[8.1].define(version: 2026_04_02_120000) do
     t.index "lower((name)::text)", name: "index_note_aliases_on_lower_name", unique: true
     t.index ["name"], name: "index_note_aliases_on_name_trgm", opclass: :gin_trgm_ops, using: :gin
     t.index ["note_id"], name: "index_note_aliases_on_note_id"
+  end
+
+  create_table "note_headings", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.datetime "created_at", null: false
+    t.integer "level", null: false
+    t.uuid "note_id", null: false
+    t.integer "position", null: false
+    t.string "slug", null: false
+    t.string "text", null: false
+    t.datetime "updated_at", null: false
+    t.index ["note_id", "position"], name: "idx_note_headings_note_position"
+    t.index ["note_id", "slug"], name: "idx_note_headings_note_slug", unique: true
+    t.index ["note_id"], name: "index_note_headings_on_note_id"
+    t.index ["text"], name: "idx_note_headings_text_trgm", opclass: :gin_trgm_ops, using: :gin
   end
 
   create_table "note_links", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
@@ -267,6 +281,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_04_02_120000) do
   add_foreign_key "mention_exclusions", "notes", column: "source_note_id", on_delete: :cascade
   add_foreign_key "mention_exclusions", "notes", on_delete: :cascade
   add_foreign_key "note_aliases", "notes"
+  add_foreign_key "note_headings", "notes", on_delete: :cascade
   add_foreign_key "note_links", "note_revisions", column: "created_in_revision_id"
   add_foreign_key "note_links", "notes", column: "dst_note_id"
   add_foreign_key "note_links", "notes", column: "src_note_id"

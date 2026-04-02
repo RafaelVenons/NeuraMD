@@ -90,6 +90,14 @@ class NotesController < ApplicationController
         match_kind: result.match_kind,
         notes: result.notes.map { |n| {id: n.id, title: n.title, slug: n.slug} }
       }
+    elsif params[:mode] == "headings"
+      note = Note.active.find(params[:note_id])
+      authorize note, :show?
+      headings = note.note_headings.order(:position)
+      headings = headings.where("text ILIKE ?", "%#{Note.sanitize_sql_like(params[:q].to_s)}%") if params[:q].present?
+      render json: headings.map { |h|
+        {text: h.text, slug: h.slug, level: h.level, position: h.position}
+      }
     elsif params[:mode] == "finder"
       result = Search::NoteQueryService.call(
         scope: policy_scope(Note),

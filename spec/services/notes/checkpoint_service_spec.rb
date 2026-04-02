@@ -97,5 +97,24 @@ RSpec.describe Notes::CheckpointService do
       )
       expect(request.metadata["accepted_at"]).to be_present
     end
+
+    it "syncs headings from the checkpoint content" do
+      result = call("# Title\n## Section A\nBody text.\n### Subsection")
+
+      headings = note.note_headings.order(:position)
+      expect(headings.size).to eq(3)
+      expect(headings.map(&:text)).to eq(["Title", "Section A", "Subsection"])
+      expect(headings.map(&:slug)).to eq(["title", "section-a", "subsection"])
+    end
+
+    it "replaces headings when a new checkpoint is created" do
+      call("# Old Title")
+      expect(note.note_headings.count).to eq(1)
+
+      call("## New Heading")
+      note.reload
+      expect(note.note_headings.count).to eq(1)
+      expect(note.note_headings.first.text).to eq("New Heading")
+    end
   end
 end
