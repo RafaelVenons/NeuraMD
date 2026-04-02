@@ -1,4 +1,7 @@
 import { Controller } from "@hotwired/stimulus"
+import { normalizeSearchText, trigramScore } from "lib/trigram_search"
+import { DropdownRenderer } from "lib/wikilink/dropdown_renderer"
+import { buildWikilinkMarkup } from "lib/wikilink/markup_builder"
 
 // Wiki-link autocomplete for the CodeMirror editor.
 //
@@ -33,6 +36,7 @@ export default class extends Controller {
     this._dropdownMode = "search"
     this._promiseTitle = null
     this._pendingPromiseCreations = new Set()
+    this._dropdownRenderer = new DropdownRenderer(this.dropdownTarget, this.constructor.ROLE_LABEL)
 
     this._onEditorChange = this._handleEditorChange.bind(this)
     this.element.addEventListener("codemirror:change", this._onEditorChange)
@@ -282,9 +286,11 @@ export default class extends Controller {
     const currentRole = this._focusedLink.role || null
     const index = roles.indexOf(currentRole)
     const nextRole = roles[((index + dir) + roles.length) % roles.length]
-    const rolePrefix = nextRole ? `${nextRole}:` : ""
-    const fragSuffix = this._focusedLink.headingSlug ? `#${this._focusedLink.headingSlug}` : this._focusedLink.blockId ? `^${this._focusedLink.blockId}` : ""
-    const markup = `[[${this._focusedLink.display}|${rolePrefix}${this._focusedLink.uuid}${fragSuffix}]]`
+    const markup = buildWikilinkMarkup({
+      display: this._focusedLink.display, role: nextRole,
+      uuid: this._focusedLink.uuid, headingSlug: this._focusedLink.headingSlug,
+      blockId: this._focusedLink.blockId
+    })
     const cursorOffset = Math.max(0, (this._cm.getSelectionRange?.().from ?? this._focusedLink.to) - this._focusedLink.from)
     const nextCursor = Math.min(this._focusedLink.from + cursorOffset, this._focusedLink.from + markup.length - 2)
 
@@ -362,8 +368,10 @@ export default class extends Controller {
 
   _insertHeadingSuggestion(heading) {
     if (!heading || heading.loading) return
-    const rolePrefix = this._headingRole ? `${this._headingRole}:` : ""
-    const markup = `[[${this._headingDisplay}#${heading.text}|${rolePrefix}${this._headingNoteId}#${heading.slug}]]`
+    const markup = buildWikilinkMarkup({
+      display: `${this._headingDisplay}#${heading.text}`,
+      role: this._headingRole, uuid: this._headingNoteId, headingSlug: heading.slug
+    })
     this.element.dispatchEvent(new CustomEvent("wikilink:insert", {
       detail: { markup, insertStart: this._insertStart },
       bubbles: true
@@ -404,9 +412,11 @@ export default class extends Controller {
 
   _insertBlockSuggestion(block) {
     if (!block || block.loading) return
-    const rolePrefix = this._blockRole ? `${this._blockRole}:` : ""
     const excerpt = block.content.slice(0, 30).trim()
-    const markup = `[[${this._blockDisplay}^${excerpt}|${rolePrefix}${this._blockNoteId}^${block.block_id}]]`
+    const markup = buildWikilinkMarkup({
+      display: `${this._blockDisplay}^${excerpt}`,
+      role: this._blockRole, uuid: this._blockNoteId, blockId: block.block_id
+    })
     this.element.dispatchEvent(new CustomEvent("wikilink:insert", {
       detail: { markup, insertStart: this._insertStart },
       bubbles: true
@@ -449,8 +459,7 @@ export default class extends Controller {
   }
 
   _autoResolvePromise(note) {
-    const rolePrefix = this._currentRole ? `${this._currentRole}:` : ""
-    const markup = `[[${note.title}|${rolePrefix}${note.id}]]`
+    const markup = buildWikilinkMarkup({ display: note.title, role: this._currentRole, uuid: note.id })
     this.element.dispatchEvent(new CustomEvent("wikilink:insert", {
       detail: { markup, insertStart: this._insertStart },
       bubbles: true
@@ -511,8 +520,7 @@ export default class extends Controller {
 
   _insertSuggestion(note) {
     if (!note || note.loading) return
-    const rolePrefix = this._currentRole ? `${this._currentRole}:` : ""
-    const markup = `[[${note.title}|${rolePrefix}${note.id}]]`
+    const markup = buildWikilinkMarkup({ display: note.title, role: this._currentRole, uuid: note.id })
     this.element.dispatchEvent(new CustomEvent("wikilink:insert", {
       detail: { markup, insertStart: this._insertStart },
       bubbles: true
@@ -552,8 +560,7 @@ export default class extends Controller {
       const data = await this._parseJsonResponse(response, "Falha ao criar nota.")
       if (!response.ok || data.error) throw new Error(data.error || "Falha ao criar nota.")
 
-      const rolePrefix = this._currentRole ? `${this._currentRole}:` : ""
-      const markup = `[[${data.note_title}|${rolePrefix}${data.note_id}]]`
+      const markup = buildWikilinkMarkup({ display: data.note_title, role: this._currentRole, uuid: data.note_id })
       this.element.dispatchEvent(new CustomEvent("wikilink:insert", {
         detail: { markup, insertStart: this._insertStart },
         bubbles: true
@@ -598,91 +605,48 @@ export default class extends Controller {
   // ── Dropdown rendering ───────────────────────────────────
 
   _renderDropdown() {
-    const dropdown = this.dropdownTarget
     if (this._suggestions.length === 0) {
       this._closeDropdown()
       return
     }
 
-    const roleKey   = this._currentRole ?? "null"
-    const roleLabel = this.constructor.ROLE_LABEL[roleKey]
-    const roleClass = `wikilink-role-${roleKey}`
-
-    dropdown.innerHTML = `
-      <div class="wikilink-role-bar">
-        <span class="wikilink-role-hint">← →</span>
-        <span class="wikilink-role-current ${roleClass}">${roleLabel}</span>
-      </div>
-      ${this._suggestions.map((note, i) => `
-        <button
-          class="wikilink-suggestion ${i === this._activeIndex ? "active" : ""}"
-          data-index="${i}"
-          type="button"
-        >
-          <span>${this._escapeHtml(note.title || note.label)}</span>
-          ${note.matched_alias ? `<span class="wikilink-alias-hint">aka: ${this._escapeHtml(note.matched_alias)}</span>` : ""}
-          ${note.description ? `<span class="block mt-1 text-xs opacity-70">${this._escapeHtml(note.description)}</span>` : ""}
-        </button>
-      `).join("")}
-    `
-
-    dropdown.querySelectorAll("button").forEach((btn, i) => {
-      btn.addEventListener("mousedown", (e) => {
-        e.preventDefault()
+    this._dropdownRenderer.render(
+      this._suggestions,
+      this._activeIndex,
+      this._currentRole,
+      (i, item) => {
         this._activeIndex = i
-        if (this._dropdownMode === "promise") this._selectPromiseAction(this._suggestions[i])
-        else if (this._dropdownMode === "disambiguate") this._selectDisambiguation(this._suggestions[i])
-        else if (this._dropdownMode === "headings") this._insertHeadingSuggestion(this._suggestions[i])
-        else if (this._dropdownMode === "blocks") this._insertBlockSuggestion(this._suggestions[i])
-        else this._insertSuggestion(this._suggestions[i])
-      })
-    })
+        if (this._dropdownMode === "promise") this._selectPromiseAction(item)
+        else if (this._dropdownMode === "disambiguate") this._selectDisambiguation(item)
+        else if (this._dropdownMode === "headings") this._insertHeadingSuggestion(item)
+        else if (this._dropdownMode === "blocks") this._insertBlockSuggestion(item)
+        else this._insertSuggestion(item)
+      },
+      this._escapeHtml.bind(this)
+    )
 
-    this._positionDropdown()
-    dropdown.hidden = false
-    this._scrollActiveSuggestionIntoView()
+    this._dropdownRenderer.position(this._insertStart, this._cm?.view, this.element.getBoundingClientRect())
+    this._dropdownRenderer.scrollActiveIntoView()
   }
 
   // ── Positioning ──────────────────────────────────────────
 
   _positionDropdown() {
-    if (!this._cm?.view || this._insertStart == null) return
-    const coords = this._cm.view.coordsAtPos(this._insertStart)
-    if (!coords) return
-
-    const dropdown = this.dropdownTarget
-    const paneRect = this.element.getBoundingClientRect()
-    const spaceBelow = window.innerHeight - coords.bottom
-
-    if (spaceBelow >= 80) {
-      dropdown.style.top    = `${coords.bottom - paneRect.top + 4}px`
-      dropdown.style.bottom = "auto"
-    } else {
-      dropdown.style.top    = "auto"
-      dropdown.style.bottom = `${paneRect.bottom - coords.top + 4}px`
-    }
-
-    const left    = coords.left - paneRect.left
-    const maxLeft = paneRect.width - 240 - 8
-    dropdown.style.left = `${Math.max(4, Math.min(left, maxLeft))}px`
+    this._dropdownRenderer.position(this._insertStart, this._cm?.view, this.element.getBoundingClientRect())
   }
 
   _scrollActiveSuggestionIntoView() {
-    if (!this._isDropdownOpen()) return
-    const activeSuggestion = this.dropdownTarget.querySelector(".wikilink-suggestion.active")
-    if (!activeSuggestion) return
-
-    activeSuggestion.scrollIntoView({ block: "nearest" })
+    this._dropdownRenderer.scrollActiveIntoView()
   }
 
   // ── State ────────────────────────────────────────────────
 
   _isDropdownOpen() {
-    return this.hasDropdownTarget && !this.dropdownTarget.hidden
+    return this._dropdownRenderer?.isOpen() ?? false
   }
 
   _closeDropdown({ preserveFocus = false } = {}) {
-    if (this.hasDropdownTarget) this.dropdownTarget.hidden = true
+    this._dropdownRenderer?.close()
     this._suggestions   = []
     this._activeIndex   = -1
     this._currentRole   = null
@@ -700,15 +664,15 @@ export default class extends Controller {
   }
 
   _rankSuggestionsByCosineSimilarity(suggestions, query) {
-    const normalizedQuery = this._normalizeSearchText(query)
+    const normalizedQuery = normalizeSearchText(query)
     if (!normalizedQuery) return suggestions
 
     return [...suggestions]
       .map((note) => ({
         note,
         score: Math.max(
-          this._suggestionSearchScore(note.title, normalizedQuery),
-          note.matched_alias ? this._suggestionSearchScore(note.matched_alias, normalizedQuery) : 0
+          trigramScore(note.title, query),
+          note.matched_alias ? trigramScore(note.matched_alias, query) : 0
         )
       }))
       .filter(({ score }) => score > 0)
@@ -717,52 +681,6 @@ export default class extends Controller {
         return left.note.title.localeCompare(right.note.title, "pt-BR")
       })
       .map(({ note }) => note)
-  }
-
-  _suggestionSearchScore(title, normalizedQuery) {
-    const normalizedTitle = this._normalizeSearchText(title)
-    if (!normalizedTitle) return 0
-    if (normalizedTitle.includes(normalizedQuery)) return 1
-
-    const titleVector = this._trigramVector(normalizedTitle)
-    const queryVector = this._trigramVector(normalizedQuery)
-    return this._cosineSimilarity(titleVector, queryVector)
-  }
-
-  _normalizeSearchText(value) {
-    return (value || "")
-      .toLowerCase()
-      .normalize("NFD")
-      .replace(/[\u0300-\u036f]/g, "")
-      .replace(/[^a-z0-9]+/g, " ")
-      .trim()
-  }
-
-  _trigramVector(value) {
-    const compact = `  ${value.replace(/\s+/g, " ")}  `
-    const vector = new Map()
-    for (let index = 0; index <= compact.length - 3; index += 1) {
-      const gram = compact.slice(index, index + 3)
-      vector.set(gram, (vector.get(gram) || 0) + 1)
-    }
-    return vector
-  }
-
-  _cosineSimilarity(left, right) {
-    let dot = 0
-    let leftNorm = 0
-    let rightNorm = 0
-
-    left.forEach((value, key) => {
-      leftNorm += value * value
-      dot += value * (right.get(key) || 0)
-    })
-    right.forEach((value) => {
-      rightNorm += value * value
-    })
-
-    if (!leftNorm || !rightNorm) return 0
-    return dot / (Math.sqrt(leftNorm) * Math.sqrt(rightNorm))
   }
 
   _escapeHtml(str) {
