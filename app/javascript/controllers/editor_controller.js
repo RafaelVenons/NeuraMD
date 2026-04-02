@@ -1,4 +1,7 @@
 import { Controller } from "@hotwired/stimulus"
+import { KeyboardShortcuts } from "lib/editor/keyboard_shortcuts"
+import { LayoutManager } from "lib/editor/layout_manager"
+import { RevisionManager } from "lib/editor/revision_manager"
 
 // Orchestrates all sub-controllers: codemirror, preview, autosave, scroll-sync
 export default class extends Controller {
@@ -26,30 +29,26 @@ export default class extends Controller {
   }
 
   connect() {
-    this._previewVisible = true
-    this._propertiesVisible = false
-    this._revisionsOpen = false
-    this._revisionsLoaded = false
-    this._revisionsById = new Map()
     this._scrollSyncLock = false
     this._scrollCooldown = null
-    this._hoveredRevisionId = null
-    this._selectedRevision = {
-      id: this.initialRevisionIdValue || null,
-      kind: this.initialRevisionKindValue || null,
-      isHead: this.initialRevisionIdValue && this.initialRevisionIdValue === this.headRevisionIdValue
-    }
-    this._selectedRevisionContent = this._initialEditorContent()
-    this._workingContent = this._selectedRevisionContent
     this._aiStageActive = false
-    this._aiReviewFocusMode = false
-    this._storedAiReviewLayout = null
-    this._typewriterFocusMode = false
-    this._storedTypewriterLayout = null
     this._onDocumentClick = this._handleDocumentClick.bind(this)
-    this._layoutStorageKey = `editor-layout:${this.slugValue}`
-    this._boundPointerMove = (event) => this._handlePointerMove(event)
-    this._boundPointerUp = () => this._finishPointerResize()
+
+    this._layout = new LayoutManager(this._layoutElements(), `editor-layout:${this.slugValue}`)
+    this._revisions = new RevisionManager({
+      revisionsUrl: this.revisionsUrlValue,
+      initialRevisionId: this.initialRevisionIdValue,
+      initialRevisionKind: this.initialRevisionKindValue,
+      headRevisionId: this.headRevisionIdValue,
+      initialContent: this._initialEditorContent()
+    }, {
+      getCurrentContent: () => this._currentDisplayedContent(),
+      syncMenuVisibility: (open) => this._syncRevisionsMenu(open),
+      getListElement: () => this.hasRevisionsListTarget ? this.revisionsListTarget : null
+    })
+
+    this._boundPointerMove = (event) => this._layout.handlePointerMove(event)
+    this._boundPointerUp = () => this._layout.finishResize()
 
     this._bindEditorEvents()
     this._bindKeyboardShortcuts()
@@ -57,7 +56,7 @@ export default class extends Controller {
     this._bindAutosaveStatus()
     this._bindAiStageState()
     this._bindNoteNavigation()
-    this._restoreLayoutState()
+    this._layout.restore()
     this._scheduleInitialWorkspaceSync()
     this._syncPrimaryAction()
     this._focusTitleIfRequested()
@@ -67,125 +66,26 @@ export default class extends Controller {
   }
 
   disconnect() {
-    document.removeEventListener("keydown", this._keyHandler)
+    this._shortcuts?.destroy()
     document.removeEventListener("click", this._onDocumentClick)
     window.removeEventListener("pointermove", this._boundPointerMove)
     window.removeEventListener("pointerup", this._boundPointerUp)
   }
 
-  togglePreview() {
-    this._previewVisible = !this._previewVisible
-    const pane = this.previewPaneTarget
-
-    if (this._previewVisible) {
-      pane.classList.remove("hidden")
-      this.previewResizeHandleTarget.classList.remove("hidden")
-      this.previewToggleBtnTarget.classList.add("toolbar-btn--active")
-      this._applyPreviewWidth(this._previewWidthRatio || 0.5)
-    } else {
-      pane.classList.add("hidden")
-      pane.style.flex = ""
-      this.previewResizeHandleTarget.classList.add("hidden")
-      this.previewToggleBtnTarget.classList.remove("toolbar-btn--active")
-      this.editorPaneTarget.style.flex = "1 1 100%"
-    }
-
-    this._syncEditorWidthMode()
-  }
-
-  toggleProperties() {
-    this._propertiesVisible = !this._propertiesVisible
-    if (this.hasPropertiesPanelTarget) {
-      this.propertiesPanelTarget.classList.toggle("hidden", !this._propertiesVisible)
-    }
-    if (this.hasPropertiesToggleBtnTarget) {
-      this.propertiesToggleBtnTarget.classList.toggle("toolbar-btn--active", this._propertiesVisible)
-    }
-    this._persistLayoutState()
-  }
-
-  showPreview() {
-    if (this._previewVisible) return
-
-    this._previewVisible = true
-    this.previewPaneTarget.classList.remove("hidden")
-    this.previewResizeHandleTarget.classList.remove("hidden")
-    this.previewToggleBtnTarget.classList.add("toolbar-btn--active")
-    this._applyPreviewWidth(this._previewWidthRatio || 0.5)
-    this._syncEditorWidthMode()
-  }
+  togglePreview() { this._layout.togglePreview() }
+  showPreview() { this._layout.showPreview() }
+  toggleProperties() { this._layout.toggleProperties() }
+  updateContextMode() { this._layout.updateContextMode() }
+  startPreviewResize(event) { this._layout.startPreviewResize(event) }
+  startContextResize(event) { this._layout.startContextResize(event) }
 
   toggleTypewriter(event) {
     event?.preventDefault()
     this._toggleTypewriter()
   }
 
-  enterAiReviewFocusMode() {
-    if (this._aiReviewFocusMode) return
-
-    const tagSidebar = document.getElementById("tag-sidebar")
-    this._storedAiReviewLayout = {
-      previewVisible: this._previewVisible,
-      previewPaneFlex: this.previewPaneTarget.style.flex,
-      editorPaneHidden: this.editorPaneTarget.classList.contains("hidden"),
-      resizeHandleHidden: this.previewResizeHandleTarget.classList.contains("hidden"),
-      tagSidebarHidden: tagSidebar?.classList.contains("hidden") || false
-    }
-
-    this._aiReviewFocusMode = true
-    this._previewVisible = true
-    this.previewPaneTarget.classList.remove("hidden")
-    this.previewPaneTarget.style.flex = "1 1 auto"
-    this.editorPaneTarget.classList.add("hidden")
-    this.previewResizeHandleTarget.classList.add("hidden")
-    tagSidebar?.classList.add("hidden")
-  }
-
-  exitAiReviewFocusMode() {
-    if (!this._aiReviewFocusMode) return
-
-    const tagSidebar = document.getElementById("tag-sidebar")
-    const stored = this._storedAiReviewLayout || {}
-
-    this._aiReviewFocusMode = false
-    this._storedAiReviewLayout = null
-
-    this.editorPaneTarget.classList.toggle("hidden", !!stored.editorPaneHidden)
-    this.previewResizeHandleTarget.classList.toggle("hidden", !!stored.resizeHandleHidden)
-    tagSidebar?.classList.toggle("hidden", !!stored.tagSidebarHidden)
-
-    this._previewVisible = stored.previewVisible !== false
-    if (this._previewVisible) {
-      this.previewPaneTarget.classList.remove("hidden")
-      this.previewToggleBtnTarget.classList.add("toolbar-btn--active")
-      this.previewPaneTarget.style.flex = stored.previewPaneFlex || ""
-      if (!stored.previewPaneFlex) this._applyPreviewWidth(this._previewWidthRatio || 0.5)
-    } else {
-      this.previewPaneTarget.classList.add("hidden")
-      this.previewToggleBtnTarget.classList.remove("toolbar-btn--active")
-      this.previewPaneTarget.style.flex = stored.previewPaneFlex || ""
-      this.editorPaneTarget.style.flex = "1 1 auto"
-    }
-  }
-
-  startPreviewResize(event) {
-    if (!this._previewVisible) return
-    event.preventDefault()
-    this._resizeMode = "preview"
-    document.body.style.cursor = "col-resize"
-  }
-
-  startContextResize(event) {
-    if (this.contextModeTarget.value === "hidden") return
-    event.preventDefault()
-    this._resizeMode = "context"
-    document.body.style.cursor = "row-resize"
-  }
-
-  updateContextMode() {
-    this._applyContextMode(this.contextModeTarget.value)
-    this._persistLayoutState()
-  }
+  enterAiReviewFocusMode() { this._layout.enterAiReviewFocus() }
+  exitAiReviewFocusMode() { this._layout.exitAiReviewFocus() }
 
   async convertMention(event) {
     const btn = event.currentTarget
@@ -251,13 +151,7 @@ export default class extends Controller {
     if (this._aiStageActive) return
     event.preventDefault()
     event.stopPropagation()
-
-    this._revisionsOpen = !this._revisionsOpen
-    this._syncRevisionsMenu()
-
-    if (this._revisionsOpen && !this._revisionsLoaded) {
-      await this._loadRevisions()
-    }
+    await this._revisions.toggleMenu()
   }
 
   async handlePrimaryAction(event) {
@@ -268,72 +162,48 @@ export default class extends Controller {
       return
     }
 
-    if (this._shouldShowRestoreAction()) {
+    if (this._revisions.shouldShowRestore()) {
       await this._restoreSelectedRevision()
       return
     }
 
     await this._getAutosaveController()?.saveCheckpoint()
-    this._selectedRevision = {
-      id: this.headRevisionIdValue || this._selectedRevision.id,
-      kind: "checkpoint",
-      isHead: true
-    }
-    this._selectedRevisionContent = this._currentDisplayedContent()
-    this._workingContent = this._selectedRevisionContent
+    this._revisions.onCheckpointSaved(this.headRevisionIdValue)
     this._syncPrimaryAction()
   }
 
   previewRevision(event) {
-    const revision = this._findRevision(event.currentTarget.dataset.revisionId)
+    const revision = this._revisions.previewRevision(event.currentTarget.dataset.revisionId)
     if (!revision) return
-
-    this._hoveredRevisionId = revision.id
     this._applyContentToWorkspace(revision.content_markdown || "")
     this._previewRevisionProperties(revision.properties_data || {})
   }
 
   clearRevisionPreview(event) {
-    if (!this._hoveredRevisionId) return
-    if (event?.relatedTarget && this.revisionsMenuTarget.contains(event.relatedTarget)) return
-
-    this._hoveredRevisionId = null
-    this._applyContentToWorkspace(this._workingContent)
-    this._getPropertiesPanelController()?.clearPreview()
+    if (this._revisions.clearPreview(event?.relatedTarget, this.hasRevisionsMenuTarget ? this.revisionsMenuTarget : null)) {
+      this._applyContentToWorkspace(this._revisions.workingContent)
+      this._getPropertiesPanelController()?.clearPreview()
+    }
   }
 
   selectRevision(event) {
     event.preventDefault()
-    const revision = this._findRevision(event.currentTarget.dataset.revisionId)
+    const revision = this._revisions.selectRevision(event.currentTarget.dataset.revisionId)
     if (!revision) return
-
-    this._hoveredRevisionId = null
-    this._selectedRevision = {
-      id: revision.id,
-      kind: "checkpoint",
-      isHead: !!revision.is_head
-    }
-    this._selectedRevisionContent = revision.content_markdown || ""
-    this._workingContent = this._selectedRevisionContent
-    this._applyContentToWorkspace(this._selectedRevisionContent)
-    this._closeRevisions()
+    this._applyContentToWorkspace(this._revisions.selectedContent)
     this._syncPrimaryAction()
   }
 
   // ── Editor events ─────────────────────────────────────────
   _bindEditorEvents() {
-    // Render initial content as soon as the editor is ready (fires once on connect).
-    // Without this, the preview stays blank until the user types something because
-    // codemirror:change only fires on document mutations, not on initial load.
     this.element.addEventListener("codemirror:ready", (e) => {
       const initialContent = e.detail.editor.getValue()
       if (initialContent) this._onContentChange(initialContent)
     })
 
-    // Listen for CodeMirror change events bubbling up
     this.element.addEventListener("codemirror:change", (e) => {
       const content = e.detail.value
-      this._workingContent = content
+      this._revisions.workingContent = content
       this._onContentChange(content)
       this._syncPrimaryAction()
     })
@@ -345,27 +215,22 @@ export default class extends Controller {
       preview?.syncToTypewriter(e.detail.typewriter.currentLine, e.detail.typewriter.totalLines)
     })
 
-    // Listen for CodeMirror scroll events
     this.element.addEventListener("codemirror:scroll", (e) => {
       this._syncScrollEditorToPreview(e.detail.ratio)
     })
 
-    // Listen for preview scroll events
     this.element.addEventListener("preview:scroll", (e) => {
       this._syncScrollPreviewToEditor(e.detail.ratio)
     })
 
-    // Listen for autosave status changes
     this.element.addEventListener("autosave:statuschange", (e) => {
       this._onSaveStatus(e.detail)
     })
 
-    // Listen for table-editor insertion
     this.element.addEventListener("table-editor:insert", (e) => {
       this._insertTable(e.detail)
     })
 
-    // Listen for emoji-picker selection
     this.element.addEventListener("emoji-picker:selected", (e) => {
       const cm = this._getCodemirrorController()
       if (!cm) return
@@ -415,8 +280,6 @@ export default class extends Controller {
   }
 
   // ── Note navigation ──────────────────────────────────────
-  // Intercept clicks on wiki-links (preview pane) and backlinks so the current
-  // note is saved as a draft before Turbo navigates to the destination.
   _bindNoteNavigation() {
     this.element.addEventListener("click", async (e) => {
       const link = e.target.closest(".preview-prose a.wikilink, .backlinks-panel a, .mentions-panel a.mention-link, .cm-content [data-note-href]")
@@ -433,7 +296,6 @@ export default class extends Controller {
         return
       }
 
-      // Same-note heading/block link: scroll without reloading
       const fragId = link.dataset.headingSlug || link.dataset.blockId
       if (fragId && href.includes("#")) {
         const linkPath = href.split("#")[0]
@@ -458,266 +320,25 @@ export default class extends Controller {
     })
   }
 
-  _restoreLayoutState() {
-    const stored = this._readLayoutState()
-    this._previewWidthRatio = stored.previewWidthRatio || 0.5
-    this._contextHeight = stored.contextHeight || 360
-
-    if (stored.previewVisible === false) {
-      this._previewVisible = false
-      this.previewPaneTarget.classList.add("hidden")
-      this.previewPaneTarget.style.flex = ""
-      this.previewResizeHandleTarget.classList.add("hidden")
-      this.previewToggleBtnTarget.classList.remove("toolbar-btn--active")
-      this.editorPaneTarget.style.flex = "1 1 100%"
-    } else {
-      this.previewResizeHandleTarget.classList.remove("hidden")
-      this.previewToggleBtnTarget.classList.add("toolbar-btn--active")
-      this._applyPreviewWidth(this._previewWidthRatio)
-    }
-
-    this.contextModeTarget.value = stored.contextMode || "graph"
-    this._applyContextHeight(this._contextHeight)
-    this._applyContextMode(this.contextModeTarget.value)
-
-    if (stored.propertiesVisible && this.hasPropertiesPanelTarget) {
-      this._propertiesVisible = true
-      this.propertiesPanelTarget.classList.remove("hidden")
-      if (this.hasPropertiesToggleBtnTarget) this.propertiesToggleBtnTarget.classList.add("toolbar-btn--active")
-    }
-
-    this._syncEditorWidthMode()
-  }
-
   _applyTypewriterFocusMode(enabled) {
-    if (enabled) {
-      if (!this._typewriterFocusMode) {
-        this._storedTypewriterLayout = {
-          previewVisible: this._previewVisible,
-          propertiesVisible: this._propertiesVisible,
-          previewPaneFlex: this.previewPaneTarget.style.flex,
-          contextMode: this.contextModeTarget.value,
-          contextHeight: this._contextHeight
-        }
-      }
-
-      this._typewriterFocusMode = true
-      this._previewVisible = false
-      this.previewPaneTarget.classList.add("hidden")
-      this.contextModeTarget.value = "hidden"
-      this._applyContextMode("hidden")
-      this.previewPaneTarget.style.flex = this._storedTypewriterLayout?.previewPaneFlex || ""
-      this.previewResizeHandleTarget.classList.add("hidden")
-      this.editorPaneTarget.style.flex = "1 1 100%"
-      this.previewToggleBtnTarget.classList.remove("toolbar-btn--active")
-      if (this.hasPropertiesPanelTarget) this.propertiesPanelTarget.classList.add("hidden")
-      if (this.hasPropertiesToggleBtnTarget) this.propertiesToggleBtnTarget.classList.remove("toolbar-btn--active")
-      if (this.hasTypewriterExitBtnTarget) {
-        this.typewriterExitBtnTarget.setAttribute("aria-hidden", "false")
-      }
-      return
-    }
-
-    const stored = this._storedTypewriterLayout || {}
-    this._typewriterFocusMode = false
-    if (this.hasTypewriterExitBtnTarget) {
-      this.typewriterExitBtnTarget.setAttribute("aria-hidden", "true")
-    }
-
-    this.contextModeTarget.value = stored.contextMode || this.contextModeTarget.value || "graph"
-    this._contextHeight = stored.contextHeight || this._contextHeight
-    this._applyContextMode(this.contextModeTarget.value)
-
-    this._previewVisible = stored.previewVisible !== false
-    if (this._previewVisible) {
-      this.previewPaneTarget.classList.remove("hidden")
-      this.previewResizeHandleTarget.classList.remove("hidden")
-      this.previewPaneTarget.style.flex = stored.previewPaneFlex || ""
-      if (!stored.previewPaneFlex) this._applyPreviewWidth(this._previewWidthRatio || 0.5)
-    } else {
-      this.previewPaneTarget.classList.add("hidden")
-      this.previewResizeHandleTarget.classList.add("hidden")
-      this.previewPaneTarget.style.flex = stored.previewPaneFlex || ""
-      this.editorPaneTarget.style.flex = "1 1 100%"
-      this.previewToggleBtnTarget.classList.remove("toolbar-btn--active")
-    }
-
-    if (stored.propertiesVisible && this.hasPropertiesPanelTarget) {
-      this._propertiesVisible = true
-      this.propertiesPanelTarget.classList.remove("hidden")
-      if (this.hasPropertiesToggleBtnTarget) this.propertiesToggleBtnTarget.classList.add("toolbar-btn--active")
-    }
-
-    this._storedTypewriterLayout = null
-    this._persistLayoutState()
-  }
-
-  _applyPreviewWidth(ratio) {
-    if (!this._previewVisible) return
-    const bounded = Math.min(Math.max(ratio, 0.25), 0.75)
-    this._previewWidthRatio = bounded
-    this.previewPaneTarget.style.flex = `0 0 ${bounded * 100}%`
-    this.editorPaneTarget.style.flex = "1 1 auto"
-    this._syncEditorWidthMode()
-  }
-
-  _syncEditorWidthMode() {
-    this.editorPaneTarget.classList.toggle("editor-pane--full-width", !this._previewVisible && !this._aiReviewFocusMode)
-  }
-
-  _applyContextHeight(height) {
-    const bounded = Math.min(Math.max(height, 140), window.innerHeight * 0.72)
-    this._contextHeight = bounded
-    if (this.contextModeTarget.value === "hidden") {
-      this.contextPanelTarget.style.flex = "0 0 auto"
-      return
-    }
-
-    this.contextPanelTarget.style.flex = `0 0 ${bounded}px`
-  }
-
-  _applyContextMode(mode) {
-    const isHidden = mode === "hidden"
-    const showBacklinks = mode === "backlinks"
-    const showMentions = mode === "mentions"
-
-    this.contextPanelTarget.classList.toggle("note-context-panel--collapsed", isHidden)
-    this.contextResizeHandleTarget.classList.toggle("hidden", isHidden)
-    this.graphPanelTarget.classList.toggle("hidden", showBacklinks || showMentions || isHidden)
-    this.backlinksPanelTarget.classList.toggle("hidden", !showBacklinks || isHidden)
-    if (this.hasMentionsPanelTarget) {
-      this.mentionsPanelTarget.classList.toggle("hidden", !showMentions || isHidden)
-    }
-
-    if (isHidden) this.contextPanelTarget.style.flex = "0 0 auto"
-    else this._applyContextHeight(this._contextHeight)
-  }
-
-  _handlePointerMove(event) {
-    if (!this._resizeMode) return
-
-    if (this._resizeMode === "preview") {
-      const rect = this.mainAreaTarget.getBoundingClientRect()
-      const ratio = (rect.right - event.clientX) / Math.max(rect.width, 1)
-      this._applyPreviewWidth(ratio)
-      return
-    }
-
-    if (this._resizeMode === "context") {
-      const colRect = this.editorColumnTarget.getBoundingClientRect()
-      const height = colRect.bottom - event.clientY
-      this._applyContextHeight(height)
-    }
-  }
-
-  _finishPointerResize() {
-    if (!this._resizeMode) return
-    this._resizeMode = null
-    document.body.style.cursor = ""
-    this._persistLayoutState()
-  }
-
-  _persistLayoutState() {
-    const payload = {
-      previewWidthRatio: this._previewWidthRatio,
-      contextHeight: this._contextHeight,
-      contextMode: this.contextModeTarget.value,
-      previewVisible: this._previewVisible,
-      propertiesVisible: this._propertiesVisible
-    }
-    window.localStorage?.setItem(this._layoutStorageKey, JSON.stringify(payload))
-  }
-
-  _readLayoutState() {
-    try {
-      return JSON.parse(window.localStorage?.getItem(this._layoutStorageKey) || "{}")
-    } catch {
-      return {}
-    }
-  }
-
-  _getAutosaveController() {
-    return this.application.getControllerForElementAndIdentifier(this.element, "autosave")
-  }
-
-  // The preview pane div itself has data-controller="preview" — use it directly
-  _getPreviewController() {
-    return this.application.getControllerForElementAndIdentifier(
-      this.previewPaneTarget, "preview"
-    )
-  }
-
-  // The editor pane has data-controller="codemirror ..." — use it directly
-  _getCodemirrorController() {
-    return this.application.getControllerForElementAndIdentifier(
-      this.editorPaneTarget, "codemirror"
-    )
-  }
-
-  // ── Scroll sync ──────────────────────────────────────────
-  _syncScrollEditorToPreview(ratio) {
-    if (this._scrollSyncLock) return
-    if (this._getCodemirrorController()?.isTypewriterMode()) return
-    this._scrollSyncLock = true
-    this._getPreviewController()?.setScrollRatio(ratio)
-    clearTimeout(this._scrollCooldown)
-    this._scrollCooldown = setTimeout(() => { this._scrollSyncLock = false }, 400)
-  }
-
-  _syncScrollPreviewToEditor(ratio) {
-    if (this._scrollSyncLock) return
-    if (this._getCodemirrorController()?.isTypewriterMode()) return
-    this._scrollSyncLock = true
-    this._getCodemirrorController()?.setScrollRatio(ratio)
-    clearTimeout(this._scrollCooldown)
-    this._scrollCooldown = setTimeout(() => { this._scrollSyncLock = false }, 400)
+    if (enabled) this._layout.enterTypewriterFocus()
+    else this._layout.exitTypewriterFocus()
   }
 
   // ── Keyboard shortcuts ───────────────────────────────────
   _bindKeyboardShortcuts() {
-    this._keyHandler = (e) => {
-      if (e.isComposing || e.keyCode === 229 || this._getCodemirrorController()?.isComposing()) return
-      const ctrl = e.ctrlKey || e.metaKey
-
-      if (ctrl && e.shiftKey && e.key === "E") {
-        e.preventDefault()
-        this._toggleEmojiPicker()
-        return
-      }
-      if (ctrl && e.shiftKey && e.key === "P") {
-        e.preventDefault()
-        this.toggleProperties()
-        return
-      }
-      if (ctrl && e.key === "p") {
-        e.preventDefault()
-        this.togglePreview()
-      }
-      if (ctrl && e.key === "f") {
-        e.preventDefault()
-        this._openDialog("find-replace-dialog")
-      }
-      if (ctrl && e.key === "h") {
-        e.preventDefault()
-        this._openDialogFocusReplace("find-replace-dialog")
-      }
-      if (ctrl && e.key === "g") {
-        e.preventDefault()
-        this._openDialog("jump-to-line-dialog")
-      }
-      if (ctrl && e.key === "\\") {
-        e.preventDefault()
-        this._toggleTypewriter()
-      }
-      if (e.key === "F1") {
-        e.preventDefault()
-        this._toggleShortcutsHelp()
-      }
-      if (e.key === "Escape") {
-        this._closeAllDialogs()
-      }
-    }
-    document.addEventListener("keydown", this._keyHandler)
+    this._shortcuts = new KeyboardShortcuts([
+      { key: "E", ctrl: true, shift: true, action: () => this._toggleEmojiPicker() },
+      { key: "P", ctrl: true, shift: true, action: () => this.toggleProperties() },
+      { key: "p", ctrl: true, action: () => this.togglePreview() },
+      { key: "f", ctrl: true, action: () => this._openDialog("find-replace-dialog") },
+      { key: "h", ctrl: true, action: () => this._openDialogFocusReplace("find-replace-dialog") },
+      { key: "g", ctrl: true, action: () => this._openDialog("jump-to-line-dialog") },
+      { key: "\\", ctrl: true, action: () => this._toggleTypewriter() },
+      { key: "F1", action: () => this._toggleShortcutsHelp() },
+      { key: "Escape", preventDefault: false, action: () => this._closeAllDialogs() }
+    ], () => this._getCodemirrorController()?.isComposing())
+    this._shortcuts.install()
   }
 
   _openDialog(id) {
@@ -762,7 +383,7 @@ export default class extends Controller {
     document.getElementById("find-replace-dialog")?.classList.add("hidden")
     document.getElementById("jump-to-line-dialog")?.classList.add("hidden")
     document.getElementById("shortcuts-help-dialog")?.close()
-    this._closeRevisions()
+    this._revisions.close()
   }
 
   // ── Title input ──────────────────────────────────────────
@@ -778,7 +399,6 @@ export default class extends Controller {
 
   _focusTitleIfRequested() {
     if (!this.focusTitleValue || !this.hasTitleInputTarget) return
-
     requestAnimationFrame(() => {
       this.titleInputTarget.focus()
       this.titleInputTarget.select()
@@ -825,93 +445,78 @@ export default class extends Controller {
     el.className = `flex-shrink-0 text-xs ${cls}`
   }
 
-  async _loadRevisions() {
-    if (!this.hasRevisionsListTarget) return
-
-    this.revisionsListTarget.innerHTML = `
-      <li class="px-3 py-2 text-xs" style="color: var(--theme-text-faint)">Carregando...</li>
-    `
-
-    try {
-      const response = await fetch(this.revisionsUrlValue, {
-        headers: { Accept: "application/json" }
-      })
-      if (!response.ok) throw new Error(`HTTP ${response.status}`)
-
-      const revisions = await response.json()
-      this._revisionsLoaded = true
-      this._revisionsById = new Map(revisions.map((revision) => [String(revision.id), revision]))
-      this._renderRevisions(revisions)
-    } catch (error) {
-      console.error("Revisions load error:", error)
-      this.revisionsListTarget.innerHTML = `
-        <li class="px-3 py-2 text-xs text-red-400">Nao foi possivel carregar as versoes.</li>
-      `
-    }
-  }
-
-  _renderRevisions(revisions) {
-    if (!this.hasRevisionsListTarget) return
-
-    if (!revisions.length) {
-      this.revisionsListTarget.innerHTML = `
-        <li class="px-3 py-2 text-xs" style="color: var(--theme-text-faint)">Nenhuma versao salva.</li>
-      `
-      return
-    }
-
-    this.revisionsListTarget.innerHTML = revisions.map((revision) => {
-      const createdAt = new Date(revision.created_at).toLocaleString("pt-BR", {
-        dateStyle: "short",
-        timeStyle: "short"
-      })
-      const diffBadges = this._renderPropsDiffBadges(revision.properties_diff)
-      return `
-        <li class="border-b last:border-b-0"
-            style="border-color: var(--toolbar-border)">
-          <button type="button"
-                  class="revision-entry w-full text-left ${revision.is_head ? "is-head" : ""}"
-                  data-revision-id="${revision.id}"
-                  data-action="mouseenter->editor#previewRevision click->editor#selectRevision">
-            <span class="min-w-0 block">
-              <span class="flex items-center gap-2">
-                <span class="text-xs font-semibold text-gray-200">${createdAt}</span>
-                ${revision.is_head ? '<span class="rounded px-1.5 py-0.5 text-[10px] font-semibold text-green-200" style="background: rgba(34, 197, 94, 0.16)">Atual</span>' : ""}
-              </span>
-              ${diffBadges}
-            </span>
-          </button>
-        </li>
-      `
-    }).join("")
-  }
-
+  // ── Revisions helpers ────────────────────────────────────
   _handleDocumentClick(event) {
-    if (this._revisionsOpen && this.hasRevisionsMenuTarget && this.hasRevisionsButtonTarget) {
+    if (this._revisions.isOpen && this.hasRevisionsMenuTarget && this.hasRevisionsButtonTarget) {
       const insideRevisions = this.revisionsMenuTarget.contains(event.target) || this.revisionsButtonTarget.contains(event.target)
-      if (!insideRevisions) this._closeRevisions()
+      if (!insideRevisions) this._revisions.close()
     }
   }
 
-  _closeRevisions() {
-    if (!this._revisionsOpen) return
-    this.clearRevisionPreview()
-    this._revisionsOpen = false
-    this._syncRevisionsMenu()
-  }
-
-  _syncRevisionsMenu() {
+  _syncRevisionsMenu(open) {
     if (!this.hasRevisionsMenuTarget || !this.hasRevisionsButtonTarget) return
-    this.revisionsMenuTarget.classList.toggle("hidden", !this._revisionsOpen)
-    this.revisionsButtonTarget.classList.toggle("toolbar-btn--active", this._revisionsOpen)
+    this.revisionsMenuTarget.classList.toggle("hidden", !open)
+    this.revisionsButtonTarget.classList.toggle("toolbar-btn--active", open)
   }
 
+  async _restoreSelectedRevision() {
+    const restored = await this._revisions.restoreSelected(this.slugValue)
+    if (!restored) return
+
+    const shell = this.application.getControllerForElementAndIdentifier(this.element, "note-shell")
+    if (shell?.navigateTo) await shell.navigateTo(`/notes/${this.slugValue}`)
+    else Turbo.visit(`/notes/${this.slugValue}`)
+  }
+
+  // ── Controller accessors ─────────────────────────────────
+  _getAutosaveController() {
+    return this.application.getControllerForElementAndIdentifier(this.element, "autosave")
+  }
+
+  _getPreviewController() {
+    return this.application.getControllerForElementAndIdentifier(
+      this.previewPaneTarget, "preview"
+    )
+  }
+
+  _getCodemirrorController() {
+    return this.application.getControllerForElementAndIdentifier(
+      this.editorPaneTarget, "codemirror"
+    )
+  }
+
+  _getPropertiesPanelController() {
+    const panel = document.querySelector("[data-controller~='properties-panel']")
+    if (!panel) return null
+    return this.application.getControllerForElementAndIdentifier(panel, "properties-panel")
+  }
+
+  // ── Scroll sync ──────────────────────────────────────────
+  _syncScrollEditorToPreview(ratio) {
+    if (this._scrollSyncLock) return
+    if (this._getCodemirrorController()?.isTypewriterMode()) return
+    this._scrollSyncLock = true
+    this._getPreviewController()?.setScrollRatio(ratio)
+    clearTimeout(this._scrollCooldown)
+    this._scrollCooldown = setTimeout(() => { this._scrollSyncLock = false }, 400)
+  }
+
+  _syncScrollPreviewToEditor(ratio) {
+    if (this._scrollSyncLock) return
+    if (this._getCodemirrorController()?.isTypewriterMode()) return
+    this._scrollSyncLock = true
+    this._getCodemirrorController()?.setScrollRatio(ratio)
+    clearTimeout(this._scrollCooldown)
+    this._scrollCooldown = setTimeout(() => { this._scrollSyncLock = false }, 400)
+  }
+
+  // ── Workspace helpers ────────────────────────────────────
   _initialEditorContent() {
     return this.editorPaneTarget.dataset.codemirrorInitialValueValue || ""
   }
 
   _currentDisplayedContent() {
-    return this._getCodemirrorController()?.getValue() || this._workingContent || ""
+    return this._getCodemirrorController()?.getValue() || this._revisions.workingContent || ""
   }
 
   _applyContentToWorkspace(content) {
@@ -925,75 +530,13 @@ export default class extends Controller {
     })
   }
 
-  _findRevision(revisionId) {
-    if (!revisionId) return null
-    return this._revisionsById.get(String(revisionId)) || null
-  }
-
-  _renderPropsDiffBadges(diff) {
-    if (!diff) return ""
-    const badges = []
-    for (const key of Object.keys(diff.added || {})) {
-      badges.push(`<span class="text-green-400">+${key}</span>`)
-    }
-    for (const key of Object.keys(diff.removed || {})) {
-      badges.push(`<span class="text-red-400">-${key}</span>`)
-    }
-    for (const key of Object.keys(diff.changed || {})) {
-      badges.push(`<span class="text-yellow-400">~${key}</span>`)
-    }
-    if (!badges.length) return ""
-    return `<span class="flex flex-wrap gap-1 mt-0.5 text-[10px] font-mono">${badges.join("")}</span>`
-  }
-
   _previewRevisionProperties(props) {
     this._getPropertiesPanelController()?.previewProperties(props)
   }
 
-  _getPropertiesPanelController() {
-    const panel = document.querySelector("[data-controller~='properties-panel']")
-    if (!panel) return null
-    return this.application.getControllerForElementAndIdentifier(panel, "properties-panel")
-  }
-
-  _hasPendingEdits() {
-    return this._workingContent !== this._selectedRevisionContent
-  }
-
-  _shouldShowRestoreAction() {
-    return !!(
-      this._selectedRevision?.id &&
-      this._selectedRevision?.kind === "checkpoint" &&
-      !this._selectedRevision?.isHead &&
-      !this._hasPendingEdits()
-    )
-  }
-
-  async _restoreSelectedRevision() {
-    const revisionId = this._selectedRevision?.id
-    if (!revisionId) return
-    if (!window.confirm("Restaurar esta versão? O conteúdo e as propriedades serão restaurados.")) return
-
-    const csrfToken = document.querySelector("meta[name='csrf-token']")?.content
-
-    try {
-      const response = await fetch(`/notes/${this.slugValue}/revisions/${revisionId}/restore`, {
-        method: "POST",
-        headers: {
-          "X-CSRF-Token": csrfToken,
-          "Accept": "application/json"
-        }
-      })
-      if (!response.ok) throw new Error(`HTTP ${response.status}`)
-
-      this._revisionsLoaded = false
-      this._closeRevisions()
-      const shell = this.application.getControllerForElementAndIdentifier(this.element, "note-shell")
-      if (shell?.navigateTo) await shell.navigateTo(`/notes/${this.slugValue}`)
-      else Turbo.visit(`/notes/${this.slugValue}`)
-    } catch (error) {
-      console.error("Revision restore error:", error)
-    }
+  _syncPrimaryAction() {
+    if (!this.hasPrimaryActionButtonTarget) return
+    this._revisions.renderPrimaryAction(this.primaryActionButtonTarget)
   }
 
   hydrateNoteContext(payload) {
@@ -1010,18 +553,9 @@ export default class extends Controller {
     this.initialRevisionIdValue = revision.id || ""
     this.initialRevisionKindValue = revision.kind || ""
     this.headRevisionIdValue = note.head_revision_id || ""
-    this._layoutStorageKey = `editor-layout:${this.slugValue}`
-    this._revisionsOpen = false
-    this._revisionsLoaded = false
-    this._revisionsById = new Map()
-    this._hoveredRevisionId = null
-    this._selectedRevision = {
-      id: revision.id || null,
-      kind: revision.kind || null,
-      isHead: revision.id && revision.id === note.head_revision_id
-    }
-    this._selectedRevisionContent = revision.content_markdown || ""
-    this._workingContent = this._selectedRevisionContent
+    this._layout.updateStorageKey(`editor-layout:${this.slugValue}`)
+
+    this._revisions.hydrateFromPayload(revision, note.head_revision_id)
 
     if (this.hasTitleInputTarget) this.titleInputTarget.value = note.title || ""
     if (this.hasLangBadgeTarget) {
@@ -1032,30 +566,28 @@ export default class extends Controller {
     if (this.hasBacklinksPanelTarget) this.backlinksPanelTarget.innerHTML = payload.html?.backlinks || ""
     if (this.hasMentionsPanelTarget) this.mentionsPanelTarget.innerHTML = payload.html?.mentions || ""
 
-    this._closeRevisions()
-    this._applyContentToWorkspace(this._selectedRevisionContent)
+    this._revisions.close()
+    this._applyContentToWorkspace(this._revisions.selectedContent)
     this._syncPrimaryAction()
   }
 
-  _syncPrimaryAction() {
-    if (!this.hasPrimaryActionButtonTarget) return
-
-    const isRestore = this._shouldShowRestoreAction()
-    const button = this.primaryActionButtonTarget
-
-    button.title = isRestore ? "Restaurar esta versao" : "Salvar versão (checkpoint)"
-    button.style.background = isRestore ? "#dc2626" : "var(--theme-accent)"
-    button.innerHTML = isRestore ? `
-      <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
-        <path d="M3 12a9 9 0 109-9"/><path d="M3 3v6h6"/>
-      </svg>
-      Restaurar
-    ` : `
-      <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
-        <path d="M19 21H5a2 2 0 01-2-2V5a2 2 0 012-2h11l5 5v11a2 2 0 01-2 2z"/>
-        <polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/>
-      </svg>
-      Salvar
-    `
+  _layoutElements() {
+    return {
+      mainArea: this.mainAreaTarget,
+      editorColumn: this.editorColumnTarget,
+      editorPane: this.editorPaneTarget,
+      previewPane: this.previewPaneTarget,
+      previewResizeHandle: this.previewResizeHandleTarget,
+      previewToggleBtn: this.previewToggleBtnTarget,
+      contextPanel: this.contextPanelTarget,
+      contextResizeHandle: this.contextResizeHandleTarget,
+      contextMode: this.contextModeTarget,
+      graphPanel: this.graphPanelTarget,
+      backlinksPanel: this.backlinksPanelTarget,
+      mentionsPanel: this.hasMentionsPanelTarget ? this.mentionsPanelTarget : null,
+      propertiesPanel: this.hasPropertiesPanelTarget ? this.propertiesPanelTarget : null,
+      propertiesToggleBtn: this.hasPropertiesToggleBtnTarget ? this.propertiesToggleBtnTarget : null,
+      typewriterExitBtn: this.hasTypewriterExitBtnTarget ? this.typewriterExitBtnTarget : null
+    }
   }
 }
