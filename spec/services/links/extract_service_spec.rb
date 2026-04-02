@@ -127,5 +127,40 @@ RSpec.describe Links::ExtractService do
       expect(a[:heading_slugs]).to eq(["section"])
       expect(b[:heading_slugs]).to be_nil
     end
+
+    # ── EPIC-03.3: block reference support ───────────────────
+
+    it "extracts block_id from [[Display|uuid^block-id]]" do
+      uuid = SecureRandom.uuid
+      result = described_class.call("See [[Note|#{uuid}^my-block]] here.")
+      expect(result).to eq([{dst_note_id: uuid, hier_role: nil, block_ids: ["my-block"]}])
+    end
+
+    it "extracts block_id with role" do
+      uuid = SecureRandom.uuid
+      result = described_class.call("[[Parent|f:#{uuid}^ref1]]")
+      expect(result).to eq([{dst_note_id: uuid, hier_role: "target_is_parent", block_ids: ["ref1"]}])
+    end
+
+    it "collects multiple block_ids for same UUID" do
+      uuid = SecureRandom.uuid
+      content = "[[Note|#{uuid}^b1]] and [[Note|#{uuid}^b2]]"
+      result = described_class.call(content)
+      expect(result.size).to eq(1)
+      expect(result.first[:block_ids]).to contain_exactly("b1", "b2")
+    end
+
+    it "keeps heading and block separate for different links" do
+      uuid1 = SecureRandom.uuid
+      uuid2 = SecureRandom.uuid
+      content = "[[A|#{uuid1}#intro]] and [[B|#{uuid2}^ref1]]"
+      result = described_class.call(content)
+      a = result.find { |l| l[:dst_note_id] == uuid1 }
+      b = result.find { |l| l[:dst_note_id] == uuid2 }
+      expect(a[:heading_slugs]).to eq(["intro"])
+      expect(a[:block_ids]).to be_nil
+      expect(b[:block_ids]).to eq(["ref1"])
+      expect(b[:heading_slugs]).to be_nil
+    end
   end
 end

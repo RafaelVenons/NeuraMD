@@ -123,6 +123,7 @@ export default class extends Controller {
       this.outputTarget.innerHTML = html
       // Syntax highlight code blocks if available
       this._highlightCode()
+      this._stripBlockMarkers()
       this._validateWikilinks(renderVersion)
     } catch (e) {
       console.error("Preview render error:", e)
@@ -133,6 +134,16 @@ export default class extends Controller {
     // Basic code block styling — no external dep needed
     this.outputTarget.querySelectorAll("pre code").forEach(el => {
       el.classList.add("cm-code-block")
+    })
+  }
+
+  _stripBlockMarkers() {
+    this.outputTarget.querySelectorAll("p, li, h1, h2, h3, h4, h5, h6, blockquote").forEach(el => {
+      const match = el.innerHTML.match(/\s\^([a-zA-Z0-9-]+)\s*$/)
+      if (match) {
+        el.id = match[1]
+        el.innerHTML = el.innerHTML.replace(/\s\^[a-zA-Z0-9-]+\s*$/, "")
+      }
     })
   }
 
@@ -156,8 +167,8 @@ export default class extends Controller {
       if (cachedState?.ok) {
         if (cachedState.href) {
           const base = cachedState.href.split("#")[0]
-          const headingSlug = link.dataset.headingSlug
-          link.href = headingSlug ? `${base}#${headingSlug}` : cachedState.href
+          const frag = link.dataset.headingSlug || link.dataset.blockId
+          link.href = frag ? `${base}#${frag}` : cachedState.href
         }
         return
       }
@@ -177,8 +188,8 @@ export default class extends Controller {
         this._replaceBrokenWikilink(link)
       } else if (cachedState?.ok && cachedState.href) {
         const base = cachedState.href.split("#")[0]
-        const headingSlug = link.dataset.headingSlug
-        link.href = headingSlug ? `${base}#${headingSlug}` : cachedState.href
+        const frag = link.dataset.headingSlug || link.dataset.blockId
+        link.href = frag ? `${base}#${frag}` : cachedState.href
       }
     })
   }

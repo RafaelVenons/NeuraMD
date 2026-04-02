@@ -135,5 +135,20 @@ RSpec.describe Links::SyncService do
       link = src_note.outgoing_links.find_by(dst_note_id: dst_note.id)
       expect(link.context).to eq({})
     end
+
+    # ── EPIC-03.3: block_ids in context ──────────────────────
+
+    it "stores block_ids in context when block links exist" do
+      call("[[Dest|#{dst_note.id}^my-block]]")
+      link = src_note.outgoing_links.find_by(dst_note_id: dst_note.id)
+      expect(link.context["block_ids"]).to eq(["my-block"])
+    end
+
+    it "stores both heading_slugs and block_ids for different links to same note" do
+      call("[[Dest|#{dst_note.id}#intro]] and [[Dest|#{dst_note.id}^ref1]]")
+      link = src_note.outgoing_links.find_by(dst_note_id: dst_note.id)
+      expect(link.context["heading_slugs"]).to eq(["intro"])
+      expect(link.context["block_ids"]).to eq(["ref1"])
+    end
   end
 end

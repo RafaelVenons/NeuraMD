@@ -125,6 +125,6 @@ function extractResolvableUuids(doc) {
 }
 
 function extractUuid(payload) {
-  const normalized = payload.replace(/^[a-z]+:/i, "").split("#")[0]
+  const normalized = payload.replace(/^[a-z]+:/i, "").split("#")[0].split("^")[0]
   return UUID_RE.test(normalized) ? normalized : null
 }

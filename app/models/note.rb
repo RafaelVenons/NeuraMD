@@ -14,6 +14,7 @@ class Note < ApplicationRecord
   has_many :note_aliases, dependent: :destroy
   has_many :mention_exclusions, dependent: :destroy
   has_many :note_headings, dependent: :destroy
+  has_many :note_blocks, dependent: :destroy
   has_many :note_tags, dependent: :destroy
   has_many :tags, through: :note_tags
 

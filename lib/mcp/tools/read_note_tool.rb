@@ -53,6 +53,10 @@ module Mcp
           {text: h.text, slug: h.slug, level: h.level}
         end
 
+        blocks = note.note_blocks.order(:position).map do |b|
+          {block_id: b.block_id, content: b.content, block_type: b.block_type}
+        end
+
         data = {
           slug: note.slug,
           title: note.title,
@@ -61,6 +65,7 @@ module Mcp
           tags: note.tags.pluck(:name),
           properties: note.current_properties,
           headings: headings,
+          blocks: blocks,
           links: outgoing,
           backlinks: backlinks,
           unlinked_mentions: unlinked_mentions,

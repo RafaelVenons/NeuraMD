@@ -129,5 +129,17 @@ RSpec.describe Links::DisplayTextUpdateService, type: :service do
 
       expect(src.head_revision.content_markdown).to include("[[New Title|f:#{target.id}#overview]]")
     end
+
+    it "preserves block reference when renaming note" do
+      src = create_linking_note(
+        title: "Source Note",
+        content: "See [[Original Title|#{target.id}^my-block]]."
+      )
+
+      described_class.call(renamed_note_id: target.id, new_title: "New Title")
+      src.reload
+
+      expect(src.head_revision.content_markdown).to include("[[New Title|#{target.id}^my-block]]")
+    end
   end
 end

@@ -95,8 +95,10 @@ module Links
     end
 
     def heading_context(link)
-      slugs = link[:heading_slugs]
-      slugs.present? ? {"heading_slugs" => slugs} : {}
+      ctx = {}
+      ctx["heading_slugs"] = link[:heading_slugs] if link[:heading_slugs].present?
+      ctx["block_ids"] = link[:block_ids] if link[:block_ids].present?
+      ctx
     end
   end
 end

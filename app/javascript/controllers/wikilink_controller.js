@@ -17,7 +17,7 @@ export default class extends Controller {
   static ROLES      = [null, "f", "c", "b"]
   static ROLE_LABEL = { f: "Father", c: "Child", b: "Brother", null: "Ref" }
   // Full wiki-link pattern (completed, not mid-typing)
-  static FULL_RE    = /\[\[([^\]|]+)\|([a-z]+:)?([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})(?:#([a-z0-9_-]+))?\]\]/gi
+  static FULL_RE    = /\[\[([^\]|]+)\|([a-z]+:)?([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})(?:#([a-z0-9_-]+)|\^([a-zA-Z0-9-]+))?\]\]/gi
 
   connect() {
     this.element.dataset.wikilinkReady = "true"
@@ -134,6 +134,23 @@ export default class extends Controller {
       return
     }
 
+    // Detect block sub-picker: [[Display|role:uuid^partial
+    const blockTrigger = lineUpToCursor.match(
+      /\[\[([^\]|]+)\|(?:([a-z]+):)?([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\^([^\]^]*)$/i
+    )
+
+    if (blockTrigger) {
+      this._dropdownMode = "blocks"
+      this._blockNoteId = blockTrigger[3]
+      this._blockDisplay = blockTrigger[1]
+      this._blockRole = blockTrigger[2] || null
+      this._blockQuery = blockTrigger[4]
+      this._insertStart = cursorPos - blockTrigger[0].length
+      this._scheduleBlockSearch(this._blockNoteId, this._blockQuery)
+      this._detectCursorInLink(value, cursorPos)
+      return
+    }
+
     // Detect mid-typing trigger [[ ... (dropdown autocomplete)
     const triggerMatch   = lineUpToCursor.match(/\[\[([^\]|]*)$/)
 
@@ -163,6 +180,7 @@ export default class extends Controller {
           role: match[2] ? match[2].replace(":", "") : null,
           uuid: match[3],
           headingSlug: match[4] || null,
+          blockId: match[5] || null,
           from,
           to
         }
@@ -220,6 +238,7 @@ export default class extends Controller {
             if (this._dropdownMode === "promise") this._selectPromiseAction(this._suggestions[this._activeIndex])
             else if (this._dropdownMode === "disambiguate") this._selectDisambiguation(this._suggestions[this._activeIndex])
             else if (this._dropdownMode === "headings") this._insertHeadingSuggestion(this._suggestions[this._activeIndex])
+            else if (this._dropdownMode === "blocks") this._insertBlockSuggestion(this._suggestions[this._activeIndex])
             else this._insertSuggestion(this._suggestions[this._activeIndex])
           }
           return true
@@ -264,8 +283,8 @@ export default class extends Controller {
     const index = roles.indexOf(currentRole)
     const nextRole = roles[((index + dir) + roles.length) % roles.length]
     const rolePrefix = nextRole ? `${nextRole}:` : ""
-    const headingSuffix = this._focusedLink.headingSlug ? `#${this._focusedLink.headingSlug}` : ""
-    const markup = `[[${this._focusedLink.display}|${rolePrefix}${this._focusedLink.uuid}${headingSuffix}]]`
+    const fragSuffix = this._focusedLink.headingSlug ? `#${this._focusedLink.headingSlug}` : this._focusedLink.blockId ? `^${this._focusedLink.blockId}` : ""
+    const markup = `[[${this._focusedLink.display}|${rolePrefix}${this._focusedLink.uuid}${fragSuffix}]]`
     const cursorOffset = Math.max(0, (this._cm.getSelectionRange?.().from ?? this._focusedLink.to) - this._focusedLink.from)
     const nextCursor = Math.min(this._focusedLink.from + cursorOffset, this._focusedLink.from + markup.length - 2)
 
@@ -345,6 +364,49 @@ export default class extends Controller {
     if (!heading || heading.loading) return
     const rolePrefix = this._headingRole ? `${this._headingRole}:` : ""
     const markup = `[[${this._headingDisplay}#${heading.text}|${rolePrefix}${this._headingNoteId}#${heading.slug}]]`
+    this.element.dispatchEvent(new CustomEvent("wikilink:insert", {
+      detail: { markup, insertStart: this._insertStart },
+      bubbles: true
+    }))
+    this._closeDropdown()
+  }
+
+  _scheduleBlockSearch(noteId, query) {
+    clearTimeout(this._debounceTimer)
+    this._suggestions = [{ label: "Buscando blocos...", description: "Filtrando blocos da nota.", loading: true }]
+    this._activeIndex = -1
+    this._renderDropdown()
+    this._debounceTimer = setTimeout(() => this._fetchBlockSuggestions(noteId, query), 75)
+  }
+
+  async _fetchBlockSuggestions(noteId, query) {
+    try {
+      if (this._dropdownMode !== "blocks") return
+      const params = new URLSearchParams({ mode: "blocks", note_id: noteId })
+      if (query) params.set("q", query)
+      const url = `${this.searchUrlValue}?${params.toString()}`
+      const response = await fetch(url, { headers: { Accept: "application/json" } })
+      if (!response.ok) return
+      const blocks = await response.json()
+      if (this._dropdownMode !== "blocks" || this._blockNoteId !== noteId) return
+      this._suggestions = blocks.map(b => ({
+        ...b,
+        title: b.content,
+        label: `${b.block_type}: ${b.content}`,
+        id: b.block_id
+      }))
+      this._activeIndex = this._suggestions.length > 0 ? 0 : -1
+      this._renderDropdown()
+    } catch (_) {
+      this._closeDropdown()
+    }
+  }
+
+  _insertBlockSuggestion(block) {
+    if (!block || block.loading) return
+    const rolePrefix = this._blockRole ? `${this._blockRole}:` : ""
+    const excerpt = block.content.slice(0, 30).trim()
+    const markup = `[[${this._blockDisplay}^${excerpt}|${rolePrefix}${this._blockNoteId}^${block.block_id}]]`
     this.element.dispatchEvent(new CustomEvent("wikilink:insert", {
       detail: { markup, insertStart: this._insertStart },
       bubbles: true
@@ -571,6 +633,7 @@ export default class extends Controller {
         if (this._dropdownMode === "promise") this._selectPromiseAction(this._suggestions[i])
         else if (this._dropdownMode === "disambiguate") this._selectDisambiguation(this._suggestions[i])
         else if (this._dropdownMode === "headings") this._insertHeadingSuggestion(this._suggestions[i])
+        else if (this._dropdownMode === "blocks") this._insertBlockSuggestion(this._suggestions[i])
         else this._insertSuggestion(this._suggestions[i])
       })
     })

@@ -101,4 +101,16 @@ RSpec.describe Mcp::Tools::ReadNoteTool do
     expect(content["headings"].first).to eq({"text" => "Introduction", "slug" => "introduction", "level" => 1})
     expect(content["headings"].last).to eq({"text" => "Details", "slug" => "details", "level" => 2})
   end
+
+  it "includes blocks in the response" do
+    create(:note_block, note: note, block_id: "summary", content: "This is the summary", block_type: "paragraph", position: 0)
+    create(:note_block, note: note, block_id: "key-point", content: "A key point", block_type: "list_item", position: 1)
+
+    response = described_class.call(slug: note.slug)
+    content = JSON.parse(response.content.first[:text])
+
+    expect(content["blocks"].length).to eq(2)
+    expect(content["blocks"].first).to eq({"block_id" => "summary", "content" => "This is the summary", "block_type" => "paragraph"})
+    expect(content["blocks"].last).to eq({"block_id" => "key-point", "content" => "A key point", "block_type" => "list_item"})
+  end
 end

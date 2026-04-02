@@ -25,5 +25,13 @@ RSpec.describe Ai::WikilinkPromptText do
 
       expect(result).to eq("See [[Nota]] and [[Pai]].")
     end
+
+    it "strips block reference along with UUID payload" do
+      uuid = SecureRandom.uuid
+
+      result = described_class.normalize("See [[Nota|#{uuid}^my-block]].")
+
+      expect(result).to eq("See [[Nota]].")
+    end
   end
 end

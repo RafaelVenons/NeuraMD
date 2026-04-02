@@ -433,14 +433,14 @@ export default class extends Controller {
         return
       }
 
-      // Same-note heading link: scroll without reloading
-      const headingSlug = link.dataset.headingSlug
-      if (headingSlug && href.includes("#")) {
+      // Same-note heading/block link: scroll without reloading
+      const fragId = link.dataset.headingSlug || link.dataset.blockId
+      if (fragId && href.includes("#")) {
         const linkPath = href.split("#")[0]
         const currentPath = window.location.pathname
         if (linkPath === currentPath || linkPath === "") {
           e.preventDefault()
-          const target = document.getElementById(headingSlug)
+          const target = document.getElementById(fragId)
           target?.scrollIntoView({ behavior: "smooth", block: "start" })
           return
         }

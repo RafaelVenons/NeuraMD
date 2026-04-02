@@ -115,5 +115,16 @@ RSpec.describe Ai::WikilinkOutputGuard do
 
       expect(result).to eq("Link [[Nota|#{uuid}#overview]]")
     end
+
+    it "preserves block reference in valid wikilink payload" do
+      uuid = SecureRandom.uuid
+
+      result = described_class.normalize!(
+        content: "See [[Nota|#{uuid}^my-block]]",
+        source_text: ""
+      )
+
+      expect(result).to eq("See [[Nota|#{uuid}^my-block]]")
+    end
   end
 end
