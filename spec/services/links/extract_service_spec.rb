@@ -150,6 +150,24 @@ RSpec.describe Links::ExtractService do
       expect(result.first[:block_ids]).to contain_exactly("b1", "b2")
     end
 
+    # ── EPIC-03.4: embeds should not produce links ────────
+
+    it "does not extract embed references (![[...]])" do
+      uuid = SecureRandom.uuid
+      content = "![[Embedded Note|#{uuid}#intro]]"
+      result = described_class.call(content)
+      expect(result).to eq([])
+    end
+
+    it "extracts normal wikilink but skips embed on same line" do
+      uuid1 = SecureRandom.uuid
+      uuid2 = SecureRandom.uuid
+      content = "![[Embed|#{uuid1}]] and [[Link|#{uuid2}]]"
+      result = described_class.call(content)
+      expect(result.size).to eq(1)
+      expect(result.first[:dst_note_id]).to eq(uuid2)
+    end
+
     it "keeps heading and block separate for different links" do
       uuid1 = SecureRandom.uuid
       uuid2 = SecureRandom.uuid

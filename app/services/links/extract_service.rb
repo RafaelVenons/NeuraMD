@@ -19,7 +19,7 @@ module Links
     }.freeze
 
     UUID_RE = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i
-    WIKILINK_RE = /\[\[(?:[^\]|]+)\|(?:(?<role>[a-z]+):)?(?<uuid>#{UUID_RE})(?:#(?<heading>[a-z0-9_-]+)|\^(?<block>[a-zA-Z0-9-]+))?\]\]/i
+    WIKILINK_RE = /(?<!!)\[\[(?:[^\]|]+)\|(?:(?<role>[a-z]+):)?(?<uuid>#{UUID_RE})(?:#(?<heading>[a-z0-9_-]+)|\^(?<block>[a-zA-Z0-9-]+))?\]\]/i
 
     def self.call(content)
       new(content).call

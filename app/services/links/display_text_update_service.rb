@@ -39,7 +39,7 @@ module Links
 
     def build_pattern(uuid)
       escaped_uuid = Regexp.escape(uuid)
-      /\[\[([^\]|]+)\|((?:[a-z]+:)?#{escaped_uuid}(?:#[a-z0-9_-]+|\^[a-zA-Z0-9-]+)?)\]\]/i
+      /(!?)\[\[([^\]|]+)\|((?:[a-z]+:)?#{escaped_uuid}(?:#[a-z0-9_-]+|\^[a-zA-Z0-9-]+)?)\]\]/i
     end
 
     def update_note_content(src_note, pattern)
@@ -49,7 +49,7 @@ module Links
       content = revision.content_markdown
       return unless content.match?(pattern)
 
-      updated = content.gsub(pattern) { "[[#{@new_title}|#{$2}]]" }
+      updated = content.gsub(pattern) { "#{$1}[[#{@new_title}|#{$3}]]" }
       return if updated == content
 
       Notes::CheckpointService.call(

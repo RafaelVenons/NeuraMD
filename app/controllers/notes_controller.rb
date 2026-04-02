@@ -1,6 +1,6 @@
 class NotesController < ApplicationController
   include ::DomainEvents
-  before_action :set_note, only: [:show, :edit, :update, :destroy, :autosave, :draft, :checkpoint, :revisions, :show_revision, :restore_revision, :link_info, :create_from_promise, :convert_mention, :dismiss_mention]
+  before_action :set_note, only: [:show, :edit, :update, :destroy, :autosave, :draft, :checkpoint, :revisions, :show_revision, :restore_revision, :link_info, :embed, :create_from_promise, :convert_mention, :dismiss_mention]
   layout "editor", only: [:show, :show_revision]
 
   def index
@@ -205,6 +205,34 @@ class NotesController < ApplicationController
     else
       render json: {link_id: nil, tags: []}
     end
+  end
+
+  def embed
+    authorize @note, :show?
+
+    revision = @note.head_revision
+    unless revision&.content_markdown.present?
+      render json: {found: false}, status: :not_found
+      return
+    end
+
+    result = ::Embeds::ResolveService.call(
+      content: revision.content_markdown,
+      heading_slug: params[:heading].presence,
+      block_id: params[:block].presence
+    )
+
+    unless result.found
+      render json: {found: false}, status: :not_found
+      return
+    end
+
+    render json: {
+      found: true,
+      markdown: result.content,
+      note_title: @note.title,
+      note_slug: @note.slug
+    }
   end
 
   def restore_revision

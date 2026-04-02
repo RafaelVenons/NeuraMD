@@ -126,5 +126,16 @@ RSpec.describe Ai::WikilinkOutputGuard do
 
       expect(result).to eq("See [[Nota|#{uuid}^my-block]]")
     end
+
+    it "preserves embed syntax ![[...]] with valid payload" do
+      uuid = SecureRandom.uuid
+
+      result = described_class.normalize!(
+        content: "![[Nota|#{uuid}#intro]]",
+        source_text: "![[Nota|#{uuid}#intro]]"
+      )
+
+      expect(result).to eq("![[Nota|#{uuid}#intro]]")
+    end
   end
 end

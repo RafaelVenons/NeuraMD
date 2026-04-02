@@ -69,7 +69,15 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 export const wikilinkExtension = {
   name: "wikilink",
   level: "inline",
-  start(src) { return src.indexOf("[[") },
+  start(src) {
+    let idx = 0
+    while (true) {
+      const pos = src.indexOf("[[", idx)
+      if (pos < 0) return -1
+      if (pos === 0 || src[pos - 1] !== "!") return pos
+      idx = pos + 2
+    }
+  },
   tokenizer(src) {
     const match = /^\[\[([^\]|]+)\|(?:([a-z]+):)?([^\]]+)\]\]/i.exec(src)
     if (match) {
@@ -119,5 +127,35 @@ export const wikilinkExtension = {
     const fragment = token.headingSlug ? `#${token.headingSlug}` : token.blockId ? `#${token.blockId}` : ""
     const fragAttr = token.headingSlug ? ` data-heading-slug="${token.headingSlug}"` : token.blockId ? ` data-block-id="${token.blockId}"` : ""
     return `<a href="/notes/${token.uuid}${fragment}" class="wikilink ${roleClass}" data-uuid="${token.uuid}"${fragAttr}>${display}</a>`
+  }
+}
+
+export const embedExtension = {
+  name: "embed",
+  level: "block",
+  start(src) { return src.indexOf("![[") },
+  tokenizer(src) {
+    const match = /^!\[\[([^\]|]+)\|(?:([a-z]+):)?([^\]#^]+)(?:#([a-z0-9_-]+)|\^([a-zA-Z0-9-]+))?\]\]\n?/i.exec(src)
+    if (!match) return
+    const uuidPart = match[3].trim()
+    if (!UUID_RE.test(uuidPart)) return
+    return {
+      type: "embed",
+      raw: match[0],
+      display: match[1].trim(),
+      role: match[2] || null,
+      uuid: uuidPart.toLowerCase(),
+      headingSlug: match[4] || null,
+      blockId: match[5] || null
+    }
+  },
+  renderer(token) {
+    const display = token.display.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+    const dataHeading = token.headingSlug ? ` data-embed-heading="${token.headingSlug}"` : ""
+    const dataBlock = token.blockId ? ` data-embed-block="${token.blockId}"` : ""
+    return `<div class="embed-container embed-loading" data-embed-uuid="${token.uuid}"${dataHeading}${dataBlock}>`
+      + `<div class="embed-header">${display}</div>`
+      + `<div class="embed-content"><span class="embed-spinner">Carregando...</span></div>`
+      + `</div>\n`
   }
 }

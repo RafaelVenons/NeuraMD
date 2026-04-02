@@ -2,7 +2,7 @@ module Ai
   class WikilinkOutputGuard
     UUID_RE = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i
     UUID_PAYLOAD_RE = /\A(?:[fcb]:)?#{UUID_RE}(?:#[a-z0-9_-]+|\^[a-zA-Z0-9-]+)?\z/i
-    WIKILINK_RE = /\[\[(?<body>[^\]]+)\]\]/.freeze
+    WIKILINK_RE = /!?\[\[(?<body>[^\]]+)\]\]/.freeze
 
     def self.normalize!(content:, source_text: nil)
       new(content:, source_text:).normalize!

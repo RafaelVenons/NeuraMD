@@ -33,5 +33,13 @@ RSpec.describe Ai::WikilinkPromptText do
 
       expect(result).to eq("See [[Nota]].")
     end
+
+    it "strips embed syntax ![[...]] payload" do
+      uuid = SecureRandom.uuid
+
+      result = described_class.normalize("![[Nota|#{uuid}#intro]]")
+
+      expect(result).to eq("![[Nota]]")
+    end
   end
 end

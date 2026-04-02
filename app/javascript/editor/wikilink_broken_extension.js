@@ -2,7 +2,7 @@ import { RangeSetBuilder, StateEffect, StateField } from "@codemirror/state"
 import { Decoration, EditorView, ViewPlugin } from "@codemirror/view"
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
-const WIKILINK_RE = /\[\[([^\]|]+)\|([^\]]+)\]\]/g
+const WIKILINK_RE = /!?\[\[([^\]|]+)\|([^\]]+)\]\]/g
 
 const validationUpdated = StateEffect.define()
 const brokenMark = Decoration.mark({ class: "wikilink-broken" })
