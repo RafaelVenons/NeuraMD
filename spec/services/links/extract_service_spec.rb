@@ -80,5 +80,52 @@ RSpec.describe Links::ExtractService do
       result = described_class.call("[[Not a link]] and [[Also not|not-uuid]]")
       expect(result).to eq([])
     end
+
+    # ── EPIC-03.2: heading fragment support ──────────────────
+
+    it "extracts heading_slug from [[Display|uuid#heading-slug]]" do
+      uuid = SecureRandom.uuid
+      result = described_class.call("See [[Note A|#{uuid}#introduction]] for details.")
+      expect(result).to eq([{dst_note_id: uuid, hier_role: nil, heading_slugs: ["introduction"]}])
+    end
+
+    it "extracts heading_slug with role [[Display|f:uuid#slug]]" do
+      uuid = SecureRandom.uuid
+      result = described_class.call("[[Parent|f:#{uuid}#overview]]")
+      expect(result).to eq([{dst_note_id: uuid, hier_role: "target_is_parent", heading_slugs: ["overview"]}])
+    end
+
+    it "returns nil heading_slugs when no fragment" do
+      uuid = SecureRandom.uuid
+      result = described_class.call("[[Note|#{uuid}]]")
+      expect(result.first[:heading_slugs]).to be_nil
+    end
+
+    it "collects multiple heading_slugs for same UUID" do
+      uuid = SecureRandom.uuid
+      content = "[[Note|#{uuid}#intro]] and [[Note|#{uuid}#methods]]"
+      result = described_class.call(content)
+      expect(result.size).to eq(1)
+      expect(result.first[:heading_slugs]).to contain_exactly("intro", "methods")
+    end
+
+    it "collects heading_slugs and preserves role priority" do
+      uuid = SecureRandom.uuid
+      content = "[[Note|#{uuid}#intro]] and [[Note|f:#{uuid}#methods]]"
+      result = described_class.call(content)
+      expect(result.first[:hier_role]).to eq("target_is_parent")
+      expect(result.first[:heading_slugs]).to contain_exactly("intro", "methods")
+    end
+
+    it "mixes links with and without heading fragments" do
+      uuid1 = SecureRandom.uuid
+      uuid2 = SecureRandom.uuid
+      content = "[[Note A|#{uuid1}#section]] and [[Note B|#{uuid2}]]"
+      result = described_class.call(content)
+      a = result.find { |l| l[:dst_note_id] == uuid1 }
+      b = result.find { |l| l[:dst_note_id] == uuid2 }
+      expect(a[:heading_slugs]).to eq(["section"])
+      expect(b[:heading_slugs]).to be_nil
+    end
   end
 end

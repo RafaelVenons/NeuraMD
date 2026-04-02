@@ -1,12 +1,25 @@
 import { Controller } from "@hotwired/stimulus"
 import { marked } from "marked"
 import { emojiExtension, superscriptExtension, subscriptExtension, highlightExtension, wikilinkExtension } from "lib/marked_extensions"
+import { generateHeadingSlug } from "lib/heading_slug"
 
 export default class extends Controller {
   static targets = ["output"]
 
   connect() {
-    marked.use({ extensions: [wikilinkExtension, emojiExtension, superscriptExtension, subscriptExtension, highlightExtension] })
+    this._headingSlugCounts = new Map()
+    const controller = this
+    marked.use({
+      extensions: [wikilinkExtension, emojiExtension, superscriptExtension, subscriptExtension, highlightExtension],
+      renderer: {
+        heading({ tokens, depth }) {
+          const text = this.parser.parseInline(tokens)
+          const raw = text.replace(/<[^>]+>/g, "")
+          const slug = generateHeadingSlug(raw, controller._headingSlugCounts)
+          return `<h${depth} id="${slug}">${text}</h${depth}>\n`
+        }
+      }
+    })
     marked.setOptions({ gfm: true, breaks: false })
 
     this._debounceTimer = null
@@ -105,6 +118,7 @@ export default class extends Controller {
   _render(content) {
     try {
       const renderVersion = ++this._renderVersion
+      this._headingSlugCounts = new Map()
       const html = marked.parse(content || "")
       this.outputTarget.innerHTML = html
       // Syntax highlight code blocks if available
@@ -140,7 +154,11 @@ export default class extends Controller {
       }
 
       if (cachedState?.ok) {
-        if (cachedState.href) link.href = cachedState.href
+        if (cachedState.href) {
+          const base = cachedState.href.split("#")[0]
+          const headingSlug = link.dataset.headingSlug
+          link.href = headingSlug ? `${base}#${headingSlug}` : cachedState.href
+        }
         return
       }
 
@@ -158,7 +176,9 @@ export default class extends Controller {
       if (cachedState === false) {
         this._replaceBrokenWikilink(link)
       } else if (cachedState?.ok && cachedState.href) {
-        link.href = cachedState.href
+        const base = cachedState.href.split("#")[0]
+        const headingSlug = link.dataset.headingSlug
+        link.href = headingSlug ? `${base}#${headingSlug}` : cachedState.href
       }
     })
   }

@@ -1,7 +1,7 @@
 module Ai
   class WikilinkPromptText
     UUID_RE = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i
-    PAYLOAD_RE = /(?:[fcb]:)?#{UUID_RE}/i
+    PAYLOAD_RE = /(?:[fcb]:)?#{UUID_RE}(?:#[a-z0-9_-]+)?/i
     WIKILINK_WITH_PAYLOAD_RE = /\[\[(?<display>[^\]|]+?)\|(?<payload>#{PAYLOAD_RE})\]\]/i
 
     def self.normalize(text)

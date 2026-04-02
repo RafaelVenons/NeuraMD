@@ -45,14 +45,17 @@ module Links
 
         if existing_link
           was_inactive = !existing_link.active?
+          new_context = heading_context(link)
           graph_changed = existing_link.hier_role != link[:hier_role] || was_inactive
 
           if existing_link.created_in_revision_id != @revision.id ||
               existing_link.hier_role != link[:hier_role] ||
+              existing_link.context != new_context ||
               was_inactive
             existing_link.update!(
               hier_role: link[:hier_role],
               created_in_revision: @revision,
+              context: new_context,
               active: true
             )
             publish_event("link.created", link_id: existing_link.id, src_note_id: @src_note.id, dst_note_id: link[:dst_note_id]) if was_inactive
@@ -64,6 +67,7 @@ module Links
             dst_note_id: link[:dst_note_id],
             hier_role: link[:hier_role],
             created_in_revision: @revision,
+            context: heading_context(link),
             active: true
           )
           publish_event("link.created", link_id: new_link.id, src_note_id: @src_note.id, dst_note_id: link[:dst_note_id])
@@ -88,6 +92,11 @@ module Links
       end
 
       updated.positive?
+    end
+
+    def heading_context(link)
+      slugs = link[:heading_slugs]
+      slugs.present? ? {"heading_slugs" => slugs} : {}
     end
   end
 end

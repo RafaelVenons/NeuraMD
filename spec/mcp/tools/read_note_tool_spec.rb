@@ -89,4 +89,16 @@ RSpec.describe Mcp::Tools::ReadNoteTool do
     content = JSON.parse(response.content.first[:text])
     expect(content["title"]).to eq("Nota de teste")
   end
+
+  it "includes headings in the response" do
+    create(:note_heading, note: note, level: 1, text: "Introduction", slug: "introduction", position: 0)
+    create(:note_heading, note: note, level: 2, text: "Details", slug: "details", position: 1)
+
+    response = described_class.call(slug: note.slug)
+    content = JSON.parse(response.content.first[:text])
+
+    expect(content["headings"].length).to eq(2)
+    expect(content["headings"].first).to eq({"text" => "Introduction", "slug" => "introduction", "level" => 1})
+    expect(content["headings"].last).to eq({"text" => "Details", "slug" => "details", "level" => 2})
+  end
 end

@@ -106,5 +106,34 @@ RSpec.describe Links::SyncService do
     it "does not create links for unresolved promise wikilinks" do
       expect { call("[[Nota futura]]") }.not_to change(NoteLink, :count)
     end
+
+    # ── EPIC-03.2: heading fragment in context ───────────────
+
+    it "stores heading_slugs in context when heading links exist" do
+      content = "[[Dest|#{dst_note.id}#introduction]]"
+      call(content)
+      link = src_note.outgoing_links.find_by(dst_note_id: dst_note.id)
+      expect(link.context["heading_slugs"]).to eq(["introduction"])
+    end
+
+    it "stores multiple heading_slugs for same destination" do
+      content = "[[Dest|#{dst_note.id}#intro]] and [[Dest|#{dst_note.id}#methods]]"
+      call(content)
+      link = src_note.outgoing_links.find_by(dst_note_id: dst_note.id)
+      expect(link.context["heading_slugs"]).to contain_exactly("intro", "methods")
+    end
+
+    it "clears heading_slugs when heading fragment is removed" do
+      call("[[Dest|#{dst_note.id}#intro]]")
+      call("[[Dest|#{dst_note.id}]]")
+      link = src_note.outgoing_links.find_by(dst_note_id: dst_note.id)
+      expect(link.context["heading_slugs"]).to be_nil
+    end
+
+    it "leaves context empty when no heading fragment" do
+      call("[[Dest|#{dst_note.id}]]")
+      link = src_note.outgoing_links.find_by(dst_note_id: dst_note.id)
+      expect(link.context).to eq({})
+    end
   end
 end

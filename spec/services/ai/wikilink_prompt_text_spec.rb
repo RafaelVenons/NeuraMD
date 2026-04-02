@@ -15,5 +15,15 @@ RSpec.describe Ai::WikilinkPromptText do
 
       expect(result).to eq("Texto [[Pai|nao-e-uuid]].")
     end
+
+    # ── EPIC-03.2: heading fragment ──────────────────────────
+
+    it "strips heading fragment along with UUID payload" do
+      uuid = SecureRandom.uuid
+
+      result = described_class.normalize("See [[Nota|#{uuid}#introduction]] and [[Pai|f:#{uuid}#overview]].")
+
+      expect(result).to eq("See [[Nota]] and [[Pai]].")
+    end
   end
 end

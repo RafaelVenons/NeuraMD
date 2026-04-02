@@ -425,7 +425,26 @@ export default class extends Controller {
       if (isEditorTypewriterLink && !(e.ctrlKey || e.metaKey)) return
 
       const href = link.getAttribute("href") || link.dataset.noteHref
-      if (!href || href.startsWith("#")) return
+      if (!href) return
+      if (href.startsWith("#")) {
+        e.preventDefault()
+        const target = document.getElementById(href.slice(1))
+        target?.scrollIntoView({ behavior: "smooth", block: "start" })
+        return
+      }
+
+      // Same-note heading link: scroll without reloading
+      const headingSlug = link.dataset.headingSlug
+      if (headingSlug && href.includes("#")) {
+        const linkPath = href.split("#")[0]
+        const currentPath = window.location.pathname
+        if (linkPath === currentPath || linkPath === "") {
+          e.preventDefault()
+          const target = document.getElementById(headingSlug)
+          target?.scrollIntoView({ behavior: "smooth", block: "start" })
+          return
+        }
+      }
 
       e.preventDefault()
       const shell = this.application.getControllerForElementAndIdentifier(this.element, "note-shell")

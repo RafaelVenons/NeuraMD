@@ -74,12 +74,15 @@ export const wikilinkExtension = {
     const match = /^\[\[([^\]|]+)\|(?:([a-z]+):)?([^\]]+)\]\]/i.exec(src)
     if (match) {
       const target = match[3].trim()
+      const [uuidPart, ...headingParts] = target.split("#")
+      const headingSlug = headingParts.join("#") || null
       return {
         type: "wikilink",
         raw: match[0],
         display: match[1].trim(),
         role: match[2] ? match[2].replace(":", "") : null,
-        uuid: UUID_RE.test(target) ? target.toLowerCase() : null
+        uuid: UUID_RE.test(uuidPart) ? uuidPart.toLowerCase() : null,
+        headingSlug
       }
     }
 
@@ -104,6 +107,8 @@ export const wikilinkExtension = {
       return `<span class="wikilink-broken" title="Nota nao encontrada">${display}</span>`
     }
     const roleClass = WIKILINK_ROLE_CLASS[token.role] || "wikilink-null"
-    return `<a href="/notes/${token.uuid}" class="wikilink ${roleClass}" data-uuid="${token.uuid}">${display}</a>`
+    const fragment = token.headingSlug ? `#${token.headingSlug}` : ""
+    const headingAttr = token.headingSlug ? ` data-heading-slug="${token.headingSlug}"` : ""
+    return `<a href="/notes/${token.uuid}${fragment}" class="wikilink ${roleClass}" data-uuid="${token.uuid}"${headingAttr}>${display}</a>`
   }
 }

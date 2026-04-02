@@ -91,5 +91,29 @@ RSpec.describe Ai::WikilinkOutputGuard do
         "Linha 1 reescrita. [[Pai|f:#{first_uuid}]]\nLinha 2 reescrita. [[Filho|c:#{second_uuid}]]"
       )
     end
+
+    # ── EPIC-03.2: heading fragment support ──────────────────
+
+    it "preserves heading fragment in valid wikilink payload" do
+      uuid = SecureRandom.uuid
+
+      result = described_class.normalize!(
+        content: "See [[Nota|f:#{uuid}#introduction]]",
+        source_text: "See [[Nota|f:#{uuid}#introduction]]"
+      )
+
+      expect(result).to eq("See [[Nota|f:#{uuid}#introduction]]")
+    end
+
+    it "does not strip heading fragment as invalid payload" do
+      uuid = SecureRandom.uuid
+
+      result = described_class.normalize!(
+        content: "Link [[Nota|#{uuid}#overview]]",
+        source_text: ""
+      )
+
+      expect(result).to eq("Link [[Nota|#{uuid}#overview]]")
+    end
   end
 end

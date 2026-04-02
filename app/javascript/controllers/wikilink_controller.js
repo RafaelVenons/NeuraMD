@@ -17,7 +17,7 @@ export default class extends Controller {
   static ROLES      = [null, "f", "c", "b"]
   static ROLE_LABEL = { f: "Father", c: "Child", b: "Brother", null: "Ref" }
   // Full wiki-link pattern (completed, not mid-typing)
-  static FULL_RE    = /\[\[([^\]|]+)\|([a-z]+:)?([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\]\]/gi
+  static FULL_RE    = /\[\[([^\]|]+)\|([a-z]+:)?([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})(?:#([a-z0-9_-]+))?\]\]/gi
 
   connect() {
     this.element.dataset.wikilinkReady = "true"
@@ -117,6 +117,23 @@ export default class extends Controller {
       return
     }
 
+    // Detect heading sub-picker: [[Display|role:uuid#partial
+    const headingTrigger = lineUpToCursor.match(
+      /\[\[([^\]|]+)\|(?:([a-z]+):)?([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})#([^\]#]*)$/i
+    )
+
+    if (headingTrigger) {
+      this._dropdownMode = "headings"
+      this._headingNoteId = headingTrigger[3]
+      this._headingDisplay = headingTrigger[1]
+      this._headingRole = headingTrigger[2] || null
+      this._headingQuery = headingTrigger[4]
+      this._insertStart = cursorPos - headingTrigger[0].length
+      this._scheduleHeadingSearch(this._headingNoteId, this._headingQuery)
+      this._detectCursorInLink(value, cursorPos)
+      return
+    }
+
     // Detect mid-typing trigger [[ ... (dropdown autocomplete)
     const triggerMatch   = lineUpToCursor.match(/\[\[([^\]|]*)$/)
 
@@ -145,6 +162,7 @@ export default class extends Controller {
           display: match[1],
           role: match[2] ? match[2].replace(":", "") : null,
           uuid: match[3],
+          headingSlug: match[4] || null,
           from,
           to
         }
@@ -201,6 +219,7 @@ export default class extends Controller {
           if (this._activeIndex >= 0) {
             if (this._dropdownMode === "promise") this._selectPromiseAction(this._suggestions[this._activeIndex])
             else if (this._dropdownMode === "disambiguate") this._selectDisambiguation(this._suggestions[this._activeIndex])
+            else if (this._dropdownMode === "headings") this._insertHeadingSuggestion(this._suggestions[this._activeIndex])
             else this._insertSuggestion(this._suggestions[this._activeIndex])
           }
           return true
@@ -245,7 +264,8 @@ export default class extends Controller {
     const index = roles.indexOf(currentRole)
     const nextRole = roles[((index + dir) + roles.length) % roles.length]
     const rolePrefix = nextRole ? `${nextRole}:` : ""
-    const markup = `[[${this._focusedLink.display}|${rolePrefix}${this._focusedLink.uuid}]]`
+    const headingSuffix = this._focusedLink.headingSlug ? `#${this._focusedLink.headingSlug}` : ""
+    const markup = `[[${this._focusedLink.display}|${rolePrefix}${this._focusedLink.uuid}${headingSuffix}]]`
     const cursorOffset = Math.max(0, (this._cm.getSelectionRange?.().from ?? this._focusedLink.to) - this._focusedLink.from)
     const nextCursor = Math.min(this._focusedLink.from + cursorOffset, this._focusedLink.from + markup.length - 2)
 
@@ -284,6 +304,52 @@ export default class extends Controller {
     } catch (_) {
       this._closeDropdown()
     }
+  }
+
+  _scheduleHeadingSearch(noteId, query) {
+    clearTimeout(this._debounceTimer)
+    this._showHeadingLoading()
+    this._debounceTimer = setTimeout(() => this._fetchHeadingSuggestions(noteId, query), 75)
+  }
+
+  async _fetchHeadingSuggestions(noteId, query) {
+    try {
+      if (this._dropdownMode !== "headings") return
+      const params = new URLSearchParams({ mode: "headings", note_id: noteId })
+      if (query) params.set("q", query)
+      const url = `${this.searchUrlValue}?${params.toString()}`
+      const response = await fetch(url, { headers: { Accept: "application/json" } })
+      if (!response.ok) return
+      const headings = await response.json()
+      if (this._dropdownMode !== "headings" || this._headingNoteId !== noteId) return
+      this._suggestions = headings.map(h => ({
+        ...h,
+        title: `${"#".repeat(h.level)} ${h.text}`,
+        label: `${"  ".repeat(h.level - 1)}${h.text}`,
+        id: h.slug
+      }))
+      this._activeIndex = this._suggestions.length > 0 ? 0 : -1
+      this._renderDropdown()
+    } catch (_) {
+      this._closeDropdown()
+    }
+  }
+
+  _showHeadingLoading() {
+    this._suggestions = [{ label: "Buscando headings...", description: "Filtrando headings da nota.", loading: true }]
+    this._activeIndex = -1
+    this._renderDropdown()
+  }
+
+  _insertHeadingSuggestion(heading) {
+    if (!heading || heading.loading) return
+    const rolePrefix = this._headingRole ? `${this._headingRole}:` : ""
+    const markup = `[[${this._headingDisplay}#${heading.text}|${rolePrefix}${this._headingNoteId}#${heading.slug}]]`
+    this.element.dispatchEvent(new CustomEvent("wikilink:insert", {
+      detail: { markup, insertStart: this._insertStart },
+      bubbles: true
+    }))
+    this._closeDropdown()
   }
 
   async _resolvePromise(title) {
@@ -504,6 +570,7 @@ export default class extends Controller {
         this._activeIndex = i
         if (this._dropdownMode === "promise") this._selectPromiseAction(this._suggestions[i])
         else if (this._dropdownMode === "disambiguate") this._selectDisambiguation(this._suggestions[i])
+        else if (this._dropdownMode === "headings") this._insertHeadingSuggestion(this._suggestions[i])
         else this._insertSuggestion(this._suggestions[i])
       })
     })

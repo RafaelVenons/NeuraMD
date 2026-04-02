@@ -39,7 +39,7 @@ module Links
 
     def build_pattern(uuid)
       escaped_uuid = Regexp.escape(uuid)
-      /\[\[([^\]|]+)\|((?:[a-z]+:)?#{escaped_uuid})\]\]/i
+      /\[\[([^\]|]+)\|((?:[a-z]+:)?#{escaped_uuid}(?:#[a-z0-9_-]+)?)\]\]/i
     end
 
     def update_note_content(src_note, pattern)

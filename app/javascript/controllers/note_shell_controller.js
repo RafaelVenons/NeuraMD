@@ -51,6 +51,7 @@ export default class extends Controller {
       const finalPath = payload.urls?.show || this._finalHistoryPath(response.url, normalizedPath)
       if (pushHistory) window.history.pushState(this._historyStateFor(finalPath), "", finalPath)
       else window.history.replaceState(this._historyStateFor(finalPath), "", finalPath)
+      this._scrollToFragment(normalizedPath)
       return true
     } catch (error) {
       console.error("Note shell navigation failed:", error)
@@ -158,6 +159,17 @@ export default class extends Controller {
     if (!currentPath) return
 
     window.history.replaceState(this._historyStateFor(currentPath), "", currentPath)
+  }
+
+  _scrollToFragment(path) {
+    try {
+      const fragment = new URL(path, window.location.origin).hash?.slice(1)
+      if (!fragment) return
+      requestAnimationFrame(() => {
+        const target = document.getElementById(fragment)
+        target?.scrollIntoView({ behavior: "smooth", block: "start" })
+      })
+    } catch (_) {}
   }
 
   _historyStateFor(path) {

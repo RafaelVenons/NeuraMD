@@ -49,6 +49,10 @@ module Mcp
           }
         end
 
+        headings = note.note_headings.order(:position).map do |h|
+          {text: h.text, slug: h.slug, level: h.level}
+        end
+
         data = {
           slug: note.slug,
           title: note.title,
@@ -56,6 +60,7 @@ module Mcp
           body: note.head_revision&.content_markdown.to_s,
           tags: note.tags.pluck(:name),
           properties: note.current_properties,
+          headings: headings,
           links: outgoing,
           backlinks: backlinks,
           unlinked_mentions: unlinked_mentions,

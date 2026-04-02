@@ -19,7 +19,7 @@ module Links
     }.freeze
 
     UUID_RE = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i
-    WIKILINK_RE = /\[\[(?:[^\]|]+)\|(?:(?<role>[a-z]+):)?(?<uuid>#{UUID_RE})\]\]/i
+    WIKILINK_RE = /\[\[(?:[^\]|]+)\|(?:(?<role>[a-z]+):)?(?<uuid>#{UUID_RE})(?:#(?<heading>[a-z0-9_-]+))?\]\]/i
 
     def self.call(content)
       new(content).call
@@ -32,10 +32,15 @@ module Links
     def call
       @content
         .scan(WIKILINK_RE)
-        .map { |role_prefix, uuid| build_link(role_prefix, uuid) }
+        .map { |role_prefix, uuid, heading| build_link(role_prefix, uuid, heading) }
         .each_with_object({}) do |link, by_destination|
           current = by_destination[link[:dst_note_id]]
-          if replace_link?(current, link)
+          if current
+            merge_heading_slugs!(current, link)
+            if replace_link?(current, link)
+              current[:hier_role] = link[:hier_role]
+            end
+          else
             by_destination[link[:dst_note_id]] = link
           end
         end
@@ -44,13 +49,23 @@ module Links
 
     private
 
-    def build_link(role_prefix, uuid)
+    def build_link(role_prefix, uuid, heading)
       role_key = role_prefix.to_s.downcase
+      heading_slug = heading.presence
 
-      {
+      link = {
         dst_note_id: uuid.downcase,
         hier_role: ROLE_MAP[role_key]
       }
+      link[:heading_slugs] = [heading_slug] if heading_slug
+      link
+    end
+
+    def merge_heading_slugs!(current, candidate)
+      slugs = Array(current[:heading_slugs]) | Array(candidate[:heading_slugs])
+      if slugs.any?
+        current[:heading_slugs] = slugs
+      end
     end
 
     def replace_link?(current, candidate)
