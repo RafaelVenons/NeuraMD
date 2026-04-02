@@ -37,22 +37,21 @@ module Mcp
           Notes::RenameService.call(note: note, new_title: title.strip)
         end
 
-        if content_markdown.present?
-          Notes::CheckpointService.call(
-            note: note,
-            content: content_markdown,
-            author: nil,
-            accepted_ai_request: nil
-          )
-        end
+        if content_markdown.present? || append_links.present?
+          body = if content_markdown.present?
+            content_markdown
+          else
+            note.reload.head_revision&.content_markdown.to_s
+          end
 
-        if append_links.present? && content_markdown.blank?
-          current_body = note.reload.head_revision&.content_markdown.to_s
-          wikilink_lines = build_wikilink_lines(append_links)
-          new_body = [current_body.rstrip, "", wikilink_lines].join("\n")
+          if append_links.present?
+            wikilink_lines = build_wikilink_lines(append_links)
+            body = [body.rstrip, "", wikilink_lines].join("\n")
+          end
+
           Notes::CheckpointService.call(
             note: note,
-            content: new_body,
+            content: body,
             author: nil,
             accepted_ai_request: nil
           )

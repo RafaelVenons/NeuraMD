@@ -137,6 +137,24 @@ RSpec.describe Mcp::Tools::UpdateNoteTool do
     expect(note.active_outgoing_links.count).to eq(2)
   end
 
+  it "appends wikilinks even when content_markdown is also provided" do
+    target = create(:note, :with_head_revision, title: "Lateral")
+
+    described_class.call(
+      slug: note.slug,
+      content_markdown: "# New content",
+      append_links: "Lateral|b:#{target.id}"
+    )
+
+    note.reload
+    expect(note.head_revision.content_markdown).to include("# New content")
+    expect(note.head_revision.content_markdown).to include("[[Lateral|b:#{target.id}]]")
+
+    link = note.active_outgoing_links.find_by(dst_note_id: target.id)
+    expect(link).to be_present
+    expect(link.hier_role).to eq("same_level")
+  end
+
   it "sets aliases on a note" do
     response = described_class.call(slug: note.slug, set_aliases: '["Cardio", "Heart"]')
     content = JSON.parse(response.content.first[:text])
