@@ -5,8 +5,10 @@ require "mcp"
 module Mcp
   module Tools
     class UpdateNoteTool < MCP::Tool
+      extend NoteFinder
+
       tool_name "update_note"
-      description "Update an existing NeuraMD note: change content, rename title, add/remove tags, append wikilinks. Follows slug redirects."
+      description "Update an existing NeuraMD note: change content, rename title, add/remove tags, set aliases, append wikilinks. Follows slug redirects and aliases."
 
       input_schema(
         type: "object",
@@ -17,17 +19,19 @@ module Mcp
           add_tags: {type: "string", description: "Comma-separated tags to add (created if they don't exist)"},
           remove_tags: {type: "string", description: "Comma-separated tags to remove"},
           append_links: {type: "string", description: "Comma-separated links to append as wikilinks. Format: 'Display|role:uuid' (role: f/c/b or omit). Appended to current content and saved via checkpoint."},
-          set_properties: {type: "string", description: "JSON object of property key-value pairs to set. Use null value to remove a property. Example: '{\"status\":\"published\",\"priority\":3}'"}
+          set_properties: {type: "string", description: "JSON object of property key-value pairs to set. Use null value to remove a property. Example: '{\"status\":\"published\",\"priority\":3}'"},
+          set_aliases: {type: "string", description: 'JSON array of alias strings. Replaces all current aliases. Example: \'["Cardio", "Heart Notes"]\''}
+
         },
         required: ["slug"]
       )
 
-      def self.call(slug:, title: nil, content_markdown: nil, add_tags: nil, remove_tags: nil, append_links: nil, set_properties: nil, server_context: nil)
+      def self.call(slug:, title: nil, content_markdown: nil, add_tags: nil, remove_tags: nil, append_links: nil, set_properties: nil, set_aliases: nil, server_context: nil)
         note = find_note(slug)
         return error_response("Note not found: #{slug}") unless note
 
-        has_changes = [title, content_markdown, add_tags, remove_tags, append_links, set_properties].any?(&:present?)
-        return error_response("Nothing to update — provide title, content_markdown, add_tags, remove_tags, append_links, or set_properties") unless has_changes
+        has_changes = [title, content_markdown, add_tags, remove_tags, append_links, set_properties, set_aliases].any?(&:present?)
+        return error_response("Nothing to update — provide title, content_markdown, add_tags, remove_tags, append_links, set_properties, or set_aliases") unless has_changes
 
         if title.present? && title.strip != note.title
           Notes::RenameService.call(note: note, new_title: title.strip)
@@ -56,6 +60,7 @@ module Mcp
 
         manage_tags!(note, add_tags, remove_tags)
         set_properties!(note, set_properties) if set_properties.present?
+        set_aliases!(note, set_aliases) if set_aliases.present?
 
         note.reload
         data = {
@@ -64,20 +69,11 @@ module Mcp
           title: note.title,
           id: note.id,
           tags: note.tags.pluck(:name),
+          aliases: note.note_aliases.pluck(:name),
           properties: note.current_properties
         }
 
         MCP::Tool::Response.new([{type: "text", text: data.to_json}])
-      end
-
-      def self.find_note(slug)
-        note = Note.active.find_by(slug: slug)
-        return note if note
-
-        redirect = SlugRedirect.includes(:note).find_by(slug: slug)
-        return redirect.note if redirect&.note && !redirect.note.deleted?
-
-        nil
       end
 
       def self.manage_tags!(note, add_tags, remove_tags)
@@ -103,6 +99,14 @@ module Mcp
         Properties::SetService.call(note: note, changes: changes, strict: false)
       rescue JSON::ParserError => e
         raise "Invalid JSON for set_properties: #{e.message}"
+      end
+
+      def self.set_aliases!(note, aliases_json)
+        aliases = JSON.parse(aliases_json)
+        raise "set_aliases must be a JSON array" unless aliases.is_a?(Array)
+        Aliases::SetService.call(note: note, aliases: aliases)
+      rescue JSON::ParserError => e
+        raise "Invalid JSON for set_aliases: #{e.message}"
       end
 
       def self.build_wikilink_lines(append_links_string)

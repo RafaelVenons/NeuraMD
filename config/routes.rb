@@ -40,6 +40,7 @@ Rails.application.routes.draw do
       get :search
     end
     member do
+      patch :aliases, to: "aliases#update"
       patch :properties, to: "properties#update"
       post :create_from_promise
       get  :ai_status, to: "ai#status"

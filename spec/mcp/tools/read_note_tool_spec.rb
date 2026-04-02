@@ -75,4 +75,18 @@ RSpec.describe Mcp::Tools::ReadNoteTool do
     response = described_class.call(slug: note.slug)
     expect(response.error?).to be true
   end
+
+  it "includes aliases in the response" do
+    create(:note_alias, note: note, name: "Test Alias")
+    response = described_class.call(slug: note.slug)
+    content = JSON.parse(response.content.first[:text])
+    expect(content["aliases"]).to eq(["Test Alias"])
+  end
+
+  it "finds note by alias" do
+    create(:note_alias, note: note, name: "My Alias")
+    response = described_class.call(slug: "My Alias")
+    content = JSON.parse(response.content.first[:text])
+    expect(content["title"]).to eq("Nota de teste")
+  end
 end

@@ -83,7 +83,9 @@ module Search
         base = scope
           .merge(Note.with_latest_content)
           .joins("LEFT JOIN note_revisions search_revisions ON search_revisions.id = notes.head_revision_id")
+          .joins("LEFT JOIN note_aliases search_aliases ON search_aliases.note_id = notes.id")
           .includes(:head_revision)
+          .group("notes.id, search_revisions.id")
         apply_property_filters(base)
       end
     end
@@ -145,6 +147,8 @@ module Search
         OR #{title_similarity_sql} > 0.12
         OR #{content_similarity_sql} > 0.08
         OR to_tsvector('simple', COALESCE(search_revisions.content_plain, '')) @@ #{ts_query_sql}
+        OR unaccent(search_aliases.name) ILIKE unaccent(#{quoted_pattern})
+        OR #{alias_similarity_sql} > 0.12
       SQL
     end
 
@@ -178,6 +182,10 @@ module Search
 
     def ts_query_sql
       "websearch_to_tsquery('simple', #{quoted_query})"
+    end
+
+    def alias_similarity_sql
+      "similarity(unaccent(COALESCE(search_aliases.name, '')), unaccent(#{quoted_query}))"
     end
 
     def content_rank_sql

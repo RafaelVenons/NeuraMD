@@ -187,6 +187,20 @@ RSpec.describe "Notes", type: :request do
       get note_path(note.slug)
       expect(response).to have_http_status(:not_found)
     end
+
+    it "redirects to real slug when accessed via alias name" do
+      create(:note_alias, note: note, name: "My Alias")
+      get note_path("my alias")
+      expect(response).to redirect_to(note_path(note.slug))
+      expect(response).to have_http_status(:moved_permanently)
+    end
+
+    it "returns 404 when alias belongs to deleted note" do
+      create(:note_alias, note: note, name: "Ghost Alias")
+      note.soft_delete!
+      get note_path("ghost alias")
+      expect(response).to have_http_status(:not_found)
+    end
   end
 
   describe "GET /notes/search" do
@@ -276,6 +290,29 @@ RSpec.describe "Notes", type: :request do
       expect(response).to have_http_status(:ok)
       snippet = response.parsed_body["results"].find { |result| result["title"] == "Resumo sem uuid" }["snippet"]
       expect(snippet).to eq("Minha primeira nota e limpo")
+    end
+
+    it "returns matched_alias in autocomplete when match is via alias" do
+      note_with_alias = create(:note, :with_head_revision, title: "Hematologia Profunda")
+      create(:note_alias, note: note_with_alias, name: "Blood Science")
+
+      get search_notes_path, params: {q: "blood"}
+
+      expect(response).to have_http_status(:ok)
+      match = response.parsed_body.find { |n| n["id"] == note_with_alias.id }
+      expect(match).to be_present
+      expect(match["matched_alias"]).to eq("Blood Science")
+    end
+
+    it "does not include matched_alias when match is via title only" do
+      titled = create(:note, :with_head_revision, title: "Pneumologia Avancada")
+
+      get search_notes_path, params: {q: "pneumo"}
+
+      expect(response).to have_http_status(:ok)
+      match = response.parsed_body.find { |n| n["id"] == titled.id }
+      expect(match).to be_present
+      expect(match).not_to have_key("matched_alias")
     end
 
     it "rejects invalid finder regex" do

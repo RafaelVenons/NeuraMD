@@ -5,8 +5,10 @@ require "mcp"
 module Mcp
   module Tools
     class ReadNoteTool < MCP::Tool
+      extend NoteFinder
+
       tool_name "read_note"
-      description "Read a NeuraMD note by slug. Returns full content, tags, and links. Follows slug redirects."
+      description "Read a NeuraMD note by slug or alias. Returns full content, tags, aliases, and links. Follows slug redirects and aliases."
 
       input_schema(
         type: "object",
@@ -41,6 +43,7 @@ module Mcp
         data = {
           slug: note.slug,
           title: note.title,
+          aliases: note.note_aliases.pluck(:name),
           body: note.head_revision&.content_markdown.to_s,
           tags: note.tags.pluck(:name),
           properties: note.current_properties,
@@ -51,16 +54,6 @@ module Mcp
         }
 
         MCP::Tool::Response.new([{type: "text", text: data.to_json}])
-      end
-
-      def self.find_note(slug)
-        note = Note.active.find_by(slug: slug)
-        return note if note
-
-        redirect = SlugRedirect.includes(:note).find_by(slug: slug)
-        return redirect.note if redirect&.note && !redirect.note.deleted?
-
-        nil
       end
 
       def self.error_response(message)

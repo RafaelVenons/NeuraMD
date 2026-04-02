@@ -86,4 +86,22 @@ RSpec.describe Mcp::Tools::SearchNotesTool do
       expect(content["notes"].length).to eq(1)
     end
   end
+
+  context "with aliases" do
+    it "includes aliases in search results" do
+      create(:note_alias, note: note1, name: "SysArch")
+      response = described_class.call(query: "arquitetura")
+      note_data = JSON.parse(response.content.first[:text])["notes"].first
+
+      expect(note_data["aliases"]).to include("SysArch")
+    end
+
+    it "finds notes by alias" do
+      create(:note_alias, note: note1, name: "SysArch")
+      response = described_class.call(query: "SysArch")
+      content = JSON.parse(response.content.first[:text])
+
+      expect(content["notes"].map { |n| n["title"] }).to include("Arquitetura do sistema")
+    end
+  end
 end

@@ -99,7 +99,11 @@ class NotesController < ApplicationController
       end
     else
       notes = Note.search_by_title(params[:q].to_s, exclude_id: params[:exclude_id])
-      render json: notes.map { |n| {id: n.id, title: n.title, slug: n.slug} }
+      render json: notes.map { |n|
+        payload = {id: n.id, title: n.title, slug: n.slug}
+        payload[:matched_alias] = n.matched_alias if n.respond_to?(:matched_alias) && n.matched_alias.present?
+        payload
+      }
     end
   end
 
@@ -260,6 +264,12 @@ class NotesController < ApplicationController
       return
     end
 
+    alias_record = NoteAlias.includes(:note).where("lower(name) = lower(?)", params[:slug]).first
+    if alias_record&.note && !alias_record.note.deleted?
+      redirect_to note_path(alias_record.note.slug), status: :moved_permanently
+      return
+    end
+
     raise ActiveRecord::RecordNotFound
   end
 
@@ -337,7 +347,8 @@ class NotesController < ApplicationController
         ai_create_translated_note_template: ai_request_translated_note_note_path(note.slug, "__REQUEST_ID__"),
         wikilink_create_promise: create_from_promise_note_path(note.slug),
         link_info_template: "#{link_info_note_path(note.slug)}?dst_uuid=__DST_UUID__",
-        properties: properties_note_path(note.slug)
+        properties: properties_note_path(note.slug),
+        aliases: aliases_note_path(note.slug)
       },
       ai: {
         note_title: note.title,
@@ -351,6 +362,7 @@ class NotesController < ApplicationController
       },
       link_tags_map: outgoing_link_tags_payload(note),
       note_tags: note.tags.where(tag_scope: %w[note both]).map { |t| { id: t.id, name: t.name, color_hex: t.color_hex } },
+      aliases: note.note_aliases.pluck(:name),
       properties: (revision&.properties_data || {}).except("_errors"),
       properties_errors: (revision&.properties_data || {}).dig("_errors") || {},
       property_definitions: PropertyDefinition.active.order(:position, :key).map { |d|

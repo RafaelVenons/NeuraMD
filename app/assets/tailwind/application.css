@@ -487,6 +487,43 @@
     @apply text-xs py-4 text-center;
     color: var(--theme-text-faint);
   }
+  .aliases-section {
+    @apply mb-3 pb-3;
+    border-bottom: 1px solid var(--toolbar-border);
+  }
+  .aliases-header {
+    @apply mb-1;
+  }
+  .aliases-label {
+    @apply text-xs font-medium;
+    color: var(--theme-text-secondary);
+  }
+  .aliases-chips {
+    @apply flex flex-wrap gap-1 items-center;
+  }
+  .alias-chip {
+    @apply inline-flex items-center gap-0.5 px-2 py-0.5 rounded-full text-xs;
+    background: var(--theme-bg-hover);
+    color: var(--theme-text-primary);
+  }
+  .alias-chip-remove {
+    @apply cursor-pointer opacity-50 hover:opacity-100 ml-0.5;
+    font-size: 13px;
+    line-height: 1;
+  }
+  .alias-input {
+    @apply text-xs px-1 py-0.5 rounded;
+    background: transparent;
+    color: var(--theme-text-primary);
+    border: 1px solid transparent;
+    min-width: 80px;
+    max-width: 140px;
+    outline: none;
+  }
+  .alias-input:focus {
+    border-color: var(--toolbar-border);
+    background: var(--theme-bg-primary);
+  }
   .properties-row {
     @apply rounded-lg p-2;
     background: var(--theme-bg-primary);
@@ -3192,6 +3229,14 @@
   .wikilink-suggestion.active {
     background: var(--theme-bg-hover);
     color: var(--theme-text-primary);
+  }
+
+  .wikilink-alias-hint {
+    display: inline-block;
+    margin-left: 6px;
+    font-size: 11px;
+    opacity: 0.6;
+    font-style: italic;
   }
 
   /* Role bar inside the autocomplete dropdown */

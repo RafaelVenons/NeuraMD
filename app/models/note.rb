@@ -11,6 +11,7 @@ class Note < ApplicationRecord
   has_many :active_outgoing_links, -> { active }, class_name: "NoteLink", foreign_key: :src_note_id
   has_many :active_incoming_links, -> { active }, class_name: "NoteLink", foreign_key: :dst_note_id
   has_many :slug_redirects, dependent: :destroy
+  has_many :note_aliases, dependent: :destroy
   has_many :note_tags, dependent: :destroy
   has_many :tags, through: :note_tags
 
@@ -26,18 +27,35 @@ class Note < ApplicationRecord
   scope :deleted, -> { where.not(deleted_at: nil) }
   scope :search_by_title, ->(query, exclude_id: nil) {
     normalized = query.to_s.strip
-    relation = with_latest_content
+    relation = with_latest_content.left_joins(:note_aliases).group("notes.id")
     relation = relation.where.not(id: exclude_id) if exclude_id.present?
     next relation.order(:title).limit(10) if normalized.blank?
 
     pattern = "%#{sanitize_sql_like(normalized)}%"
     sanitized_query = connection.quote_string(normalized)
-    similarity_sql = "similarity(title, '#{sanitized_query}')"
+    title_sim = "similarity(notes.title, '#{sanitized_query}')"
+    alias_sim = "MAX(similarity(note_aliases.name, '#{sanitized_query}'))"
+    quoted_pattern = connection.quote(pattern)
 
     relation
-      .where("title ILIKE :pattern OR #{similarity_sql} > 0.12", pattern:)
-      .select("notes.*, #{similarity_sql} AS title_similarity")
-      .order(Arel.sql("CASE WHEN title ILIKE #{connection.quote(pattern)} THEN 0 ELSE 1 END ASC, title_similarity DESC, title ASC"))
+      .where(
+        "notes.title ILIKE :pattern OR #{title_sim} > 0.12 " \
+        "OR note_aliases.name ILIKE :pattern " \
+        "OR similarity(note_aliases.name, '#{sanitized_query}') > 0.12",
+        pattern: pattern
+      )
+      .select(
+        "notes.*, #{title_sim} AS title_similarity, " \
+        "#{alias_sim} AS best_alias_similarity, " \
+        "MAX(CASE WHEN note_aliases.name ILIKE #{quoted_pattern} " \
+        "OR similarity(note_aliases.name, '#{sanitized_query}') > 0.12 " \
+        "THEN note_aliases.name END) AS matched_alias"
+      )
+      .order(Arel.sql(
+        "CASE WHEN notes.title ILIKE #{quoted_pattern} THEN 0 " \
+        "WHEN MAX(note_aliases.name) ILIKE #{quoted_pattern} THEN 1 ELSE 2 END ASC, " \
+        "GREATEST(#{title_sim}, COALESCE(#{alias_sim}, 0)) DESC, notes.title ASC"
+      ))
       .limit(10)
   }
 

@@ -427,6 +427,7 @@ export default class extends Controller {
           type="button"
         >
           <span>${this._escapeHtml(note.title || note.label)}</span>
+          ${note.matched_alias ? `<span class="wikilink-alias-hint">aka: ${this._escapeHtml(note.matched_alias)}</span>` : ""}
           ${note.description ? `<span class="block mt-1 text-xs opacity-70">${this._escapeHtml(note.description)}</span>` : ""}
         </button>
       `).join("")}
@@ -509,7 +510,10 @@ export default class extends Controller {
     return [...suggestions]
       .map((note) => ({
         note,
-        score: this._suggestionSearchScore(note.title, normalizedQuery)
+        score: Math.max(
+          this._suggestionSearchScore(note.title, normalizedQuery),
+          note.matched_alias ? this._suggestionSearchScore(note.matched_alias, normalizedQuery) : 0
+        )
       }))
       .filter(({ score }) => score > 0)
       .sort((left, right) => {

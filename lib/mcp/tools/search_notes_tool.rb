@@ -22,7 +22,7 @@ module Mcp
         parsed_filters = parse_property_filters(property_filters)
 
         result = Search::NoteQueryService.call(
-          scope: Note.active,
+          scope: Note.active.includes(:note_aliases),
           query: query.to_s,
           limit: [limit.to_i, 1].max,
           property_filters: parsed_filters
@@ -32,6 +32,7 @@ module Mcp
           {
             slug: note.slug,
             title: note.title,
+            aliases: note.note_aliases.map(&:name),
             excerpt: excerpt_for(note),
             tags: note.tags.pluck(:name)
           }

@@ -136,4 +136,21 @@ RSpec.describe Mcp::Tools::UpdateNoteTool do
     expect(note.head_revision.content_markdown).to include("[[Child 2|c:#{t2.id}]]")
     expect(note.active_outgoing_links.count).to eq(2)
   end
+
+  it "sets aliases on a note" do
+    response = described_class.call(slug: note.slug, set_aliases: '["Cardio", "Heart"]')
+    content = JSON.parse(response.content.first[:text])
+
+    expect(content["aliases"]).to contain_exactly("Cardio", "Heart")
+    expect(note.note_aliases.reload.pluck(:name)).to contain_exactly("Cardio", "Heart")
+  end
+
+  it "finds note by alias for update" do
+    create(:note_alias, note: note, name: "Original Alias")
+    response = described_class.call(slug: "Original Alias", add_tags: "test-tag")
+    content = JSON.parse(response.content.first[:text])
+
+    expect(content["updated"]).to be true
+    expect(content["tags"]).to include("test-tag")
+  end
 end

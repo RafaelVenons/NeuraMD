@@ -6,9 +6,11 @@ import { Controller } from "@hotwired/stimulus"
 export default class extends Controller {
   static values = {
     propertiesUrl: String,
+    aliasesUrl: String,
     initialDefinitions: { type: Array, default: [] },
     initialProperties: { type: Object, default: {} },
-    initialErrors: { type: Object, default: {} }
+    initialErrors: { type: Object, default: {} },
+    initialAliases: { type: Array, default: [] }
   }
   static targets = ["list", "addButton", "addDropdown"]
 
@@ -16,6 +18,7 @@ export default class extends Controller {
     this._definitions = this.initialDefinitionsValue
     this._properties = this.initialPropertiesValue
     this._errors = this.initialErrorsValue
+    this._aliases = this.initialAliasesValue
     this._addDropdownOpen = false
 
     this._onDocClick = (e) => {
@@ -37,7 +40,9 @@ export default class extends Controller {
     this._definitions = payload.property_definitions || []
     this._properties = payload.properties || {}
     this._errors = payload.properties_errors || {}
+    this._aliases = payload.aliases || []
     this.propertiesUrlValue = payload.urls?.properties || this.propertiesUrlValue
+    this.aliasesUrlValue = payload.urls?.aliases || this.aliasesUrlValue
     this._render()
     this._closeAddDropdown()
   }
@@ -53,10 +58,12 @@ export default class extends Controller {
     if (!this.hasListTarget) return
     this.listTarget.innerHTML = ""
 
+    this.listTarget.appendChild(this._buildAliasesSection())
+
     const setKeys = Object.keys(this._properties)
     const defsWithValues = this._definitions.filter(d => setKeys.includes(d.key))
 
-    if (defsWithValues.length === 0) {
+    if (defsWithValues.length === 0 && this._aliases.length === 0) {
       const empty = document.createElement("p")
       empty.className = "properties-empty"
       empty.textContent = "Nenhuma propriedade definida"
@@ -316,6 +323,75 @@ export default class extends Controller {
       const data = await response.json()
       this._properties = data.properties || {}
       this._errors = data.properties_errors || {}
+      this._render()
+    } catch (_) {}
+  }
+
+  // ── Aliases ─────────────────────────────────────────────
+
+  _buildAliasesSection() {
+    const section = document.createElement("div")
+    section.className = "aliases-section"
+
+    const header = document.createElement("div")
+    header.className = "aliases-header"
+    header.innerHTML = `<span class="aliases-label">Aliases</span>`
+    section.appendChild(header)
+
+    const chipContainer = document.createElement("div")
+    chipContainer.className = "aliases-chips"
+
+    for (const alias of this._aliases) {
+      const chip = document.createElement("span")
+      chip.className = "alias-chip"
+      chip.innerHTML = `
+        ${this._escapeHtml(alias)}
+        <button type="button" class="alias-chip-remove" title="Remover">&times;</button>
+      `
+      chip.querySelector(".alias-chip-remove").addEventListener("click", () => {
+        this._aliases = this._aliases.filter(a => a !== alias)
+        this._saveAliases()
+      })
+      chipContainer.appendChild(chip)
+    }
+
+    const input = document.createElement("input")
+    input.type = "text"
+    input.className = "alias-input"
+    input.placeholder = "Novo alias…"
+    input.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" && input.value.trim()) {
+        e.preventDefault()
+        const val = input.value.trim()
+        if (!this._aliases.includes(val)) {
+          this._aliases.push(val)
+          this._saveAliases()
+        }
+        input.value = ""
+      }
+    })
+    chipContainer.appendChild(input)
+    section.appendChild(chipContainer)
+
+    return section
+  }
+
+  async _saveAliases() {
+    const csrf = document.querySelector("meta[name='csrf-token']")?.content
+    try {
+      const response = await fetch(this.aliasesUrlValue, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          Accept: "application/json",
+          "X-CSRF-Token": csrf
+        },
+        body: JSON.stringify({ aliases: this._aliases })
+      })
+      if (!response.ok) return
+
+      const data = await response.json()
+      this._aliases = data.aliases || []
       this._render()
     } catch (_) {}
   }
