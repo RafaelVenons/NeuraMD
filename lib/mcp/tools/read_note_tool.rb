@@ -40,6 +40,15 @@ module Mcp
           }
         end
 
+        unlinked_mentions = Mentions::UnlinkedService.call(note: note).mentions.map do |m|
+          {
+            source_slug: m.source_note.slug,
+            source_title: m.source_note.title,
+            matched_term: m.matched_term,
+            snippets: m.snippets
+          }
+        end
+
         data = {
           slug: note.slug,
           title: note.title,
@@ -49,6 +58,7 @@ module Mcp
           properties: note.current_properties,
           links: outgoing,
           backlinks: backlinks,
+          unlinked_mentions: unlinked_mentions,
           created_at: note.created_at.iso8601,
           updated_at: note.updated_at.iso8601
         }

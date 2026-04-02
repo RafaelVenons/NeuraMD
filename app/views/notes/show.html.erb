@@ -7,6 +7,7 @@
      data-note-shell-target="root"
      data-editor-autosave-url-value="<%= draft_note_path(@note.slug) %>"
      data-editor-revisions-url-value="<%= revisions_note_path(@note.slug) %>"
+     data-editor-convert-mention-url-value="<%= convert_mention_note_path(@note.slug) %>"
      data-editor-slug-value="<%= @note.slug %>"
      data-editor-title-value="<%= @note.title %>"
      data-editor-language-value="<%= @note.detected_language %>"
@@ -657,6 +658,7 @@
             <select data-editor-target="contextMode" data-action="change->editor#updateContextMode">
               <option value="graph">Grafo</option>
               <option value="backlinks">Backlinks</option>
+              <option value="mentions">Menções</option>
               <option value="hidden">Oculto</option>
             </select>
           </label>
@@ -684,6 +686,11 @@
         <section class="backlinks-panel hidden"
                  data-editor-target="backlinksPanel">
           <%= render "notes/backlinks_content", note: @note %>
+        </section>
+
+        <section class="mentions-panel hidden"
+                 data-editor-target="mentionsPanel">
+          <%= render "notes/mentions_content", mentions: Mentions::UnlinkedService.call(note: @note).mentions %>
         </section>
       </section>
     </div>

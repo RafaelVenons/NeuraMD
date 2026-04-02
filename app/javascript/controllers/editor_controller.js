@@ -4,7 +4,7 @@ import { Controller } from "@hotwired/stimulus"
 export default class extends Controller {
   static targets = [
     "mainArea", "editorColumn", "editorPane", "previewPane", "previewContent",
-    "contextPanel", "graphPanel", "backlinksPanel", "contextMode",
+    "contextPanel", "graphPanel", "backlinksPanel", "mentionsPanel", "contextMode",
     "previewResizeHandle", "contextResizeHandle",
     "titleInput", "langBadge", "saveStatus",
     "previewToggleBtn", "propertiesToggleBtn", "propertiesPanel",
@@ -14,6 +14,7 @@ export default class extends Controller {
   static values = {
     autosaveUrl: String,
     revisionsUrl: String,
+    convertMentionUrl: String,
     slug: String,
     title: String,
     language: String,
@@ -183,6 +184,36 @@ export default class extends Controller {
   updateContextMode() {
     this._applyContextMode(this.contextModeTarget.value)
     this._persistLayoutState()
+  }
+
+  async convertMention(event) {
+    const btn = event.currentTarget
+    const sourceSlug = btn.dataset.sourceSlug
+    const matchedTerm = btn.dataset.matchedTerm
+
+    btn.disabled = true
+    btn.textContent = "..."
+
+    try {
+      const csrfToken = document.querySelector("meta[name='csrf-token']")?.content
+      const resp = await fetch(this.convertMentionUrlValue, {
+        method: "POST",
+        credentials: "same-origin",
+        headers: {
+          "Content-Type": "application/json",
+          "Accept": "application/json",
+          "X-CSRF-Token": csrfToken
+        },
+        body: JSON.stringify({ source_slug: sourceSlug, matched_term: matchedTerm })
+      })
+      const data = await resp.json()
+      if (data.linked && this.hasMentionsPanelTarget) {
+        this.mentionsPanelTarget.innerHTML = data.mentions_html
+      }
+    } catch (_) {
+      btn.disabled = false
+      btn.textContent = "Linkar"
+    }
   }
 
   async toggleRevisions(event) {
@@ -357,7 +388,7 @@ export default class extends Controller {
   // note is saved as a draft before Turbo navigates to the destination.
   _bindNoteNavigation() {
     this.element.addEventListener("click", async (e) => {
-      const link = e.target.closest(".preview-prose a.wikilink, .backlinks-panel a, .cm-content [data-note-href]")
+      const link = e.target.closest(".preview-prose a.wikilink, .backlinks-panel a, .mentions-panel a.mention-link, .cm-content [data-note-href]")
       if (!link) return
       const isEditorTypewriterLink = !!link.closest(".cm-content")
       if (isEditorTypewriterLink && !(e.ctrlKey || e.metaKey)) return
@@ -498,11 +529,15 @@ export default class extends Controller {
   _applyContextMode(mode) {
     const isHidden = mode === "hidden"
     const showBacklinks = mode === "backlinks"
+    const showMentions = mode === "mentions"
 
     this.contextPanelTarget.classList.toggle("note-context-panel--collapsed", isHidden)
     this.contextResizeHandleTarget.classList.toggle("hidden", isHidden)
-    this.graphPanelTarget.classList.toggle("hidden", showBacklinks || isHidden)
+    this.graphPanelTarget.classList.toggle("hidden", showBacklinks || showMentions || isHidden)
     this.backlinksPanelTarget.classList.toggle("hidden", !showBacklinks || isHidden)
+    if (this.hasMentionsPanelTarget) {
+      this.mentionsPanelTarget.classList.toggle("hidden", !showMentions || isHidden)
+    }
 
     if (isHidden) this.contextPanelTarget.style.flex = "0 0 auto"
     else this._applyContextHeight(this._contextHeight)
@@ -920,6 +955,7 @@ export default class extends Controller {
     this.titleValue = note.title || this.titleValue
     this.languageValue = note.detected_language || this.languageValue
     this.revisionsUrlValue = urls.revisions || this.revisionsUrlValue
+    this.convertMentionUrlValue = urls.convert_mention || this.convertMentionUrlValue
     this.initialRevisionIdValue = revision.id || ""
     this.initialRevisionKindValue = revision.kind || ""
     this.headRevisionIdValue = note.head_revision_id || ""
@@ -943,6 +979,7 @@ export default class extends Controller {
       this.langBadgeTarget.classList.toggle("hidden", !lang)
     }
     if (this.hasBacklinksPanelTarget) this.backlinksPanelTarget.innerHTML = payload.html?.backlinks || ""
+    if (this.hasMentionsPanelTarget) this.mentionsPanelTarget.innerHTML = payload.html?.mentions || ""
 
     this._closeRevisions()
     this._applyContentToWorkspace(this._selectedRevisionContent)

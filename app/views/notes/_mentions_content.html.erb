@@ -1,0 +1,24 @@
+<% if mentions.any? %>
+  <div class="mentions-header">
+    <span class="backlinks-group-label">Menções não linkadas (<%= mentions.size %>)</span>
+  </div>
+  <% mentions.each do |mention| %>
+    <div class="mention-item">
+      <div class="mention-source">
+        <%= link_to mention.source_note.title, note_path(mention.source_note.slug), class: "mention-link" %>
+        <button class="mention-link-btn"
+                type="button"
+                data-action="click->editor#convertMention"
+                data-source-slug="<%= mention.source_note.slug %>"
+                data-matched-term="<%= mention.matched_term %>">
+          Linkar
+        </button>
+      </div>
+      <% mention.snippets.each do |snippet| %>
+        <p class="mention-snippet"><%= raw snippet %></p>
+      <% end %>
+    </div>
+  <% end %>
+<% else %>
+  <p class="mentions-empty">Nenhuma menção não linkada.</p>
+<% end %>

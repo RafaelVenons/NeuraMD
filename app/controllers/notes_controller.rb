@@ -1,6 +1,6 @@
 class NotesController < ApplicationController
   include ::DomainEvents
-  before_action :set_note, only: [:show, :edit, :update, :destroy, :autosave, :draft, :checkpoint, :revisions, :show_revision, :restore_revision, :link_info, :create_from_promise]
+  before_action :set_note, only: [:show, :edit, :update, :destroy, :autosave, :draft, :checkpoint, :revisions, :show_revision, :restore_revision, :link_info, :create_from_promise, :convert_mention]
   layout "editor", only: [:show, :show_revision]
 
   def index
@@ -235,6 +235,27 @@ class NotesController < ApplicationController
     render json: {error: "Falha interna ao criar nota com IA."}, status: :internal_server_error
   end
 
+  def convert_mention
+    authorize @note, :show?
+    source_note = Note.active.find_by!(slug: params[:source_slug])
+    authorize source_note, :update?
+
+    result = Mentions::LinkService.call(
+      source_note: source_note,
+      target_note: @note,
+      matched_term: params[:matched_term],
+      author: current_user
+    )
+
+    mentions_result = Mentions::UnlinkedService.call(note: @note)
+    render json: {
+      linked: true,
+      graph_changed: result.graph_changed,
+      mentions_html: render_to_string(partial: "notes/mentions_content", formats: [:html],
+        locals: {mentions: mentions_result.mentions})
+    }
+  end
+
   private
 
   def compute_properties_diff(old_props, new_props)
@@ -358,7 +379,8 @@ class NotesController < ApplicationController
         wikilink_create_promise: create_from_promise_note_path(note.slug),
         link_info_template: "#{link_info_note_path(note.slug)}?dst_uuid=__DST_UUID__",
         properties: properties_note_path(note.slug),
-        aliases: aliases_note_path(note.slug)
+        aliases: aliases_note_path(note.slug),
+        convert_mention: convert_mention_note_path(note.slug)
       },
       ai: {
         note_title: note.title,
@@ -368,6 +390,8 @@ class NotesController < ApplicationController
       },
       html: {
         backlinks: render_to_string(partial: "notes/backlinks_content", formats: [:html], locals: {note:}),
+        mentions: render_to_string(partial: "notes/mentions_content", formats: [:html],
+          locals: {mentions: Mentions::UnlinkedService.call(note: note).mentions}),
         ai_requests_stream: render_to_string(partial: "notes/ai_requests_stream", formats: [:html], locals: {note:})
       },
       link_tags_map: outgoing_link_tags_payload(note),
