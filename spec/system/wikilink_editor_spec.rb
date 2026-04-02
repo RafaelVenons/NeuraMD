@@ -557,4 +557,83 @@ RSpec.describe "Wiki-link editor", type: :system do
       expect(page).to have_css("[data-tag-sidebar-target='modeLabel']", text: /link/i, wait: 3)
     end
   end
+
+  # ── EPIC-02.2: Wikilink resolution by alias ─────────────────────────────
+
+  describe "promise auto-resolution" do
+    it "auto-resolves a promise wikilink when exact title matches" do
+      type_in_editor("[[#{target_title}]]")
+
+      # Should auto-resolve without showing promise actions
+      expect(page).to have_no_text("Gerar nota em branco", wait: 3)
+      content = page.evaluate_script("document.querySelector('.cm-content').innerText")
+      expect(content).to include("[[#{target_title}|#{target.id}]]")
+    end
+
+    it "auto-resolves a promise wikilink when alias matches" do
+      alias_name = "destino-alias-#{target_suffix}"
+      create(:note_alias, note: target, name: alias_name)
+
+      type_in_editor("[[#{alias_name}]]")
+
+      expect(page).to have_no_text("Gerar nota em branco", wait: 3)
+      content = page.evaluate_script("document.querySelector('.cm-content').innerText")
+      expect(content).to include("[[#{target_title}|#{target.id}]]")
+    end
+
+    it "shows disambiguation when multiple notes match" do
+      ambiguous_title = "Ambig #{SecureRandom.hex(4)}"
+      note_a = create(:note, :with_head_revision, title: ambiguous_title)
+      note_b = create(:note, :with_head_revision, title: "Outra #{SecureRandom.hex(4)}")
+      create(:note_alias, note: note_b, name: ambiguous_title)
+
+      type_in_editor("[[#{ambiguous_title}]]")
+
+      expect(page).to have_css(".wikilink-dropdown:not([hidden])", wait: 5)
+      expect(page).to have_text(note_a.title, wait: 3)
+      expect(page).to have_text(note_b.title, wait: 3)
+      expect(page).to have_text("Criar nova nota")
+    end
+
+    it "resolves disambiguation when user picks a candidate" do
+      ambiguous_title = "Disambig #{SecureRandom.hex(4)}"
+      note_a = create(:note, :with_head_revision, title: ambiguous_title)
+      note_b = create(:note, :with_head_revision, title: "Outra #{SecureRandom.hex(4)}")
+      create(:note_alias, note: note_b, name: ambiguous_title)
+
+      type_in_editor("[[#{ambiguous_title}]]")
+
+      expect(page).to have_css(".wikilink-dropdown:not([hidden])", wait: 5)
+      # First candidate is note_a (by title), select it with Enter
+      editor.send_keys(:enter)
+
+      expect(page).to have_no_css(".wikilink-dropdown:not([hidden])", wait: 3)
+      content = page.evaluate_script("document.querySelector('.cm-content').innerText")
+      expect(content).to match(/\[\[.+\|[0-9a-f-]{36}\]\]/)
+    end
+
+    it "falls through to promise actions when disambiguation 'Criar nova nota' is selected" do
+      ambiguous_title = "FallThru #{SecureRandom.hex(4)}"
+      create(:note, :with_head_revision, title: ambiguous_title)
+      other = create(:note, :with_head_revision, title: "Outra #{SecureRandom.hex(4)}")
+      create(:note_alias, note: other, name: ambiguous_title)
+
+      type_in_editor("[[#{ambiguous_title}]]")
+
+      expect(page).to have_css(".wikilink-dropdown:not([hidden])", wait: 5)
+      expect(page).to have_text("Criar nova nota", wait: 3)
+      click_button "Criar nova nota"
+
+      expect(page).to have_text("Gerar nota em branco", wait: 3)
+      expect(page).to have_text("Gerar com IA")
+    end
+
+    it "shows promise actions for completely new titles" do
+      type_in_editor("[[Nota completamente nova #{SecureRandom.hex(6)}]]")
+
+      expect(page).to have_text("Gerar nota em branco", wait: 5)
+      expect(page).to have_text("Gerar com IA")
+      expect(page).to have_text("Ignorar")
+    end
+  end
 end

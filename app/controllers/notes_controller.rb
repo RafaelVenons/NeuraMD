@@ -80,7 +80,17 @@ class NotesController < ApplicationController
 
   def search
     authorize Note.new, :index?
-    if params[:mode] == "finder"
+    if params[:mode] == "resolve"
+      result = Links::ResolveService.call(
+        title: params[:q].to_s,
+        exclude_id: params[:exclude_id]
+      )
+      render json: {
+        status: result.status,
+        match_kind: result.match_kind,
+        notes: result.notes.map { |n| {id: n.id, title: n.title, slug: n.slug} }
+      }
+    elsif params[:mode] == "finder"
       result = Search::NoteQueryService.call(
         scope: policy_scope(Note),
         query: params[:q],

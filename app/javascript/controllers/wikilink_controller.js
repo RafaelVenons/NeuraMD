@@ -112,7 +112,7 @@ export default class extends Controller {
       clearTimeout(this._debounceTimer)
       this._promiseTitle = promiseMatch[1].trim()
       this._insertStart = cursorPos - promiseMatch[0].length
-      this._showPromiseActions()
+      this._resolvePromise(this._promiseTitle)
       this._detectCursorInLink(value, cursorPos)
       return
     }
@@ -200,6 +200,7 @@ export default class extends Controller {
         case "Tab":
           if (this._activeIndex >= 0) {
             if (this._dropdownMode === "promise") this._selectPromiseAction(this._suggestions[this._activeIndex])
+            else if (this._dropdownMode === "disambiguate") this._selectDisambiguation(this._suggestions[this._activeIndex])
             else this._insertSuggestion(this._suggestions[this._activeIndex])
           }
           return true
@@ -283,6 +284,70 @@ export default class extends Controller {
     } catch (_) {
       this._closeDropdown()
     }
+  }
+
+  async _resolvePromise(title) {
+    if (!title) {
+      this._showPromiseActions()
+      return
+    }
+
+    this._dropdownMode = "resolving"
+    this._suggestions = [{ label: "Resolvendo...", description: "Verificando se a nota já existe.", loading: true }]
+    this._activeIndex = -1
+    this._renderDropdown()
+
+    try {
+      const params = new URLSearchParams({ q: title, mode: "resolve" })
+      if (this.currentNoteIdValue) params.set("exclude_id", this.currentNoteIdValue)
+      const url = `${this.searchUrlValue}?${params.toString()}`
+      const response = await fetch(url, { headers: { Accept: "application/json" } })
+      if (!response.ok) {
+        this._showPromiseActions()
+        return
+      }
+      const data = await response.json()
+
+      if (data.status === "resolved" && data.notes.length === 1) {
+        this._autoResolvePromise(data.notes[0])
+      } else if (data.status === "ambiguous" && data.notes.length > 1) {
+        this._showDisambiguation(data.notes)
+      } else {
+        this._showPromiseActions()
+      }
+    } catch (_) {
+      this._showPromiseActions()
+    }
+  }
+
+  _autoResolvePromise(note) {
+    const rolePrefix = this._currentRole ? `${this._currentRole}:` : ""
+    const markup = `[[${note.title}|${rolePrefix}${note.id}]]`
+    this.element.dispatchEvent(new CustomEvent("wikilink:insert", {
+      detail: { markup, insertStart: this._insertStart },
+      bubbles: true
+    }))
+    this._closeDropdown()
+    this._autosaveController()?.saveDraftNow?.()
+  }
+
+  _showDisambiguation(notes) {
+    this._dropdownMode = "disambiguate"
+    this._suggestions = [
+      ...notes.map(n => ({ ...n, action: "pick" })),
+      { action: "create", label: "Criar nova nota", description: "Nenhuma das opções acima." }
+    ]
+    this._activeIndex = 0
+    this._renderDropdown()
+  }
+
+  _selectDisambiguation(option) {
+    if (!option) return
+    if (option.action === "create") {
+      this._showPromiseActions()
+      return
+    }
+    this._autoResolvePromise(option)
   }
 
   _showPromiseActions() {
@@ -438,6 +503,7 @@ export default class extends Controller {
         e.preventDefault()
         this._activeIndex = i
         if (this._dropdownMode === "promise") this._selectPromiseAction(this._suggestions[i])
+        else if (this._dropdownMode === "disambiguate") this._selectDisambiguation(this._suggestions[i])
         else this._insertSuggestion(this._suggestions[i])
       })
     })
