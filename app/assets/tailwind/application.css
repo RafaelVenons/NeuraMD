@@ -2760,7 +2760,13 @@
     text-decoration: none;
   }
   .mention-link:hover { text-decoration: underline; }
-  .mention-link-btn {
+  .mention-actions {
+    display: flex;
+    gap: 4px;
+    flex-shrink: 0;
+  }
+  .mention-link-btn,
+  .mention-dismiss-btn {
     font-size: 11px;
     padding: 2px 8px;
     border: 1px solid var(--theme-border);
@@ -2768,12 +2774,16 @@
     background: transparent;
     cursor: pointer;
     color: var(--theme-text-muted);
-    flex-shrink: 0;
   }
   .mention-link-btn:hover {
     background: var(--theme-link);
     color: white;
     border-color: var(--theme-link);
+  }
+  .mention-dismiss-btn:hover {
+    background: var(--theme-text-faint);
+    color: white;
+    border-color: var(--theme-text-faint);
   }
   .mention-snippet {
     font-size: 12px;

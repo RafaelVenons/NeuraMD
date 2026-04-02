@@ -100,5 +100,51 @@ RSpec.describe Mentions::UnlinkedService do
       result = described_class.call(note: target)
       expect(result.mentions.size).to eq(1)
     end
+
+    it "filters out terms shorter than 3 characters" do
+      short_note = create(:note, :with_head_revision, title: "AI")
+      create_note_with_content(title: "Artigo", content: "AI is interesting and AI is growing.")
+
+      result = described_class.call(note: short_note)
+      expect(result.mentions).to be_empty
+    end
+
+    it "excludes mentions inside fenced code blocks" do
+      create_note_with_content(
+        title: "Artigo",
+        content: "Intro.\n```\nNeurociência no código\n```\nFim."
+      )
+
+      result = described_class.call(note: target)
+      expect(result.mentions).to be_empty
+    end
+
+    it "excludes mentions inside inline code" do
+      create_note_with_content(
+        title: "Artigo",
+        content: "O método `Neurociência` é usado aqui."
+      )
+
+      result = described_class.call(note: target)
+      expect(result.mentions).to be_empty
+    end
+
+    it "finds mentions outside code blocks even when code blocks exist" do
+      create_note_with_content(
+        title: "Artigo",
+        content: "Neurociência aqui.\n```\nNeurociência no código\n```"
+      )
+
+      result = described_class.call(note: target)
+      expect(result.mentions.size).to eq(1)
+    end
+
+    it "excludes dismissed mentions via MentionExclusion" do
+      source = create_note_with_content(title: "Artigo", content: "Neurociência mencionada aqui.")
+      create(:mention_exclusion, note: target, source_note: source, matched_term: "Neurociência")
+
+      result = described_class.call(note: target)
+      expect(result.mentions).to be_empty
+    end
   end
 end

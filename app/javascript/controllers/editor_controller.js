@@ -15,6 +15,7 @@ export default class extends Controller {
     autosaveUrl: String,
     revisionsUrl: String,
     convertMentionUrl: String,
+    dismissMentionUrl: String,
     slug: String,
     title: String,
     language: String,
@@ -213,6 +214,36 @@ export default class extends Controller {
     } catch (_) {
       btn.disabled = false
       btn.textContent = "Linkar"
+    }
+  }
+
+  async dismissMention(event) {
+    const btn = event.currentTarget
+    const sourceSlug = btn.dataset.sourceSlug
+    const matchedTerm = btn.dataset.matchedTerm
+
+    btn.disabled = true
+    btn.textContent = "..."
+
+    try {
+      const csrfToken = document.querySelector("meta[name='csrf-token']")?.content
+      const resp = await fetch(this.dismissMentionUrlValue, {
+        method: "POST",
+        credentials: "same-origin",
+        headers: {
+          "Content-Type": "application/json",
+          "Accept": "application/json",
+          "X-CSRF-Token": csrfToken
+        },
+        body: JSON.stringify({ source_slug: sourceSlug, matched_term: matchedTerm })
+      })
+      const data = await resp.json()
+      if (data.dismissed && this.hasMentionsPanelTarget) {
+        this.mentionsPanelTarget.innerHTML = data.mentions_html
+      }
+    } catch (_) {
+      btn.disabled = false
+      btn.textContent = "Ignorar"
     }
   }
 
@@ -956,6 +987,7 @@ export default class extends Controller {
     this.languageValue = note.detected_language || this.languageValue
     this.revisionsUrlValue = urls.revisions || this.revisionsUrlValue
     this.convertMentionUrlValue = urls.convert_mention || this.convertMentionUrlValue
+    this.dismissMentionUrlValue = urls.dismiss_mention || this.dismissMentionUrlValue
     this.initialRevisionIdValue = revision.id || ""
     this.initialRevisionKindValue = revision.kind || ""
     this.headRevisionIdValue = note.head_revision_id || ""

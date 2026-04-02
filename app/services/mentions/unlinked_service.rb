@@ -6,6 +6,9 @@ module Mentions
     Result = Struct.new(:mentions, keyword_init: true)
 
     WIKILINK_RE = /\[\[[^\]]*\]\]/
+    FENCED_CODE_RE = /```.*?```/m
+    INLINE_CODE_RE = /`[^`]+`/
+    MIN_TERM_LENGTH = 3
     SNIPPET_RADIUS = 40
 
     def self.call(note:)
@@ -22,6 +25,7 @@ module Mentions
 
       linked_ids = NoteLink.where(dst_note_id: @note.id, active: true).pluck(:src_note_id)
       excluded_ids = linked_ids + [@note.id]
+      @dismissed = MentionExclusion.where(note_id: @note.id).pluck(:source_note_id, :matched_term).to_set
 
       candidates = sql_candidates(terms, excluded_ids)
       mentions = extract_mentions(candidates, terms)
@@ -33,7 +37,7 @@ module Mentions
     def collect_terms
       terms = [@note.title]
       terms += @note.note_aliases.pluck(:name)
-      terms.reject(&:blank?).uniq
+      terms.reject(&:blank?).select { |t| t.length >= MIN_TERM_LENGTH }.uniq
     end
 
     def sql_candidates(terms, excluded_ids)
@@ -56,11 +60,16 @@ module Mentions
 
       candidates.each do |note|
         markdown = note.head_revision&.content_markdown.to_s
-        stripped = markdown.gsub(WIKILINK_RE, "\0" * 10) # replace wikilinks with nulls
+        stripped = markdown
+          .gsub(FENCED_CODE_RE, "\0" * 10)
+          .gsub(INLINE_CODE_RE, "\0" * 10)
+          .gsub(WIKILINK_RE, "\0" * 10)
 
         matched_terms_snippets = []
 
         terms.each do |term|
+          next if @dismissed.include?([note.id, term])
+
           re = /#{Regexp.escape(term)}/i
           next unless stripped.match?(re)
 

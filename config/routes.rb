@@ -44,6 +44,7 @@ Rails.application.routes.draw do
       patch :properties, to: "properties#update"
       post :create_from_promise
       post :convert_mention
+      post :dismiss_mention
       get  :ai_status, to: "ai#status"
       post :ai_review, to: "ai#review"
       get  :ai_requests, to: "ai#index"

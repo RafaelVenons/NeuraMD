@@ -50,6 +50,64 @@ RSpec.describe "Mentions", type: :request do
     end
   end
 
+  describe "POST /notes/:slug/dismiss_mention" do
+    let(:target) { create(:note, :with_head_revision, title: "Neurociência") }
+    let(:source) do
+      note = create(:note, title: "Artigo")
+      rev = create(:note_revision, note: note, content_markdown: "Sobre Neurociência aqui.", revision_kind: :checkpoint)
+      note.update_columns(head_revision_id: rev.id)
+      note
+    end
+
+    it "creates a MentionExclusion and returns updated mentions HTML" do
+      expect {
+        post dismiss_mention_note_path(target.slug), params: {
+          source_slug: source.slug,
+          matched_term: "Neurociência"
+        }, as: :json
+      }.to change(MentionExclusion, :count).by(1)
+
+      expect(response).to have_http_status(:ok)
+      body = response.parsed_body
+      expect(body["dismissed"]).to be true
+      expect(body["mentions_html"]).to be_a(String)
+      expect(body["mentions_html"]).not_to include("Artigo")
+    end
+
+    it "is idempotent — dismissing same mention twice does not fail" do
+      MentionExclusion.create!(note: target, source_note: source, matched_term: "Neurociência")
+
+      expect {
+        post dismiss_mention_note_path(target.slug), params: {
+          source_slug: source.slug,
+          matched_term: "Neurociência"
+        }, as: :json
+      }.not_to change(MentionExclusion, :count)
+
+      expect(response).to have_http_status(:ok)
+      expect(response.parsed_body["dismissed"]).to be true
+    end
+
+    it "requires authentication" do
+      sign_out user
+      post dismiss_mention_note_path(target.slug), params: {
+        source_slug: source.slug,
+        matched_term: "Neurociência"
+      }, as: :json
+
+      expect(response.status).to be_in([302, 401])
+    end
+
+    it "returns 404 for invalid source_slug" do
+      post dismiss_mention_note_path(target.slug), params: {
+        source_slug: "nonexistent",
+        matched_term: "Neurociência"
+      }, as: :json
+
+      expect(response).to have_http_status(:not_found)
+    end
+  end
+
   describe "GET /notes/:slug (shell payload)" do
     it "includes mentions HTML in the shell payload" do
       target = create(:note, :with_head_revision, title: "Café")
@@ -63,6 +121,7 @@ RSpec.describe "Mentions", type: :request do
       body = response.parsed_body
       expect(body["html"]["mentions"]).to include("Receita")
       expect(body["urls"]["convert_mention"]).to be_present
+      expect(body["urls"]["dismiss_mention"]).to be_present
     end
   end
 end

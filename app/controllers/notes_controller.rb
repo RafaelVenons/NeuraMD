@@ -1,6 +1,6 @@
 class NotesController < ApplicationController
   include ::DomainEvents
-  before_action :set_note, only: [:show, :edit, :update, :destroy, :autosave, :draft, :checkpoint, :revisions, :show_revision, :restore_revision, :link_info, :create_from_promise, :convert_mention]
+  before_action :set_note, only: [:show, :edit, :update, :destroy, :autosave, :draft, :checkpoint, :revisions, :show_revision, :restore_revision, :link_info, :create_from_promise, :convert_mention, :dismiss_mention]
   layout "editor", only: [:show, :show_revision]
 
   def index
@@ -256,6 +256,24 @@ class NotesController < ApplicationController
     }
   end
 
+  def dismiss_mention
+    authorize @note, :show?
+    source_note = Note.active.find_by!(slug: params[:source_slug])
+
+    MentionExclusion.find_or_create_by!(
+      note: @note,
+      source_note: source_note,
+      matched_term: params[:matched_term]
+    )
+
+    mentions_result = Mentions::UnlinkedService.call(note: @note)
+    render json: {
+      dismissed: true,
+      mentions_html: render_to_string(partial: "notes/mentions_content", formats: [:html],
+        locals: {mentions: mentions_result.mentions})
+    }
+  end
+
   private
 
   def compute_properties_diff(old_props, new_props)
@@ -380,7 +398,8 @@ class NotesController < ApplicationController
         link_info_template: "#{link_info_note_path(note.slug)}?dst_uuid=__DST_UUID__",
         properties: properties_note_path(note.slug),
         aliases: aliases_note_path(note.slug),
-        convert_mention: convert_mention_note_path(note.slug)
+        convert_mention: convert_mention_note_path(note.slug),
+        dismiss_mention: dismiss_mention_note_path(note.slug)
       },
       ai: {
         note_title: note.title,

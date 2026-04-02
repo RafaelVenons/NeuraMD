@@ -49,6 +49,31 @@ RSpec.describe "Unlinked mentions panel", type: :system do
     expect(source.head_revision.content_markdown).to include("[[Alvo #{suffix}|#{target.id}]]")
   end
 
+  it "dismisses a mention when clicking Ignorar" do
+    create_note_with_content(title: "Fonte #{suffix}", content: "Discute Alvo #{suffix} aqui.")
+
+    visit note_path(target.slug)
+    expect(page).to have_css(".cm-editor", wait: 5)
+
+    select "Menções", from: "Rodape"
+    expect(page).to have_button("Ignorar", wait: 5)
+
+    click_button "Ignorar"
+
+    # After dismissing, the mention should disappear
+    expect(page).to have_text("Nenhuma menção não linkada", wait: 5)
+
+    # Verify a MentionExclusion was created
+    expect(MentionExclusion.count).to eq(1)
+
+    # Refresh the page — mention should stay dismissed
+    visit note_path(target.slug)
+    expect(page).to have_css(".cm-editor", wait: 5)
+    select "Menções", from: "Rodape"
+    expect(page).to have_css(".mentions-panel:not(.hidden)", wait: 5)
+    expect(page).to have_text("Nenhuma menção não linkada")
+  end
+
   it "shows empty message when no mentions exist" do
     visit note_path(target.slug)
     expect(page).to have_css(".cm-editor", wait: 5)

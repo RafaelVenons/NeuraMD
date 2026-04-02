@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_04_01_120000) do
+ActiveRecord::Schema[8.1].define(version: 2026_04_02_120000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
   enable_extension "pg_trgm"
@@ -103,6 +103,17 @@ ActiveRecord::Schema[8.1].define(version: 2026_04_01_120000) do
     t.index ["note_link_id", "tag_id"], name: "index_link_tags_on_note_link_id_and_tag_id", unique: true
     t.index ["note_link_id"], name: "index_link_tags_on_note_link_id"
     t.index ["tag_id"], name: "index_link_tags_on_tag_id"
+  end
+
+  create_table "mention_exclusions", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.datetime "created_at", null: false
+    t.string "matched_term", null: false
+    t.uuid "note_id", null: false
+    t.uuid "source_note_id", null: false
+    t.datetime "updated_at", null: false
+    t.index ["note_id", "source_note_id", "matched_term"], name: "idx_mention_exclusions_unique", unique: true
+    t.index ["note_id"], name: "index_mention_exclusions_on_note_id"
+    t.index ["source_note_id"], name: "index_mention_exclusions_on_source_note_id"
   end
 
   create_table "note_aliases", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
@@ -253,6 +264,8 @@ ActiveRecord::Schema[8.1].define(version: 2026_04_01_120000) do
   add_foreign_key "ai_requests", "note_revisions"
   add_foreign_key "link_tags", "note_links"
   add_foreign_key "link_tags", "tags"
+  add_foreign_key "mention_exclusions", "notes", column: "source_note_id", on_delete: :cascade
+  add_foreign_key "mention_exclusions", "notes", on_delete: :cascade
   add_foreign_key "note_aliases", "notes"
   add_foreign_key "note_links", "note_revisions", column: "created_in_revision_id"
   add_foreign_key "note_links", "notes", column: "dst_note_id"
