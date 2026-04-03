@@ -1226,10 +1226,10 @@ AI_ENABLED_PROVIDERS=ollama</pre>
 
   <%# ── Shortcuts Help Dialog ───────────────────────────── %>
   <dialog id="shortcuts-help-dialog"
-          class="p-0 rounded-xl shadow-2xl backdrop:bg-black/50 max-w-2xl w-full dialog-centered"
-          style="background: var(--theme-bg-secondary); border: 1px solid var(--theme-border); color: var(--theme-text-primary); max-height: 85vh;">
-    <div class="p-5 overflow-y-auto" style="max-height: 85vh;">
-      <div class="flex items-center justify-between mb-4">
+          class="p-0 rounded-xl shadow-2xl backdrop:bg-black/50 dialog-centered"
+          style="background: var(--theme-bg-secondary); border: 1px solid var(--theme-border); color: var(--theme-text-primary); max-width: 72rem; width: calc(100vw - 2rem); max-height: 90vh; overflow-y: auto;">
+    <div class="p-5">
+      <div class="flex items-center justify-between mb-3">
         <h3 class="text-base font-semibold">Ajuda — Atalhos e Markdown</h3>
         <form method="dialog">
           <button class="toolbar-btn" title="Fechar">
@@ -1240,13 +1240,12 @@ AI_ENABLED_PROVIDERS=ollama</pre>
         </form>
       </div>
 
-      <%# ── Atalhos ──────────────────────────────────────── %>
-      <div class="grid grid-cols-2 gap-x-6" style="color: var(--theme-text-secondary);">
+      <div class="grid gap-x-6 text-sm" style="color: var(--theme-text-secondary); grid-template-columns: repeat(3, minmax(0, 1fr));">
 
-        <%# Coluna esquerda: Atalhos %>
-        <div class="text-sm">
-          <span class="font-semibold block mt-2 mb-1.5" style="color: var(--theme-text-primary);">Formatacao</span>
-          <div class="grid grid-cols-[auto_1fr] gap-x-2 gap-y-1">
+        <%# ── Coluna 1: Formatacao + Estrutura + Navegacao ── %>
+        <div>
+          <span class="font-semibold block mb-1" style="color: var(--theme-text-primary);">Formatacao</span>
+          <div class="grid grid-cols-[auto_1fr] gap-x-2 gap-y-0.5">
             <span><kbd>Ctrl+B</kbd></span><span>Negrito</span>
             <span><kbd>Ctrl+I</kbd></span><span>Italico</span>
             <span><kbd>Ctrl+K</kbd></span><span>Link</span>
@@ -1256,27 +1255,30 @@ AI_ENABLED_PROVIDERS=ollama</pre>
             <span><kbd>Ctrl+Shift+C</kbd></span><span>Bloco de codigo</span>
           </div>
 
-          <span class="font-semibold block mt-3 mb-1.5" style="color: var(--theme-text-primary);">Estrutura</span>
-          <div class="grid grid-cols-[auto_1fr] gap-x-2 gap-y-1">
+          <span class="font-semibold block mt-2.5 mb-1" style="color: var(--theme-text-primary);">Estrutura</span>
+          <div class="grid grid-cols-[auto_1fr] gap-x-2 gap-y-0.5">
             <span><kbd>Ctrl+1</kbd></span><span>Heading 1</span>
             <span><kbd>Ctrl+2</kbd></span><span>Heading 2</span>
             <span><kbd>Ctrl+3</kbd></span><span>Heading 3</span>
-            <span><kbd>Ctrl+Shift+L</kbd></span><span>Lista com bullet</span>
+            <span><kbd>Ctrl+Shift+L</kbd></span><span>Lista bullet</span>
             <span><kbd>Ctrl+Shift+O</kbd></span><span>Lista numerada</span>
             <span><kbd>Ctrl+Shift+.</kbd></span><span>Blockquote</span>
           </div>
 
-          <span class="font-semibold block mt-3 mb-1.5" style="color: var(--theme-text-primary);">Navegacao</span>
-          <div class="grid grid-cols-[auto_1fr] gap-x-2 gap-y-1">
+          <span class="font-semibold block mt-2.5 mb-1" style="color: var(--theme-text-primary);">Navegacao</span>
+          <div class="grid grid-cols-[auto_1fr] gap-x-2 gap-y-0.5">
             <span><kbd>Ctrl+P</kbd></span><span>Toggle preview</span>
             <span><kbd>Ctrl+F</kbd></span><span>Buscar</span>
             <span><kbd>Ctrl+H</kbd></span><span>Buscar e substituir</span>
             <span><kbd>Ctrl+G</kbd></span><span>Ir para linha</span>
             <span><kbd>Ctrl+Shift+K</kbd></span><span>Buscar nota</span>
           </div>
+        </div>
 
-          <span class="font-semibold block mt-3 mb-1.5" style="color: var(--theme-text-primary);">Ferramentas</span>
-          <div class="grid grid-cols-[auto_1fr] gap-x-2 gap-y-1">
+        <%# ── Coluna 2: Ferramentas + Canvas ── %>
+        <div>
+          <span class="font-semibold block mb-1" style="color: var(--theme-text-primary);">Ferramentas</span>
+          <div class="grid grid-cols-[auto_1fr] gap-x-2 gap-y-0.5">
             <span><kbd>Ctrl+Shift+P</kbd></span><span>Propriedades</span>
             <span><kbd>Ctrl+Shift+E</kbd></span><span>Emoji picker</span>
             <span><kbd>Ctrl+Shift+A</kbd></span><span>Audio (TTS)</span>
@@ -1285,8 +1287,8 @@ AI_ENABLED_PROVIDERS=ollama</pre>
             <span><kbd>Esc</kbd></span><span>Fechar dialogos</span>
           </div>
 
-          <span class="font-semibold block mt-3 mb-1.5" style="color: var(--theme-text-primary);">Canvas</span>
-          <div class="grid grid-cols-[auto_1fr] gap-x-2 gap-y-1">
+          <span class="font-semibold block mt-2.5 mb-1" style="color: var(--theme-text-primary);">Canvas</span>
+          <div class="grid grid-cols-[auto_1fr] gap-x-2 gap-y-0.5">
             <span><kbd>V</kbd></span><span>Selecionar</span>
             <span><kbd>H</kbd></span><span>Pan (mover)</span>
             <span><kbd>T</kbd></span><span>Texto</span>
@@ -1296,55 +1298,52 @@ AI_ENABLED_PROVIDERS=ollama</pre>
             <span><kbd>Ctrl+0</kbd></span><span>Reset zoom</span>
             <span><kbd>Del</kbd></span><span>Deletar selecionados</span>
           </div>
+
+          <span class="font-semibold block mt-2.5 mb-1" style="color: var(--theme-text-primary);">Wikilinks</span>
+          <div class="grid grid-cols-[auto_1fr] gap-x-2 gap-y-0.5">
+            <span>Digite <code>[[</code></span><span>Autocomplete</span>
+            <span><kbd>&larr;</kbd> <kbd>&rarr;</kbd></span><span>Ciclar roles (f/c/b)</span>
+            <span><kbd>&uarr;</kbd> <kbd>&darr;</kbd></span><span>Navegar sugestoes</span>
+            <span><kbd>Enter</kbd> / <kbd>Tab</kbd></span><span>Confirmar</span>
+          </div>
         </div>
 
-        <%# Coluna direita: Markdown %>
-        <div class="text-sm">
-          <span class="font-semibold block mt-2 mb-1.5" style="color: var(--theme-text-primary);">Markdown Basico</span>
-          <div class="grid grid-cols-[auto_1fr] gap-x-2 gap-y-1" style="font-family: var(--theme-font-mono, monospace); font-size: 0.8rem;">
-            <code>**texto**</code><span style="font-family: inherit; font-size: 0.875rem;">Negrito</span>
-            <code>*texto*</code><span style="font-family: inherit; font-size: 0.875rem;">Italico</span>
-            <code>~~texto~~</code><span style="font-family: inherit; font-size: 0.875rem;">Tachado</span>
-            <code>`codigo`</code><span style="font-family: inherit; font-size: 0.875rem;">Codigo inline</span>
-            <code>```lang</code><span style="font-family: inherit; font-size: 0.875rem;">Bloco de codigo</span>
-            <code># H1</code><span style="font-family: inherit; font-size: 0.875rem;">Heading 1-6</span>
-            <code>- item</code><span style="font-family: inherit; font-size: 0.875rem;">Lista bullet</span>
-            <code>1. item</code><span style="font-family: inherit; font-size: 0.875rem;">Lista numerada</span>
-            <code>> texto</code><span style="font-family: inherit; font-size: 0.875rem;">Blockquote</span>
-            <code>[texto](url)</code><span style="font-family: inherit; font-size: 0.875rem;">Link</span>
-            <code>![alt](url)</code><span style="font-family: inherit; font-size: 0.875rem;">Imagem</span>
-            <code>|col|col|</code><span style="font-family: inherit; font-size: 0.875rem;">Tabela</span>
-            <code>---</code><span style="font-family: inherit; font-size: 0.875rem;">Linha horizontal</span>
+        <%# ── Coluna 3: Markdown ── %>
+        <div>
+          <span class="font-semibold block mb-1" style="color: var(--theme-text-primary);">Markdown</span>
+          <div class="grid grid-cols-[auto_1fr] gap-x-2 gap-y-0.5">
+            <code class="text-xs">**texto**</code><span>Negrito</span>
+            <code class="text-xs">*texto*</code><span>Italico</span>
+            <code class="text-xs">~~texto~~</code><span>Tachado</span>
+            <code class="text-xs">`codigo`</code><span>Codigo inline</span>
+            <code class="text-xs">```lang</code><span>Bloco de codigo</span>
+            <code class="text-xs"># H1 … ###### H6</code><span>Headings</span>
+            <code class="text-xs">- item</code><span>Lista bullet</span>
+            <code class="text-xs">1. item</code><span>Lista numerada</span>
+            <code class="text-xs">> texto</code><span>Blockquote</span>
+            <code class="text-xs">[texto](url)</code><span>Link</span>
+            <code class="text-xs">![alt](url)</code><span>Imagem</span>
+            <code class="text-xs">|col|col|</code><span>Tabela</span>
+            <code class="text-xs">---</code><span>Linha horizontal</span>
           </div>
 
-          <span class="font-semibold block mt-3 mb-1.5" style="color: var(--theme-text-primary);">Markdown Estendido</span>
-          <div class="grid grid-cols-[auto_1fr] gap-x-2 gap-y-1" style="font-family: var(--theme-font-mono, monospace); font-size: 0.8rem;">
-            <code>==texto==</code><span style="font-family: inherit; font-size: 0.875rem;">Destaque</span>
-            <code>^texto^</code><span style="font-family: inherit; font-size: 0.875rem;">Sobrescrito</span>
-            <code>~texto~</code><span style="font-family: inherit; font-size: 0.875rem;">Subscrito</span>
-            <code>:emoji:</code><span style="font-family: inherit; font-size: 0.875rem;">Emoji</span>
-            <code>$math$</code><span style="font-family: inherit; font-size: 0.875rem;">Math inline (KaTeX)</span>
-            <code>$$math$$</code><span style="font-family: inherit; font-size: 0.875rem;">Math bloco (KaTeX)</span>
-            <code>```mermaid</code><span style="font-family: inherit; font-size: 0.875rem;">Diagrama Mermaid</span>
-            <code>```chart</code><span style="font-family: inherit; font-size: 0.875rem;">Grafico Chart.js</span>
-          </div>
-
-          <span class="font-semibold block mt-3 mb-1.5" style="color: var(--theme-text-primary);">Wikilinks</span>
-          <div class="grid grid-cols-[auto_1fr] gap-x-2 gap-y-1" style="font-family: var(--theme-font-mono, monospace); font-size: 0.8rem;">
-            <code>[[Nota]]</code><span style="font-family: inherit; font-size: 0.875rem;">Link para nota</span>
-            <code>[[Nota|f:id]]</code><span style="font-family: inherit; font-size: 0.875rem;">Link pai</span>
-            <code>[[Nota|c:id]]</code><span style="font-family: inherit; font-size: 0.875rem;">Link filho</span>
-            <code>[[Nota|b:id]]</code><span style="font-family: inherit; font-size: 0.875rem;">Link lateral</span>
-            <code>[[N|id#head]]</code><span style="font-family: inherit; font-size: 0.875rem;">Link para heading</span>
-            <code>[[N|id^blk]]</code><span style="font-family: inherit; font-size: 0.875rem;">Link para bloco</span>
-            <code>![[Nota|id]]</code><span style="font-family: inherit; font-size: 0.875rem;">Embed de nota</span>
-          </div>
-
-          <span class="font-semibold block mt-3 mb-1.5" style="color: var(--theme-text-primary);">Wikilinks — Dicas</span>
-          <div class="text-xs leading-relaxed" style="color: var(--theme-text-secondary);">
-            Digite <code>[[</code> para abrir o autocomplete.<br>
-            Use <kbd>&larr;</kbd><kbd>&rarr;</kbd> para ciclar roles (f/c/b).<br>
-            <kbd>Enter</kbd> ou <kbd>Tab</kbd> confirma a sugestao.
+          <span class="font-semibold block mt-2.5 mb-1" style="color: var(--theme-text-primary);">Estendido</span>
+          <div class="grid grid-cols-[auto_1fr] gap-x-2 gap-y-0.5">
+            <code class="text-xs">==texto==</code><span>Destaque</span>
+            <code class="text-xs">^texto^</code><span>Sobrescrito</span>
+            <code class="text-xs">~texto~</code><span>Subscrito</span>
+            <code class="text-xs">:emoji:</code><span>Emoji</span>
+            <code class="text-xs">$math$</code><span>Math inline (KaTeX)</span>
+            <code class="text-xs">$$math$$</code><span>Math bloco (KaTeX)</span>
+            <code class="text-xs">```mermaid</code><span>Diagrama Mermaid</span>
+            <code class="text-xs">```chart</code><span>Grafico Chart.js</span>
+            <code class="text-xs">[[Nota]]</code><span>Wikilink</span>
+            <code class="text-xs">[[N|f:id]]</code><span>Link pai</span>
+            <code class="text-xs">[[N|c:id]]</code><span>Link filho</span>
+            <code class="text-xs">[[N|b:id]]</code><span>Link lateral</span>
+            <code class="text-xs">[[N|id#h]]</code><span>Link heading</span>
+            <code class="text-xs">[[N|id^b]]</code><span>Link bloco</span>
+            <code class="text-xs">![[N|id]]</code><span>Embed nota</span>
           </div>
         </div>
 
