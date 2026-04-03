@@ -63,6 +63,9 @@ export default class extends Controller {
         case "S": e.preventDefault(); this.strikethrough(); return
         case "H": e.preventDefault(); this.highlight(); return
         case "C": e.preventDefault(); this.codeBlock(); return
+        case "L": e.preventDefault(); this.bulletList(); return
+        case "O": e.preventDefault(); this.numberList(); return
+        case ".": e.preventDefault(); this.blockquote(); return
       }
     }
 
@@ -71,6 +74,9 @@ export default class extends Controller {
       case "i": e.preventDefault(); this.italic(); break
       case "`": e.preventDefault(); this.inlineCode(); break
       case "k": e.preventDefault(); this.link(); break
+      case "1": e.preventDefault(); this.heading1(); break
+      case "2": e.preventDefault(); this.heading2(); break
+      case "3": e.preventDefault(); this.heading3(); break
     }
   }
 
