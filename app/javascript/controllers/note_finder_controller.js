@@ -1,12 +1,15 @@
 import { Controller } from "@hotwired/stimulus"
+import { DSL_OPERATORS, matchOperators, getLastWord } from "lib/search_dsl"
 
 export default class extends Controller {
-  static targets = ["dialog", "input", "results", "status", "regex"]
+  static targets = ["dialog", "input", "results", "status", "regex", "suggestions"]
   static values = { searchUrl: String }
 
   connect() {
     this._results = []
     this._activeIndex = -1
+    this._suggestedOps = []
+    this._activeSuggestion = -1
     this._debounceTimer = null
     this._boundKeydown = this._handleGlobalKeydown.bind(this)
     document.addEventListener("keydown", this._boundKeydown)
@@ -42,6 +45,7 @@ export default class extends Controller {
 
   search() {
     clearTimeout(this._debounceTimer)
+    this._checkOperatorSuggestions()
     this._debounceTimer = setTimeout(() => this._fetchResults(), 120)
   }
 
@@ -49,6 +53,12 @@ export default class extends Controller {
     if (event.isComposing || event.keyCode === 229) return
 
     switch (event.key) {
+      case "Tab":
+        if (this._suggestedOps.length > 0) {
+          event.preventDefault()
+          this._acceptSuggestion()
+        }
+        break
       case "ArrowDown":
         event.preventDefault()
         this._moveActive(1)
@@ -120,6 +130,7 @@ export default class extends Controller {
 
       this._results = payload.results || []
       this._activeIndex = this._results.length > 0 ? 0 : -1
+      this._dslErrors = payload.dsl_errors || []
       this._renderResults(payload.meta)
     } catch (_) {
       this._results = []
@@ -131,7 +142,7 @@ export default class extends Controller {
 
   _renderPrompt() {
     this._resetResults()
-    this.statusTarget.textContent = "Digite para buscar por titulo ou conteudo"
+    this.statusTarget.innerHTML = `Digite para buscar. Operadores: <span class="note-finder-dsl-hint">${DSL_OPERATORS.map(op => op.name + ":").join(" ")}</span>`
   }
 
   _resetResults() {
@@ -168,7 +179,10 @@ export default class extends Controller {
     `).join("")
 
     const suffix = meta?.has_more ? " · mais resultados disponiveis" : ""
-    this.statusTarget.textContent = `${this._results.length} resultados${suffix}`
+    const dslWarning = this._dslErrors?.length > 0
+      ? ` · <span class="note-finder-dsl-error">${this._dslErrors.map(e => `${e.operator}:${e.value} — ${e.message}`).join("; ")}</span>`
+      : ""
+    this.statusTarget.innerHTML = `${this._results.length} resultados${suffix}${dslWarning}`
   }
 
   _visit(result) {
@@ -223,5 +237,64 @@ export default class extends Controller {
       .replace(/&/g, "&amp;")
       .replace(/</g, "&lt;")
       .replace(/>/g, "&gt;")
+  }
+
+  _checkOperatorSuggestions() {
+    if (!this.hasSuggestionsTarget) return
+
+    const text = this.inputTarget.value
+    const lastWord = getLastWord(text)
+
+    if (lastWord.length >= 2 && !lastWord.includes(":")) {
+      const matches = matchOperators(lastWord)
+      if (matches.length > 0) {
+        this._suggestedOps = matches
+        this._activeSuggestion = 0
+        this._renderSuggestions()
+        return
+      }
+    }
+
+    this._hideSuggestions()
+  }
+
+  _renderSuggestions() {
+    if (!this.hasSuggestionsTarget) return
+
+    this.suggestionsTarget.classList.remove("hidden")
+    this.suggestionsTarget.innerHTML = this._suggestedOps.map((op, i) =>
+      `<button class="note-finder-suggestion ${i === this._activeSuggestion ? "active" : ""}"
+              data-index="${i}" data-action="click->note-finder#chooseSuggestion">
+        <strong>${this._escapeHtml(op.name)}:</strong>
+        <span class="note-finder-suggestion-desc">${this._escapeHtml(op.desc)}</span>
+      </button>`
+    ).join("")
+  }
+
+  _hideSuggestions() {
+    this._suggestedOps = []
+    this._activeSuggestion = -1
+    if (this.hasSuggestionsTarget) {
+      this.suggestionsTarget.classList.add("hidden")
+      this.suggestionsTarget.innerHTML = ""
+    }
+  }
+
+  _acceptSuggestion() {
+    const op = this._suggestedOps[this._activeSuggestion >= 0 ? this._activeSuggestion : 0]
+    if (!op) return
+
+    const text = this.inputTarget.value
+    const lastWord = getLastWord(text)
+    const before = text.slice(0, text.length - lastWord.length)
+    this.inputTarget.value = `${before}${op.name}:`
+    this.inputTarget.focus()
+    this._hideSuggestions()
+  }
+
+  chooseSuggestion(event) {
+    const index = Number(event.currentTarget.dataset.index)
+    this._activeSuggestion = index
+    this._acceptSuggestion()
   }
 }

@@ -42,10 +42,12 @@ module Notes
         if result.error.present?
           render json: {results: [], error: result.error, meta: finder_meta(result)}, status: :unprocessable_entity
         else
-          render json: {
+          payload = {
             results: result.notes.map { |note| finder_payload(note) },
             meta: finder_meta(result)
           }
+          payload[:dsl_errors] = result.dsl_errors if result.dsl_errors&.any?
+          render json: payload
         end
       else
         notes = Note.search_by_title(params[:q].to_s, exclude_id: params[:exclude_id])
@@ -55,6 +57,18 @@ module Notes
           payload
         }
       end
+    end
+
+    def search_suggestions
+      authorize Note.new, :index?
+      suggestions = case params[:operator]
+      when "tag"    then Tag.order(:name).limit(30).pluck(:name)
+      when "kind"   then PropertyDefinition.find_by(key: "kind")&.config&.dig("options") || []
+      when "status" then PropertyDefinition.find_by(key: "status")&.config&.dig("options") || []
+      when "prop"   then PropertyDefinition.active.order(:position).pluck(:key)
+      else []
+      end
+      render json: {suggestions: suggestions}
     end
 
     private

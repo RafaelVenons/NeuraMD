@@ -12,6 +12,7 @@ module Search
       :regex,
       :has_more,
       :error,
+      :dsl_errors,
       keyword_init: true
     )
 
@@ -21,7 +22,10 @@ module Search
 
     def initialize(scope:, query:, regex:, page:, limit:, property_filters: nil)
       @scope = scope
-      @query = query.to_s.strip
+      @raw_query = query.to_s.strip
+      @dsl_result = Dsl::Parser.call(@raw_query)
+      @dsl_tokens = @dsl_result.tokens
+      @query = @dsl_result.text
       @regex = ActiveModel::Type::Boolean.new.cast(regex)
       @page = [page.to_i, 1].max
       @limit = [[limit.to_i, 1].max, MAX_LIMIT].min
@@ -30,6 +34,7 @@ module Search
     end
 
     def call
+      return dsl_only_result if query.blank? && @dsl_tokens.any?
       return empty_query_result if query.blank?
 
       regex ? regex_result : ranked_result
@@ -46,6 +51,13 @@ module Search
     private
 
     attr_reader :scope, :query, :regex, :page, :limit, :property_filters
+
+    def dsl_only_result
+      relation = joined_scope
+        .select("notes.*, search_revisions.content_plain AS search_content_plain")
+        .order(updated_at: :desc)
+      build_result(load_page(relation))
+    end
 
     def empty_query_result
       relation = joined_scope.order(updated_at: :desc)
@@ -86,6 +98,7 @@ module Search
           .joins("LEFT JOIN note_aliases search_aliases ON search_aliases.note_id = notes.id")
           .includes(:head_revision)
           .group("notes.id, search_revisions.id")
+        base = Dsl::Executor.call(scope: base, tokens: @dsl_tokens) if @dsl_tokens.any?
         apply_property_filters(base)
       end
     end
@@ -110,7 +123,8 @@ module Search
         limit: limit,
         query: query,
         regex: regex,
-        has_more: notes.length > limit
+        has_more: notes.length > limit,
+        dsl_errors: @dsl_result&.errors
       )
     end
 

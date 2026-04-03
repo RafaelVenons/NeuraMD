@@ -38,6 +38,7 @@ Rails.application.routes.draw do
   resources :notes, param: :slug do
     collection do
       get :search
+      get :search_suggestions
     end
     member do
       patch :aliases, to: "aliases#update"

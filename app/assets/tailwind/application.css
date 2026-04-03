@@ -549,6 +549,48 @@
     line-height: 1.45;
   }
 
+  /* ── DSL suggestions & errors ── */
+  .note-finder-suggestions {
+    border-bottom: 1px solid #27272a;
+    padding: 6px 12px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+  }
+  .note-finder-suggestion {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 3px 10px;
+    font-size: 12px;
+    border-radius: 4px;
+    cursor: pointer;
+    color: #a1a1aa;
+    border: 1px solid #27272a;
+    background: transparent;
+  }
+  .note-finder-suggestion:hover,
+  .note-finder-suggestion.active {
+    background: #1f1f23;
+    color: #f4f4f5;
+    border-color: #3f3f46;
+  }
+  .note-finder-suggestion strong {
+    color: #38bdf8;
+  }
+  .note-finder-suggestion-desc {
+    opacity: 0.7;
+    font-size: 11px;
+  }
+  .note-finder-dsl-hint {
+    color: #52525b;
+    font-size: 10px;
+    letter-spacing: 0.02em;
+  }
+  .note-finder-dsl-error {
+    color: #f59e0b;
+  }
+
   /* ── Table Editor ── */
   .table-editor-stepper {
     display: flex;
