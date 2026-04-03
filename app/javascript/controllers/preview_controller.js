@@ -4,6 +4,11 @@ import { emojiExtension, superscriptExtension, subscriptExtension, highlightExte
 import { generateHeadingSlug } from "lib/heading_slug"
 import { WikilinkValidator } from "lib/preview/wikilink_validator"
 import { EmbedLoader } from "lib/preview/embed_loader"
+import { RenderPipeline } from "lib/preview/render_pipeline"
+import { highlightCodeRenderer } from "lib/preview/renderers/highlight_code"
+import { stripBlockMarkersRenderer } from "lib/preview/renderers/strip_block_markers"
+import { createWikilinkRenderer } from "lib/preview/renderers/wikilink_renderer"
+import { createEmbedRenderer } from "lib/preview/renderers/embed_renderer"
 
 export default class extends Controller {
   static targets = ["output"]
@@ -35,6 +40,12 @@ export default class extends Controller {
 
     this._wikilinkValidator = new WikilinkValidator()
     this._embedLoader = new EmbedLoader(3)
+
+    this._pipeline = new RenderPipeline()
+    this._pipeline.register(highlightCodeRenderer)
+    this._pipeline.register(stripBlockMarkersRenderer)
+    this._pipeline.register(createWikilinkRenderer(this._wikilinkValidator))
+    this._pipeline.register(createEmbedRenderer(this._embedLoader))
   }
 
   disconnect() {
@@ -125,35 +136,34 @@ export default class extends Controller {
       this._headingSlugCounts = new Map()
       const html = marked.parse(content || "")
       this.outputTarget.innerHTML = html
-      this._highlightCode()
-      this._stripBlockMarkers(this.outputTarget)
+
       const isStale = () => renderVersion !== this._renderVersion
-      this._wikilinkValidator.validate(this.outputTarget, renderVersion, isStale)
-      this._embedLoader.load(this.outputTarget, renderVersion, isStale, (md) => {
-        const saved = this._headingSlugCounts
-        this._headingSlugCounts = new Map()
-        const result = marked.parse(md)
-        this._headingSlugCounts = saved
-        return result
-      }, (el) => this._stripBlockMarkers(el))
+      const context = {
+        renderVersion,
+        isStale,
+        outputElement: this.outputTarget,
+        parseMarkdown: (md) => {
+          const saved = this._headingSlugCounts
+          this._headingSlugCounts = new Map()
+          const result = marked.parse(md)
+          this._headingSlugCounts = saved
+          return result
+        },
+        stripBlockMarkers: (el) => {
+          el.querySelectorAll("p, li, h1, h2, h3, h4, h5, h6, blockquote").forEach(node => {
+            const match = node.innerHTML.match(/\s\^([a-zA-Z0-9-]+)\s*$/)
+            if (match) {
+              node.id = match[1]
+              node.innerHTML = node.innerHTML.replace(/\s\^[a-zA-Z0-9-]+\s*$/, "")
+            }
+          })
+        }
+      }
+
+      this._pipeline.run(this.outputTarget, context)
     } catch (e) {
       console.error("Preview render error:", e)
     }
   }
 
-  _highlightCode() {
-    this.outputTarget.querySelectorAll("pre code").forEach(el => {
-      el.classList.add("cm-code-block")
-    })
-  }
-
-  _stripBlockMarkers(container) {
-    container.querySelectorAll("p, li, h1, h2, h3, h4, h5, h6, blockquote").forEach(el => {
-      const match = el.innerHTML.match(/\s\^([a-zA-Z0-9-]+)\s*$/)
-      if (match) {
-        el.id = match[1]
-        el.innerHTML = el.innerHTML.replace(/\s\^[a-zA-Z0-9-]+\s*$/, "")
-      }
-    })
-  }
 }
