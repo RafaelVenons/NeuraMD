@@ -1,21 +1,24 @@
 module Properties
-  module TypeRegistry
-    TYPES = {
-      "text" => Properties::Types::Text,
-      "long_text" => Properties::Types::LongText,
-      "number" => Properties::Types::Number,
-      "boolean" => Properties::Types::Boolean,
-      "date" => Properties::Types::Date,
-      "datetime" => Properties::Types::Datetime,
-      "enum" => Properties::Types::Enum,
-      "multi_enum" => Properties::Types::MultiEnum,
-      "url" => Properties::Types::Url,
-      "note_reference" => Properties::Types::NoteReference,
-      "list" => Properties::Types::List
-    }.freeze
+  class TypeRegistry
+    include ExtensionPoint
+    contract :cast, :normalize, :validate
+
+    register :text, Types::Text
+    register :long_text, Types::LongText
+    register :number, Types::Number
+    register :boolean, Types::Boolean
+    register :date, Types::Date
+    register :datetime, Types::Datetime
+    register :enum, Types::Enum
+    register :multi_enum, Types::MultiEnum
+    register :url, Types::Url
+    register :note_reference, Types::NoteReference
+    register :list, Types::List
+
+    freeze_registry!
 
     def self.handler_for(type_name)
-      TYPES.fetch(type_name) { raise ArgumentError, "Unknown property type: #{type_name}" }
+      lookup(type_name)
     end
 
     def self.cast(type_name, raw_value, config = {})

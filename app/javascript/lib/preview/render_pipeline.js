@@ -149,13 +149,17 @@ export class RenderPipeline {
     const elements = this._queryElements(renderer, outputElement)
     if (elements.length === 0) return
 
+    const start = performance.now()
+
     if (typeof renderer.processBatch === "function") {
       try {
         renderer.processBatch(elements, context)
       } catch (error) {
         console.error(`[RenderPipeline] "${renderer.name}" batch failed:`, error)
+        this._dispatchError(renderer.name, error)
         elements.forEach(el => this._applyFallback(renderer, el))
       }
+      this._logMetric(renderer.name, start, elements.length)
       return
     }
 
@@ -164,22 +168,28 @@ export class RenderPipeline {
         renderer.process(el, context)
       } catch (error) {
         console.error(`[RenderPipeline] "${renderer.name}" failed on element:`, error)
+        this._dispatchError(renderer.name, error)
         this._applyFallback(renderer, el)
       }
     }
+    this._logMetric(renderer.name, start, elements.length)
   }
 
   async _runAsync(renderer, outputElement, context) {
     const elements = this._queryElements(renderer, outputElement)
     if (elements.length === 0) return
 
+    const start = performance.now()
+
     if (typeof renderer.processBatch === "function") {
       try {
         await renderer.processBatch(elements, context)
       } catch (error) {
         console.error(`[RenderPipeline] "${renderer.name}" batch failed:`, error)
+        this._dispatchError(renderer.name, error)
         elements.forEach(el => this._applyFallback(renderer, el))
       }
+      this._logMetric(renderer.name, start, elements.length)
       return
     }
 
@@ -188,10 +198,12 @@ export class RenderPipeline {
         await renderer.process(el, context)
       } catch (error) {
         console.error(`[RenderPipeline] "${renderer.name}" failed on element:`, error)
+        this._dispatchError(renderer.name, error)
         this._applyFallback(renderer, el)
       }
     })
     await Promise.allSettled(promises)
+    this._logMetric(renderer.name, start, elements.length)
   }
 
   _queryElements(renderer, outputElement) {
@@ -215,6 +227,19 @@ export class RenderPipeline {
     } catch (_) {
       // Fallback itself failed — leave element as-is
     }
+  }
+
+  _logMetric(name, startTime, elementCount) {
+    const elapsed = performance.now() - startTime
+    if (elapsed > 100) {
+      console.warn(`[RenderPipeline] "${name}" took ${elapsed.toFixed(1)}ms for ${elementCount} elements`)
+    }
+  }
+
+  _dispatchError(rendererName, error) {
+    document.dispatchEvent(new CustomEvent("render:extension:error", {
+      detail: { renderer: rendererName, error: error.message }
+    }))
   }
 
 }

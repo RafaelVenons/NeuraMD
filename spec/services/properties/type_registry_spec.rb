@@ -7,7 +7,7 @@ RSpec.describe Properties::TypeRegistry do
     end
 
     it "raises for an unknown type" do
-      expect { described_class.handler_for("color") }.to raise_error(ArgumentError, /Unknown property type/)
+      expect { described_class.handler_for("color") }.to raise_error(ExtensionPoint::UnknownExtension, /color/)
     end
   end
 
