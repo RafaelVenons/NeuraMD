@@ -20,6 +20,13 @@ Rails.application.routes.draw do
   get "graph", to: "graphs#show", as: :graph
   get "api/graph", to: "api/graphs#show", as: :api_graph
 
+  resources :canvas_documents, path: "canvas", except: [:edit, :new] do
+    resources :canvas_nodes, only: [:create, :update, :destroy] do
+      collection { patch :bulk_update }
+    end
+    resources :canvas_edges, only: [:create, :update, :destroy]
+  end
+
   resources :note_views, path: "views", except: [:edit, :new] do
     member do
       get :results

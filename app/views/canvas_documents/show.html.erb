@@ -1,0 +1,56 @@
+<% content_for :title, "#{@canvas_document.name} — NeuraMD" %>
+<% content_for :full_bleed, true %>
+<% content_for :hide_app_nav, true %>
+
+<section class="cv-page"
+         data-controller="canvas"
+         data-canvas-document-id-value="<%= @canvas_document.id %>"
+         data-canvas-update-url-value="<%= canvas_document_path(@canvas_document) %>"
+         data-canvas-nodes-url-value="<%= canvas_document_canvas_nodes_path(@canvas_document) %>"
+         data-canvas-edges-url-value="<%= canvas_document_canvas_edges_path(@canvas_document) %>"
+         data-canvas-bulk-url-value="<%= bulk_update_canvas_document_canvas_nodes_path(@canvas_document) %>"
+         data-canvas-viewport-value="<%= @canvas_document.viewport.to_json %>"
+         data-canvas-initial-nodes-value="<%= @nodes_json %>"
+         data-canvas-initial-edges-value="<%= @edges_json %>">
+
+  <header class="cv-toolbar" data-controller="canvas-toolbar"
+          data-action="canvas:toolChanged->canvas-toolbar#handleToolChanged">
+    <a href="<%= canvas_documents_path %>" class="cv-toolbar__back">&larr; Canvas</a>
+    <span class="cv-toolbar__title"><%= @canvas_document.name %></span>
+
+    <div class="cv-toolbar__tools">
+      <button class="cv-tool-btn is-active" data-action="click->canvas-toolbar#selectTool"
+              data-canvas-toolbar-tool-param="select" title="Selecionar (V)">&#8598;</button>
+      <button class="cv-tool-btn" data-action="click->canvas-toolbar#selectTool"
+              data-canvas-toolbar-tool-param="pan" title="Mover (H)">&#9995;</button>
+      <button class="cv-tool-btn" data-action="click->canvas-toolbar#selectTool"
+              data-canvas-toolbar-tool-param="note" title="Nota (N)">N</button>
+      <button class="cv-tool-btn" data-action="click->canvas-toolbar#selectTool"
+              data-canvas-toolbar-tool-param="text" title="Texto (T)">T</button>
+      <button class="cv-tool-btn" data-action="click->canvas-toolbar#selectTool"
+              data-canvas-toolbar-tool-param="edge" title="Conexao (E)">&#8599;</button>
+    </div>
+
+    <div class="cv-toolbar__actions">
+      <button class="cv-tool-btn" data-action="click->canvas#zoomIn" title="Zoom +">+</button>
+      <span class="cv-toolbar__zoom" data-canvas-target="zoomLabel">100%</span>
+      <button class="cv-tool-btn" data-action="click->canvas#zoomOut" title="Zoom -">&minus;</button>
+      <button class="cv-tool-btn" data-action="click->canvas#fitAll" title="Encaixar tudo">&#8862;</button>
+      <button class="cv-tool-btn cv-tool-btn--danger" data-action="click->canvas#deleteSelected"
+              title="Excluir selecionado">&times;</button>
+    </div>
+  </header>
+
+  <div class="cv-viewport" data-canvas-target="viewport"
+       data-action="wheel->canvas#onWheel pointerdown->canvas#onPointerDown pointermove->canvas#onPointerMove pointerup->canvas#onPointerUp">
+    <div class="cv-layer" data-canvas-target="layer">
+      <svg class="cv-edges-svg" data-canvas-target="edgesSvg">
+        <defs>
+          <marker id="cv-arrowhead" markerWidth="10" markerHeight="7" refX="10" refY="3.5" orient="auto">
+            <polygon points="0 0, 10 3.5, 0 7" class="cv-edge-arrowhead" />
+          </marker>
+        </defs>
+      </svg>
+    </div>
+  </div>
+</section>

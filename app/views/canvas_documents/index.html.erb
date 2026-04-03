@@ -1,0 +1,31 @@
+<% content_for :title, "Canvas — NeuraMD" %>
+
+<div class="cv-index">
+  <h1 class="cv-index__title">Canvas</h1>
+
+  <% if @canvas_documents.any? %>
+    <div class="cv-index__list">
+      <% @canvas_documents.each do |doc| %>
+        <%= link_to canvas_document_path(doc), class: "cv-index__row" do %>
+          <span class="cv-index__name"><%= doc.name %></span>
+          <span class="cv-index__meta">
+            <%= doc.canvas_nodes.size %> nos &middot;
+            <%= l(doc.updated_at, format: :short) rescue doc.updated_at.strftime("%d/%m %H:%M") %>
+          </span>
+        <% end %>
+      <% end %>
+    </div>
+  <% else %>
+    <p class="cv-index__empty">Nenhum canvas criado ainda.</p>
+  <% end %>
+
+  <div class="cv-index__form"
+       data-controller="canvas-form"
+       data-canvas-form-create-url-value="<%= canvas_documents_path %>">
+    <input type="text" class="cv-index__input"
+           data-canvas-form-target="name"
+           placeholder="Nome do novo canvas">
+    <button type="button" class="cv-index__btn"
+            data-action="click->canvas-form#create">Criar Canvas</button>
+  </div>
+</div>
