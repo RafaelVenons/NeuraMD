@@ -1,6 +1,6 @@
 import { Controller } from "@hotwired/stimulus"
 import { marked } from "marked"
-import { emojiExtension, superscriptExtension, subscriptExtension, highlightExtension, wikilinkExtension, embedExtension } from "lib/marked_extensions"
+import { emojiExtension, superscriptExtension, subscriptExtension, highlightExtension, wikilinkExtension, embedExtension, mathBlockExtension, mathInlineExtension } from "lib/marked_extensions"
 import { generateHeadingSlug } from "lib/heading_slug"
 import { WikilinkValidator } from "lib/preview/wikilink_validator"
 import { EmbedLoader } from "lib/preview/embed_loader"
@@ -10,6 +10,9 @@ import { stripBlockMarkersRenderer } from "lib/preview/renderers/strip_block_mar
 import { createWikilinkRenderer } from "lib/preview/renderers/wikilink_renderer"
 import { createEmbedRenderer } from "lib/preview/renderers/embed_renderer"
 import { mediaEmbedRenderer } from "lib/preview/renderers/media_embed"
+import { mermaidRenderer } from "lib/preview/renderers/mermaid_renderer"
+import { katexRenderer } from "lib/preview/renderers/katex_renderer"
+import { chartRenderer } from "lib/preview/renderers/chart_renderer"
 
 export default class extends Controller {
   static targets = ["output"]
@@ -18,7 +21,7 @@ export default class extends Controller {
     this._headingSlugCounts = new Map()
     const controller = this
     marked.use({
-      extensions: [embedExtension, wikilinkExtension, emojiExtension, superscriptExtension, subscriptExtension, highlightExtension],
+      extensions: [embedExtension, wikilinkExtension, mathBlockExtension, mathInlineExtension, emojiExtension, superscriptExtension, subscriptExtension, highlightExtension],
       renderer: {
         heading({ tokens, depth }) {
           const text = this.parser.parseInline(tokens)
@@ -48,6 +51,9 @@ export default class extends Controller {
     this._pipeline.register(createWikilinkRenderer(this._wikilinkValidator))
     this._pipeline.register(createEmbedRenderer(this._embedLoader))
     this._pipeline.register(mediaEmbedRenderer)
+    this._pipeline.register(mermaidRenderer)
+    this._pipeline.register(katexRenderer)
+    this._pipeline.register(chartRenderer)
   }
 
   disconnect() {

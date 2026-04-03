@@ -130,6 +130,49 @@ export const wikilinkExtension = {
   }
 }
 
+function encodeMathSource(text) {
+  return text.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+}
+
+function escapeMathHtml(text) {
+  return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+}
+
+export const mathBlockExtension = {
+  name: "mathBlock",
+  level: "block",
+  start(src) { return src.indexOf("$$") },
+  tokenizer(src) {
+    const match = /^\$\$\n?([\s\S]+?)\n?\$\$/.exec(src)
+    if (match) return { type: "mathBlock", raw: match[0], text: match[1].trim() }
+  },
+  renderer(token) {
+    return `<div class="math-block" data-math="${encodeMathSource(token.text)}">${escapeMathHtml(token.text)}</div>\n`
+  }
+}
+
+export const mathInlineExtension = {
+  name: "mathInline",
+  level: "inline",
+  start(src) {
+    const idx = src.indexOf("$")
+    if (idx < 0) return -1
+    // Skip $$ (handled by block extension)
+    if (src[idx + 1] === "$") return -1
+    return idx
+  },
+  tokenizer(src) {
+    // Match $..$ but not $$..$$, and require non-space after opening $
+    const match = /^\$([^\$\n]+?)\$/.exec(src)
+    if (match && match[1][0] !== " " && match[1][match[1].length - 1] !== " ") {
+      return { type: "mathInline", raw: match[0], text: match[1] }
+    }
+  },
+  renderer(token) {
+    return `<span class="math-inline" data-math="${encodeMathSource(token.text)}">${escapeMathHtml(token.text)}</span>`
+  }
+}
+
 export const embedExtension = {
   name: "embed",
   level: "block",

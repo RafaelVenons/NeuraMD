@@ -153,6 +153,10 @@ pin "@lezer/rust", to: "@lezer--rust.js" # @1.0.2
 pin "@lezer/sass", to: "@lezer--sass.js" # @1.1.0
 pin "@lezer/xml", to: "@lezer--xml.js" # @1.0.6
 pin "@lezer/yaml", to: "@lezer--yaml.js" # @1.0.4
+# Specialized preview renderers (lazy-loaded)
+pin "mermaid", to: "https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs", preload: false
+pin "katex", to: "https://cdn.jsdelivr.net/npm/katex@0.16/dist/katex.mjs", preload: false
+
 pin "graphology" # @0.26.0
 pin "graphology-layout" # @0.6.1
 pin "graphology-layout/circlepack", to: "circlepack.js"

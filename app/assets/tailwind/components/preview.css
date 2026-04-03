@@ -357,4 +357,59 @@
     color: var(--theme-error);
     font-size: 13px;
   }
+
+  /* ── Specialized renderers ────────────────────────────────────────────── */
+
+  .mermaid-container {
+    margin: 12px 0;
+    text-align: center;
+    overflow-x: auto;
+  }
+  .mermaid-container svg {
+    max-width: 100%;
+  }
+
+  .math-block {
+    margin: 12px 0;
+    text-align: center;
+    overflow-x: auto;
+  }
+  .math-block:not(.math-rendered) {
+    font-family: var(--font-mono);
+    font-size: 13px;
+    color: var(--theme-text-muted);
+  }
+  .math-inline:not(.math-rendered) {
+    font-family: var(--font-mono);
+    font-size: 0.9em;
+    color: var(--theme-text-muted);
+  }
+
+  .chart-container {
+    margin: 12px 0;
+    max-width: 100%;
+    position: relative;
+  }
+  .chart-container canvas {
+    max-width: 100%;
+  }
+
+  .renderer-fallback {
+    margin: 12px 0;
+    padding: 12px;
+    border: 1px dashed var(--theme-border);
+    border-radius: 4px;
+    background: color-mix(in srgb, var(--theme-bg-tertiary) 60%, transparent);
+  }
+  .renderer-fallback-label {
+    display: block;
+    font-size: 11px;
+    color: var(--theme-text-faint);
+    font-weight: 500;
+    margin-bottom: 4px;
+  }
+  .renderer-fallback pre {
+    margin: 0;
+    font-size: 12px;
+  }
 }

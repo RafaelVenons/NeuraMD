@@ -144,4 +144,81 @@ RSpec.describe "Render pipeline", type: :system do
       expect(page).to have_css(".preview-prose img[loading='lazy']")
     end
   end
+
+  # ── EPIC-04.4: Specialized renderers ─────────────────────────────────────
+
+  describe "math rendering" do
+    it "tokenizes inline math as math-inline span with data-math attribute" do
+      note = create(:note)
+      Notes::CheckpointService.call(
+        note: note,
+        content: "# Math\n\nA formula $E=mc^2$ inline.",
+        author: user
+      )
+
+      visit note_path(note.slug)
+      expect(page).to have_css(".cm-editor", wait: 10)
+      trigger_preview
+
+      expect(page).to have_css(".preview-prose h1", text: "Math", wait: 5)
+      expect(page).to have_css(".preview-prose .math-inline[data-math]")
+    end
+
+    it "tokenizes display math as math-block div with data-math attribute" do
+      note = create(:note)
+      Notes::CheckpointService.call(
+        note: note,
+        content: "# Display\n\n$$\n\\int_0^1 x\\,dx\n$$",
+        author: user
+      )
+
+      visit note_path(note.slug)
+      expect(page).to have_css(".cm-editor", wait: 10)
+      trigger_preview
+
+      expect(page).to have_css(".preview-prose h1", text: "Display", wait: 5)
+      expect(page).to have_css(".preview-prose .math-block[data-math]")
+    end
+  end
+
+  describe "mermaid rendering" do
+    it "renders mermaid code blocks as diagrams or shows graceful fallback" do
+      note = create(:note)
+      Notes::CheckpointService.call(
+        note: note,
+        content: "# Diagrama\n\n```mermaid\ngraph TD\n  A --> B\n```",
+        author: user
+      )
+
+      visit note_path(note.slug)
+      expect(page).to have_css(".cm-editor", wait: 10)
+      trigger_preview
+
+      expect(page).to have_css(".preview-prose h1", text: "Diagrama", wait: 5)
+      # Either rendered as SVG container or graceful fallback (if CDN unreachable)
+      has_mermaid = page.has_css?(".preview-prose .mermaid-container", wait: 10)
+      has_fallback = page.has_css?(".preview-prose .renderer-fallback", wait: 1)
+      expect(has_mermaid || has_fallback).to be true
+    end
+  end
+
+  describe "specialized renderer isolation" do
+    it "does not break the preview when a specialized renderer fails" do
+      note = create(:note)
+      Notes::CheckpointService.call(
+        note: note,
+        content: "# Mixed\n\nNormal text.\n\n```mermaid\ninvalid{{{syntax\n```\n\nMore text after.",
+        author: user
+      )
+
+      visit note_path(note.slug)
+      expect(page).to have_css(".cm-editor", wait: 10)
+      trigger_preview
+
+      expect(page).to have_css(".preview-prose h1", text: "Mixed", wait: 5)
+      # Normal text should still render even if mermaid fails
+      expect(page).to have_text("Normal text.")
+      expect(page).to have_text("More text after.")
+    end
+  end
 end
