@@ -5,6 +5,7 @@
 @import "./components/preview.css";
 @import "./components/sidebar.css";
 @import "./components/revision.css";
+@import "./components/note_views.css";
 
 @theme {
   /* CJK font fallback stack — Mandarim, Japonês, Coreano */

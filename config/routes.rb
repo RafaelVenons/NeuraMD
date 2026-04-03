@@ -20,6 +20,15 @@ Rails.application.routes.draw do
   get "graph", to: "graphs#show", as: :graph
   get "api/graph", to: "api/graphs#show", as: :api_graph
 
+  resources :note_views, path: "views", except: [:edit, :new] do
+    member do
+      get :results
+    end
+    collection do
+      patch :reorder
+    end
+  end
+
   resources :property_definitions, path: "settings/properties", only: [:index, :create, :update, :destroy] do
     collection do
       patch :reorder

@@ -1,0 +1,59 @@
+<% content_for :title, "Views — NeuraMD" %>
+
+<div class="nv-index">
+  <h1 class="nv-index__title">Views</h1>
+
+  <% if @note_views.any? %>
+    <div class="nv-index__list">
+      <% @note_views.each do |view| %>
+        <%= link_to note_view_path(view), class: "nv-index__row" do %>
+          <span class="nv-index__name"><%= view.name %></span>
+          <span class="nv-index__badge"><%= view.display_type %></span>
+          <% if view.filter_query.present? %>
+            <span class="nv-index__filter"><%= view.filter_query %></span>
+          <% end %>
+        <% end %>
+      <% end %>
+    </div>
+  <% else %>
+    <p class="nv-index__empty">Nenhuma view criada ainda.</p>
+  <% end %>
+
+  <div class="nv-form"
+       data-controller="note-view-form"
+       data-note-view-form-create-url-value="<%= note_views_path %>"
+       data-note-view-form-property-defs-value="<%= PropertyDefinition.active.order(:position).select(:key, :label, :value_type).to_json %>">
+    <h2 class="nv-form__title">Nova View</h2>
+
+    <div class="nv-form__field">
+      <label class="nv-form__label">Nome</label>
+      <input type="text" class="nv-form__input" data-note-view-form-target="name" placeholder="Ex: Notas de Neuro">
+    </div>
+
+    <div class="nv-form__field">
+      <label class="nv-form__label">Filtro (DSL)</label>
+      <input type="text" class="nv-form__input" data-note-view-form-target="filter"
+             placeholder="Ex: tag:neurociencia status:draft created:>2024-01">
+    </div>
+
+    <div class="nv-form__field">
+      <label class="nv-form__label">Tipo de exibicao</label>
+      <select class="nv-form__select" data-note-view-form-target="displayType">
+        <option value="table">Tabela</option>
+        <option value="card">Cards</option>
+        <option value="list">Lista</option>
+      </select>
+    </div>
+
+    <div class="nv-form__field">
+      <label class="nv-form__label">Colunas</label>
+      <div data-note-view-form-target="columns">
+        <label><input type="checkbox" value="title" checked disabled> title</label>
+        <label><input type="checkbox" value="updated_at" checked data-note-view-form-target="columnCheck"> updated_at</label>
+        <label><input type="checkbox" value="created_at" data-note-view-form-target="columnCheck"> created_at</label>
+      </div>
+    </div>
+
+    <button type="button" class="nv-form__submit" data-action="click->note-view-form#create">Criar View</button>
+  </div>
+</div>

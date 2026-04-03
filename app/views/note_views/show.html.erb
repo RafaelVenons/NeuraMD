@@ -1,0 +1,42 @@
+<% content_for :title, "#{@note_view.name} — NeuraMD" %>
+
+<section class="nv-page"
+         data-controller="note-view"
+         data-note-view-results-url-value="<%= results_note_view_path(@note_view) %>"
+         data-note-view-update-url-value="<%= note_view_path(@note_view) %>"
+         data-note-view-view-id-value="<%= @note_view.id %>"
+         data-note-view-display-type-value="<%= @note_view.display_type %>"
+         data-note-view-columns-value="<%= @note_view.columns.to_json %>"
+         data-note-view-sort-field-value="<%= @note_view.sort_field %>"
+         data-note-view-sort-direction-value="<%= @note_view.sort_direction %>"
+         data-note-view-filter-value="<%= @note_view.filter_query %>">
+
+  <header class="nv-header">
+    <h1 class="nv-header__title" data-note-view-target="title"><%= @note_view.name %></h1>
+    <div class="nv-header__actions">
+      <div class="nv-display-toggle">
+        <button class="nv-display-btn <%= "is-active" if @note_view.display_type == "table" %>"
+                data-action="click->note-view#switchDisplay" data-note-view-type-param="table">Tabela</button>
+        <button class="nv-display-btn <%= "is-active" if @note_view.display_type == "card" %>"
+                data-action="click->note-view#switchDisplay" data-note-view-type-param="card">Cards</button>
+        <button class="nv-display-btn <%= "is-active" if @note_view.display_type == "list" %>"
+                data-action="click->note-view#switchDisplay" data-note-view-type-param="list">Lista</button>
+      </div>
+      <button class="nv-display-btn" data-action="click->note-view#destroy"
+              data-confirm="Excluir esta view?">Excluir</button>
+    </div>
+  </header>
+
+  <div class="nv-filter-bar">
+    <span class="nv-filter-label">Filtro:</span>
+    <input type="text" class="nv-filter-input"
+           value="<%= @note_view.filter_query %>"
+           placeholder="Ex: tag:neuro status:draft"
+           data-note-view-target="filterInput"
+           data-action="keydown.enter->note-view#updateFilter">
+  </div>
+
+  <div data-note-view-target="dslErrors"></div>
+  <div data-note-view-target="results" class="nv-results"></div>
+  <div data-note-view-target="pagination" class="nv-pagination"></div>
+</section>

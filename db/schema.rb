@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_04_02_140000) do
+ActiveRecord::Schema[8.1].define(version: 2026_04_03_113811) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
   enable_extension "pg_trgm"
@@ -220,6 +220,18 @@ ActiveRecord::Schema[8.1].define(version: 2026_04_02_140000) do
     t.string "voice", null: false
     t.index ["note_revision_id"], name: "index_note_tts_assets_on_note_revision_id"
     t.index ["text_sha256", "language", "voice", "provider", "model", "settings_hash", "is_active"], name: "index_note_tts_assets_on_cache_key"
+  end
+
+  create_table "note_views", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.jsonb "columns", default: [], null: false
+    t.datetime "created_at", null: false
+    t.string "display_type", default: "table", null: false
+    t.string "filter_query", default: "", null: false
+    t.string "name", null: false
+    t.integer "position", default: 0, null: false
+    t.jsonb "sort_config", default: {}, null: false
+    t.datetime "updated_at", null: false
+    t.index ["position"], name: "index_note_views_on_position"
   end
 
   create_table "notes", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
