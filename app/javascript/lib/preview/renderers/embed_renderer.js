@@ -9,7 +9,14 @@ export function createEmbedRenderer(embedLoader) {
       const display = el.querySelector(".embed-header")?.textContent || "Embed"
       return `<span class="embed-error">${display}: conteudo nao encontrado</span>`
     },
-    async processBatch(_elements, context) {
+    async processBatch(elements, context) {
+      // Track embed count against budget guards
+      if (context.guards) {
+        for (let i = 0; i < elements.length; i++) {
+          context.guards.trackEmbed()
+        }
+      }
+
       await embedLoader.load(
         context.outputElement,
         context.renderVersion,

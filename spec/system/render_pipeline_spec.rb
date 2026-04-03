@@ -221,4 +221,72 @@ RSpec.describe "Render pipeline", type: :system do
       expect(page).to have_text("More text after.")
     end
   end
+
+  # ── EPIC-04.5: Render budget protections ─────────────────────────────────
+
+  describe "render budget protections" do
+    it "shows budget warning when timeout guard fires and stops pipeline" do
+      note = create(:note)
+      Notes::CheckpointService.call(
+        note: note,
+        content: "# Budget\n\nNormal content.",
+        author: user
+      )
+
+      visit note_path(note.slug)
+      expect(page).to have_css(".cm-editor", wait: 10)
+      trigger_preview
+      expect(page).to have_css(".preview-prose h1", text: "Budget", wait: 5)
+
+      # Inject a slow renderer and set a very low timeout to trigger the guard
+      page.execute_script(<<~JS)
+        (() => {
+          const previewEl = document.querySelector("[data-controller~='preview']")
+          const ctrl = window.Stimulus.controllers.find(c => c.element === previewEl && c.identifier === "preview")
+          if (!ctrl || !ctrl._guards) return
+
+          // Set absurdly low timeout
+          ctrl._guards.maxRenderTimeMs = 0
+
+          // Register a renderer that will be checked after the timeout
+          ctrl._pipeline.register({
+            name: "test-slow",
+            type: "async",
+            selector: "p",
+            dependencies: [],
+            limits: { maxElements: 100 },
+            fallbackHTML: (el) => el.outerHTML,
+            async processBatch(elements, context) {
+              // This renderer just exists to trigger the timeout check
+              await new Promise(r => setTimeout(r, 10))
+            }
+          })
+
+          // Re-trigger render
+          const cm = document.querySelector("[data-controller~='codemirror']")
+          const cmCtrl = window.Stimulus.controllers.find(c => c.element === cm && c.identifier === "codemirror")
+          ctrl.update(cmCtrl.getValue())
+        })()
+      JS
+
+      expect(page).to have_css(".render-budget-warning", wait: 5)
+      expect(page).to have_text("Preview truncado")
+    end
+
+    it "does not show budget warning for normal content" do
+      note = create(:note)
+      Notes::CheckpointService.call(
+        note: note,
+        content: "# Normal\n\nJust some text.\n\n- Item 1\n- Item 2",
+        author: user
+      )
+
+      visit note_path(note.slug)
+      expect(page).to have_css(".cm-editor", wait: 10)
+      trigger_preview
+
+      expect(page).to have_css(".preview-prose h1", text: "Normal", wait: 5)
+      expect(page).not_to have_css(".render-budget-warning")
+    end
+  end
 end

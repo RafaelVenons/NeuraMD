@@ -13,6 +13,7 @@ import { mediaEmbedRenderer } from "lib/preview/renderers/media_embed"
 import { mermaidRenderer } from "lib/preview/renderers/mermaid_renderer"
 import { katexRenderer } from "lib/preview/renderers/katex_renderer"
 import { chartRenderer } from "lib/preview/renderers/chart_renderer"
+import { RenderGuards } from "lib/preview/render_guards"
 
 export default class extends Controller {
   static targets = ["output"]
@@ -45,7 +46,8 @@ export default class extends Controller {
     this._wikilinkValidator = new WikilinkValidator()
     this._embedLoader = new EmbedLoader(3)
 
-    this._pipeline = new RenderPipeline()
+    this._guards = new RenderGuards()
+    this._pipeline = new RenderPipeline(this._guards)
     this._pipeline.register(highlightCodeRenderer)
     this._pipeline.register(stripBlockMarkersRenderer)
     this._pipeline.register(createWikilinkRenderer(this._wikilinkValidator))
@@ -150,6 +152,7 @@ export default class extends Controller {
         renderVersion,
         isStale,
         outputElement: this.outputTarget,
+        guards: this._guards,
         parseMarkdown: (md) => {
           const saved = this._headingSlugCounts
           this._headingSlugCounts = new Map()

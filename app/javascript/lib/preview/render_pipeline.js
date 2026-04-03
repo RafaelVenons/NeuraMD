@@ -1,3 +1,5 @@
+import { RenderBudgetExceeded } from "lib/preview/render_guards"
+
 const REQUIRED_FIELDS = ["name", "type", "selector", "fallbackHTML"]
 const VALID_TYPES = ["sync", "async"]
 
@@ -60,9 +62,10 @@ export function topologicalSort(renderers) {
 }
 
 export class RenderPipeline {
-  constructor() {
+  constructor(guards) {
     this._renderers = new Map()
     this._sorted = []
+    this._guards = guards || null
   }
 
   register(rendererDef) {
@@ -72,6 +75,8 @@ export class RenderPipeline {
   }
 
   async run(outputElement, context) {
+    this._guards?.startRender()
+
     // Cleanup phase
     for (const renderer of this._sorted) {
       if (typeof renderer.cleanup === "function") {
@@ -82,32 +87,62 @@ export class RenderPipeline {
     // Run renderers in topological order, respecting dependencies.
     // Group consecutive sync renderers into a batch, and consecutive
     // independent async renderers into a parallel batch.
-    let i = 0
-    while (i < this._sorted.length) {
-      if (context.isStale()) return
-      const renderer = this._sorted[i]
+    try {
+      let i = 0
+      while (i < this._sorted.length) {
+        if (context.isStale()) return
+        this._guards?.checkTimeout()
 
-      if (renderer.type === "sync") {
-        this._runSync(renderer, outputElement, context)
-        i++
-      } else {
-        // Collect a batch of independent async renderers
-        const batch = [renderer]
-        let j = i + 1
-        while (j < this._sorted.length && this._sorted[j].type === "async") {
-          const deps = this._sorted[j].dependencies || []
-          const batchNames = new Set(batch.map(r => r.name))
-          const dependsOnBatch = deps.some(d => batchNames.has(d))
-          if (dependsOnBatch) break
-          batch.push(this._sorted[j])
-          j++
+        const renderer = this._sorted[i]
+
+        if (renderer.type === "sync") {
+          this._runSync(renderer, outputElement, context)
+          i++
+        } else {
+          // Collect a batch of independent async renderers
+          const batch = [renderer]
+          let j = i + 1
+          while (j < this._sorted.length && this._sorted[j].type === "async") {
+            const deps = this._sorted[j].dependencies || []
+            const batchNames = new Set(batch.map(r => r.name))
+            const dependsOnBatch = deps.some(d => batchNames.has(d))
+            if (dependsOnBatch) break
+            batch.push(this._sorted[j])
+            j++
+          }
+
+          const promises = batch.map(r => this._runAsync(r, outputElement, context))
+          await Promise.allSettled(promises)
+
+          this._guards?.checkTimeout()
+          this._guards?.checkElementCount(outputElement)
+          i = j
         }
-
-        const promises = batch.map(r => this._runAsync(r, outputElement, context))
-        await Promise.allSettled(promises)
-        i = j
+      }
+    } catch (err) {
+      if (err instanceof RenderBudgetExceeded) {
+        console.warn(`[RenderPipeline] ${err.message}`)
+        this._showBudgetWarning(outputElement, err)
+      } else {
+        throw err
       }
     }
+  }
+
+  _showBudgetWarning(outputElement, err) {
+    const existing = outputElement.querySelector(".render-budget-warning")
+    if (existing) return
+
+    const warning = document.createElement("div")
+    warning.className = "render-budget-warning"
+    const labels = {
+      timeout: "tempo de renderizacao",
+      elements: "numero de elementos",
+      embeds: "numero de embeds"
+    }
+    const label = labels[err.resource] || err.resource
+    warning.textContent = `Preview truncado: limite de ${label} atingido.`
+    outputElement.appendChild(warning)
   }
 
   _runSync(renderer, outputElement, context) {
