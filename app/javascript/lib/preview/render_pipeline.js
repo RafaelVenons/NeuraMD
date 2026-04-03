@@ -79,24 +79,34 @@ export class RenderPipeline {
       }
     }
 
-    const syncRenderers = this._sorted.filter(r => r.type === "sync")
-    const asyncRenderers = this._sorted.filter(r => r.type === "async")
-
-    // Sync phase
-    for (const renderer of syncRenderers) {
+    // Run renderers in topological order, respecting dependencies.
+    // Group consecutive sync renderers into a batch, and consecutive
+    // independent async renderers into a parallel batch.
+    let i = 0
+    while (i < this._sorted.length) {
       if (context.isStale()) return
-      this._runSync(renderer, outputElement, context)
-    }
+      const renderer = this._sorted[i]
 
-    // Async phase — run in dependency-resolved batches
-    const batches = this._buildAsyncBatches(asyncRenderers)
-    for (const batch of batches) {
-      if (context.isStale()) return
+      if (renderer.type === "sync") {
+        this._runSync(renderer, outputElement, context)
+        i++
+      } else {
+        // Collect a batch of independent async renderers
+        const batch = [renderer]
+        let j = i + 1
+        while (j < this._sorted.length && this._sorted[j].type === "async") {
+          const deps = this._sorted[j].dependencies || []
+          const batchNames = new Set(batch.map(r => r.name))
+          const dependsOnBatch = deps.some(d => batchNames.has(d))
+          if (dependsOnBatch) break
+          batch.push(this._sorted[j])
+          j++
+        }
 
-      const promises = batch.map(renderer =>
-        this._runAsync(renderer, outputElement, context)
-      )
-      await Promise.allSettled(promises)
+        const promises = batch.map(r => this._runAsync(r, outputElement, context))
+        await Promise.allSettled(promises)
+        i = j
+      }
     }
   }
 
@@ -172,44 +182,4 @@ export class RenderPipeline {
     }
   }
 
-  _buildAsyncBatches(asyncRenderers) {
-    if (asyncRenderers.length === 0) return []
-
-    // Group into batches where all items in a batch have their dependencies
-    // satisfied by previous batches (or have no async dependencies)
-    const completed = new Set()
-    const remaining = [...asyncRenderers]
-    const batches = []
-
-    while (remaining.length > 0) {
-      const batch = []
-      const nextRemaining = []
-
-      for (const renderer of remaining) {
-        const asyncDeps = (renderer.dependencies || []).filter(dep => {
-          const r = this._renderers.get(dep)
-          return r && r.type === "async"
-        })
-        const satisfied = asyncDeps.every(dep => completed.has(dep))
-        if (satisfied) {
-          batch.push(renderer)
-        } else {
-          nextRemaining.push(renderer)
-        }
-      }
-
-      if (batch.length === 0) {
-        // Remaining renderers have unresolvable dependencies — run them anyway
-        batches.push(remaining)
-        break
-      }
-
-      batches.push(batch)
-      batch.forEach(r => completed.add(r.name))
-      remaining.length = 0
-      remaining.push(...nextRemaining)
-    }
-
-    return batches
-  }
 }

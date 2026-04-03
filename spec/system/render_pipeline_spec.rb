@@ -2,24 +2,21 @@ require "rails_helper"
 
 RSpec.describe "Render pipeline", type: :system do
   let(:user) { create(:user) }
-  let!(:note) { create(:note) }
 
   before do
     login_as user, scope: :user
   end
 
-  def editor
-    find(".cm-content")
-  end
-
-  def preview_output
-    find("[data-preview-target='output']")
+  def trigger_preview
+    find(".cm-content").click
+    find(".cm-content").send_keys(" ")
   end
 
   # ── EPIC-04.1: Renderer contract ─────────────────────────────────────────
 
   describe "renderer isolation" do
     it "shows fallback when a renderer throws, without breaking other renderers" do
+      note = create(:note)
       Notes::CheckpointService.call(
         note: note,
         content: "# Heading Normal\n\nTexto com **negrito** e `codigo`.",
@@ -27,7 +24,9 @@ RSpec.describe "Render pipeline", type: :system do
       )
 
       visit note_path(note.slug)
-      expect(page).to have_css(".cm-editor", wait: 5)
+      expect(page).to have_css(".cm-editor", wait: 10)
+      trigger_preview
+      expect(page).to have_css(".preview-prose h1", text: "Heading Normal", wait: 5)
 
       # Inject a broken renderer into the pipeline at runtime
       page.execute_script(<<~JS)
@@ -53,10 +52,7 @@ RSpec.describe "Render pipeline", type: :system do
         })()
       JS
 
-      # The broken renderer's fallback should appear
       expect(page).to have_css(".renderer-test-fallback", text: "negrito", wait: 5)
-
-      # Other rendering still works — heading and code are present
       expect(page).to have_css(".preview-prose h1", text: "Heading Normal")
       expect(page).to have_css(".preview-prose code", text: "codigo")
     end
@@ -64,6 +60,7 @@ RSpec.describe "Render pipeline", type: :system do
 
   describe "basic pipeline rendering" do
     it "renders markdown with code blocks and block markers through the pipeline" do
+      note = create(:note)
       Notes::CheckpointService.call(
         note: note,
         content: "# Titulo\n\n```ruby\nputs 'hello'\n```\n\nParagrafo com bloco ^meu-bloco",
@@ -71,13 +68,80 @@ RSpec.describe "Render pipeline", type: :system do
       )
 
       visit note_path(note.slug)
-      expect(page).to have_css(".cm-editor", wait: 5)
+      expect(page).to have_css(".cm-editor", wait: 10)
+      trigger_preview
 
-      # Wait for preview to render the heading (debounced at 150ms)
       expect(page).to have_css(".preview-prose h1", text: "Titulo", wait: 5)
       expect(page).to have_css(".preview-prose pre code.cm-code-block")
-      # Block marker should be stripped and applied as element id
       expect(page).to have_css(".preview-prose [id='meu-bloco']")
+    end
+  end
+
+  # ── EPIC-04.3: Media embeds ──────────────────────────────────────────────
+
+  describe "media embeds" do
+    it "converts video URL images to video elements" do
+      note = create(:note)
+      Notes::CheckpointService.call(
+        note: note,
+        content: "# Video\n\n![meu video](https://example.com/test.mp4)",
+        author: user
+      )
+
+      visit note_path(note.slug)
+      expect(page).to have_css(".cm-editor", wait: 10)
+      trigger_preview
+
+      expect(page).to have_css(".preview-prose h1", text: "Video", wait: 5)
+      expect(page).to have_css(".preview-prose .media-container video[controls]")
+    end
+
+    it "converts audio URL images to audio elements" do
+      note = create(:note)
+      Notes::CheckpointService.call(
+        note: note,
+        content: "# Audio\n\n![meu audio](https://example.com/test.mp3)",
+        author: user
+      )
+
+      visit note_path(note.slug)
+      expect(page).to have_css(".cm-editor", wait: 10)
+      trigger_preview
+
+      expect(page).to have_css(".preview-prose h1", text: "Audio", wait: 5)
+      expect(page).to have_css(".preview-prose .media-container audio[controls]")
+    end
+
+    it "converts PDF URL images to iframe elements" do
+      note = create(:note)
+      Notes::CheckpointService.call(
+        note: note,
+        content: "# PDF\n\n![documento](https://example.com/test.pdf)",
+        author: user
+      )
+
+      visit note_path(note.slug)
+      expect(page).to have_css(".cm-editor", wait: 10)
+      trigger_preview
+
+      expect(page).to have_css(".preview-prose h1", text: "PDF", wait: 5)
+      expect(page).to have_css(".preview-prose .media-container iframe")
+    end
+
+    it "enhances regular images with lazy loading" do
+      note = create(:note)
+      Notes::CheckpointService.call(
+        note: note,
+        content: "# Imagem\n\n![foto](https://example.com/photo.png)",
+        author: user
+      )
+
+      visit note_path(note.slug)
+      expect(page).to have_css(".cm-editor", wait: 10)
+      trigger_preview
+
+      expect(page).to have_css(".preview-prose h1", text: "Imagem", wait: 5)
+      expect(page).to have_css(".preview-prose img[loading='lazy']")
     end
   end
 end

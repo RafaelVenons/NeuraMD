@@ -9,6 +9,7 @@ import { highlightCodeRenderer } from "lib/preview/renderers/highlight_code"
 import { stripBlockMarkersRenderer } from "lib/preview/renderers/strip_block_markers"
 import { createWikilinkRenderer } from "lib/preview/renderers/wikilink_renderer"
 import { createEmbedRenderer } from "lib/preview/renderers/embed_renderer"
+import { mediaEmbedRenderer } from "lib/preview/renderers/media_embed"
 
 export default class extends Controller {
   static targets = ["output"]
@@ -46,6 +47,7 @@ export default class extends Controller {
     this._pipeline.register(stripBlockMarkersRenderer)
     this._pipeline.register(createWikilinkRenderer(this._wikilinkValidator))
     this._pipeline.register(createEmbedRenderer(this._embedLoader))
+    this._pipeline.register(mediaEmbedRenderer)
   }
 
   disconnect() {
