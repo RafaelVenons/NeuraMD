@@ -264,8 +264,43 @@ export default class extends Controller {
     this._getPreviewController()?.update(content)
   }
 
+  _openTableEditor() {
+    const cm = this._getCodemirrorController()
+    if (!cm?.view) return
+
+    const tableEl = document.querySelector("[data-controller~='table-editor']")
+    if (!tableEl) return
+    const tableCtrl = this.application.getControllerForElementAndIdentifier(tableEl, "table-editor")
+    if (!tableCtrl) return
+
+    const state = cm.view.state
+    const pos = state.selection.main.head
+    const doc = state.doc
+    const curLine = doc.lineAt(pos)
+    const isTableLine = (line) => line.text.trimStart().startsWith("|")
+
+    if (isTableLine(curLine)) {
+      let startLine = curLine
+      while (startLine.number > 1) {
+        const prev = doc.line(startLine.number - 1)
+        if (!isTableLine(prev)) break
+        startLine = prev
+      }
+      let endLine = curLine
+      while (endLine.number < doc.lines) {
+        const next = doc.line(endLine.number + 1)
+        if (!isTableLine(next)) break
+        endLine = next
+      }
+      const tableText = doc.sliceString(startLine.from, endLine.to)
+      tableCtrl.openFromSelection(tableText, startLine.from, endLine.to)
+    } else {
+      tableCtrl.open()
+    }
+  }
+
   _insertTable({ markdown, editMode, startPos, endPos }) {
-    const cm = this._getCodeMirrorController()
+    const cm = this._getCodemirrorController()
     if (!cm?.view) return
 
     if (editMode) {
@@ -335,6 +370,7 @@ export default class extends Controller {
       { key: "h", ctrl: true, action: () => this._openDialogFocusReplace("find-replace-dialog") },
       { key: "g", ctrl: true, action: () => this._openDialog("jump-to-line-dialog") },
       { key: "\\", ctrl: true, action: () => this._toggleTypewriter() },
+      { key: "y", ctrl: true, action: () => this._openTableEditor() },
       { key: "F1", action: () => this._toggleShortcutsHelp() },
       { key: "Escape", preventDefault: false, action: () => this._closeAllDialogs() }
     ], () => this._getCodemirrorController()?.isComposing())
