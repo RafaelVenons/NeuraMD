@@ -245,8 +245,9 @@ RSpec.describe "Render pipeline", type: :system do
           const ctrl = window.Stimulus.controllers.find(c => c.element === previewEl && c.identifier === "preview")
           if (!ctrl || !ctrl._guards) return
 
-          // Set absurdly low timeout
+          // Set absurdly low timeout and strict mode to trigger hard truncation
           ctrl._guards.maxRenderTimeMs = 0
+          ctrl._guards.strict = true
 
           // Register a renderer that will be checked after the timeout
           ctrl._pipeline.register({
