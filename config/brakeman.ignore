@@ -3,8 +3,12 @@
     {
       "fingerprint": "d43d8e93226fe7fb7a416f7be05c5edf44ede0f77b9cf593aaecc8b83b1543b3",
       "note": "MFA RemoteExecutor: command is built internally from trusted ENV values, not user input"
+    },
+    {
+      "fingerprint": "cf74f65ea2ddd8b0319156a88dbfd4494700438c52be056a3b55fe40c87c0bed",
+      "note": "PropertiesController: permit! is intentional — property keys are dynamic and validated by Properties::SetService"
     }
   ],
-  "updated": "2026-03-27",
+  "updated": "2026-04-05",
   "brakeman_version": "8.0.4"
 }

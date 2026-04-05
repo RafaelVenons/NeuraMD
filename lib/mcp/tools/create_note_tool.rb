@@ -40,6 +40,8 @@ module Mcp
 
         apply_tags!(note, tags) if tags.present?
 
+        has_wikilinks = content_markdown.match?(/\[\[.+?\]\]/)
+
         data = {
           created: true,
           slug: note.slug,
@@ -47,6 +49,10 @@ module Mcp
           id: note.id,
           tags: note.tags.pluck(:name)
         }
+        unless has_wikilinks
+          data[:warning] = "Note created without wikilinks — it will be orphaned in the graph. " \
+                           "Use update_note with append_links to connect it to a parent or sibling."
+        end
 
         MCP::Tool::Response.new([{type: "text", text: data.to_json}])
       end

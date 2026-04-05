@@ -2,7 +2,11 @@ module Search
   module Dsl
     module Operators
       module DateFilter
+        ALLOWED_COLUMNS = %w[notes.created_at notes.updated_at].freeze
+
         def self.apply(scope, column, value)
+          raise ArgumentError, "Invalid column: #{column}" unless ALLOWED_COLUMNS.include?(column)
+
           parsed = DateParser.call(value)
           return scope unless parsed
 

@@ -67,6 +67,30 @@ RSpec.describe Mcp::Tools::CreateNoteTool do
     expect(note.head_revision.revision_kind).to eq("checkpoint")
   end
 
+  it "warns when note is created without wikilinks" do
+    response = described_class.call(
+      title: "Orphan note",
+      content_markdown: "No links here"
+    )
+    content = JSON.parse(response.content.first[:text])
+
+    expect(content["created"]).to be true
+    expect(content["warning"]).to include("without wikilinks")
+  end
+
+  it "does not warn when note has wikilinks" do
+    target = create(:note, :with_head_revision, title: "Parent")
+
+    response = described_class.call(
+      title: "Linked note",
+      content_markdown: "Link: [[Parent|f:#{target.id}]]"
+    )
+    content = JSON.parse(response.content.first[:text])
+
+    expect(content["created"]).to be true
+    expect(content).not_to have_key("warning")
+  end
+
   it "creates NoteLinks from wikilinks in content" do
     target = create(:note, :with_head_revision, title: "Existing note")
 
