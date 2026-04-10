@@ -133,4 +133,140 @@ RSpec.describe Mcp::Tools::ImportMarkdownTool do
       expect(note.tags.pluck(:name)).to include("iniciativa", "estrutura-sistemica")
     end
   end
+
+  describe "split_level" do
+    let(:book_markdown) do
+      <<~MD
+        # My Book
+
+        Introduction text.
+
+        ## Chapter 1
+
+        Chapter 1 content.
+
+        ### Section 1.1
+
+        Section 1.1 content.
+
+        #### Subsection 1.1.1
+
+        Deep content.
+
+        ## Chapter 2
+
+        Chapter 2 content.
+
+        ### Section 2.1
+
+        Section 2.1 content.
+      MD
+    end
+
+    context "when split_level is nil (default, backward-compat)" do
+      it "fragments at every heading" do
+        response = described_class.call(
+          markdown: book_markdown, base_tag: "book", import_tag: "book-import"
+        )
+        result = JSON.parse(response.content.first[:text])
+        expect(result["created_count"]).to eq(6)
+      end
+    end
+
+    context "when split_level is 0 (no fragmentation)" do
+      it "creates a single note with all content inline" do
+        response = described_class.call(
+          markdown: book_markdown, base_tag: "book", import_tag: "book-import", split_level: 0
+        )
+        result = JSON.parse(response.content.first[:text])
+        expect(result["created_count"]).to eq(1)
+
+        note = Note.joins(:tags).where(tags: {name: "book-import"}).first
+        body = note.head_revision.content_markdown
+        expect(body).to include("## Chapter 1")
+        expect(body).to include("### Section 1.1")
+        expect(body).to include("Deep content.")
+      end
+    end
+
+    context "when split_level is 2 (cut at H1+H2)" do
+      it "creates notes for H1 and H2 only, keeping H3+ inline" do
+        response = described_class.call(
+          markdown: book_markdown, base_tag: "book", import_tag: "book-import", split_level: 2
+        )
+        result = JSON.parse(response.content.first[:text])
+        expect(result["created_count"]).to eq(3)
+        expect(result["notes"].map { |n| n["title"] }).to contain_exactly(
+          "My Book", "Chapter 1", "Chapter 2"
+        )
+
+        ch1 = Note.joins(:tags).where(tags: {name: "book-import"}).find_by(title: "Chapter 1")
+        body = ch1.head_revision.content_markdown
+        expect(body).to include("### Section 1.1")
+        expect(body).to include("Section 1.1 content.")
+        expect(body).to include("#### Subsection 1.1.1")
+        expect(body).to include("Deep content.")
+      end
+    end
+
+    context "when split_level is 1 (cut at H1 only)" do
+      it "creates only H1 notes with everything else inline" do
+        response = described_class.call(
+          markdown: book_markdown, base_tag: "book", import_tag: "book-import", split_level: 1
+        )
+        result = JSON.parse(response.content.first[:text])
+        expect(result["created_count"]).to eq(1)
+
+        note = Note.joins(:tags).where(tags: {name: "book-import"}).first
+        body = note.head_revision.content_markdown
+        expect(body).to include("## Chapter 1")
+        expect(body).to include("## Chapter 2")
+      end
+    end
+
+    context "when split_level is -1 (auto-detect)" do
+      it "detects single H1 + multiple H2 as split_level 2" do
+        response = described_class.call(
+          markdown: book_markdown, base_tag: "book", import_tag: "book-import", split_level: -1
+        )
+        result = JSON.parse(response.content.first[:text])
+        expect(result["split_level_used"]).to eq(2)
+        expect(result["created_count"]).to eq(3)
+      end
+
+      it "detects multiple H1 as split_level 1" do
+        multi_h1 = <<~MD
+          # Part One
+
+          Content one.
+
+          # Part Two
+
+          Content two.
+        MD
+
+        response = described_class.call(
+          markdown: multi_h1, base_tag: "book", import_tag: "book-import", split_level: -1
+        )
+        result = JSON.parse(response.content.first[:text])
+        expect(result["split_level_used"]).to eq(1)
+        expect(result["created_count"]).to eq(2)
+      end
+
+      it "does not fragment ambiguous content" do
+        simple = <<~MD
+          # Single Title
+
+          Just some text without sub-headings.
+        MD
+
+        response = described_class.call(
+          markdown: simple, base_tag: "book", import_tag: "book-import", split_level: -1
+        )
+        result = JSON.parse(response.content.first[:text])
+        expect(result["split_level_used"]).to eq(0)
+        expect(result["created_count"]).to eq(1)
+      end
+    end
+  end
 end

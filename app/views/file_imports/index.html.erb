@@ -1,0 +1,35 @@
+<% content_for :title, "Importacoes — NeuraMD" %>
+
+<div class="fi-index">
+  <header class="fi-index__header">
+    <h1 class="fi-index__title">Importacoes</h1>
+    <%= link_to "Nova importacao", new_file_import_path, class: "fi-index__btn" %>
+  </header>
+
+  <% if @imports.any? %>
+    <table class="fi-index__table">
+      <thead>
+        <tr>
+          <th>Arquivo</th>
+          <th>Tag</th>
+          <th>Status</th>
+          <th>Notas</th>
+          <th>Data</th>
+        </tr>
+      </thead>
+      <tbody>
+        <% @imports.each do |imp| %>
+          <tr class="fi-index__row">
+            <td><%= link_to imp.original_filename, file_import_path(imp) %></td>
+            <td><code><%= imp.base_tag %></code></td>
+            <td><span class="fi-status-dot fi-status-dot--<%= imp.status %>"><%= imp.status %></span></td>
+            <td><%= imp.notes_created %></td>
+            <td><%= imp.created_at.strftime("%d/%m %H:%M") %></td>
+          </tr>
+        <% end %>
+      </tbody>
+    </table>
+  <% else %>
+    <p class="fi-index__empty">Nenhuma importacao realizada.</p>
+  <% end %>
+</div>

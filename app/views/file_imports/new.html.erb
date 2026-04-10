@@ -1,0 +1,61 @@
+<% content_for :title, "Importar arquivo — NeuraMD" %>
+
+<div class="fi-new">
+  <h1 class="fi-new__title">Importar arquivo</h1>
+  <p class="fi-new__subtitle">Converte PDF, DOCX, EPUB e outros formatos em notas via Markitdown.</p>
+
+  <%= form_with model: @import, url: file_imports_path, class: "fi-new__form",
+        data: { controller: "file-import", action: "dragover->file-import#dragover dragleave->file-import#dragleave drop->file-import#drop" } do |f| %>
+
+    <% if @import.errors.any? %>
+      <div class="fi-new__errors">
+        <% @import.errors.full_messages.each do |msg| %>
+          <p><%= msg %></p>
+        <% end %>
+      </div>
+    <% end %>
+
+    <div class="fi-new__dropzone" data-file-import-target="dropZone" data-action="click->file-import#clickZone">
+      <p class="fi-new__dropzone-label" data-file-import-target="dropLabel">
+        Arraste um arquivo aqui ou clique para selecionar
+      </p>
+      <p class="fi-new__dropzone-hint">.pdf, .docx, .epub, .pptx, .html, .md, .txt</p>
+      <%= f.file_field :source_file,
+            accept: ".pdf,.docx,.epub,.pptx,.html,.md,.txt",
+            class: "fi-new__file-input",
+            data: { file_import_target: "fileInput", action: "change->file-import#fileSelected" },
+            direct_upload: true %>
+    </div>
+
+    <div class="fi-new__fields">
+      <div class="fi-new__field">
+        <label class="fi-new__label">Tag base *</label>
+        <%= f.text_field :base_tag, class: "fi-new__input", required: true,
+              placeholder: "Ex: livro-anatomia",
+              data: { file_import_target: "baseTag", action: "input->file-import#syncImportTag" } %>
+      </div>
+
+      <div class="fi-new__field">
+        <label class="fi-new__label">Tag de importacao</label>
+        <%= f.text_field :import_tag, class: "fi-new__input",
+              placeholder: "Auto: {base_tag}-import",
+              data: { file_import_target: "importTag" } %>
+      </div>
+
+      <div class="fi-new__field">
+        <label class="fi-new__label">Tags extras</label>
+        <%= f.text_field :extra_tags, class: "fi-new__input",
+              placeholder: "Ex: estudo,anatomia (separadas por virgula)" %>
+      </div>
+
+      <div class="fi-new__field">
+        <label class="fi-new__label">Fragmentacao</label>
+        <%= f.select :split_level,
+              [["Auto-detect (recomendado)", -1], ["Sem fragmentacao (nota unica)", 0], ["Cortar em H1", 1], ["Cortar em H2 (capitulos)", 2], ["Cortar em H3", 3], ["Todo heading (legado)", ""]],
+              {}, class: "fi-new__select" %>
+      </div>
+    </div>
+
+    <%= f.submit "Importar", class: "fi-new__submit" %>
+  <% end %>
+</div>

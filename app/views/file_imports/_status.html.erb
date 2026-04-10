@@ -1,0 +1,29 @@
+<div class="fi-status fi-status--<%= file_import.status %>">
+  <div class="fi-status__badge"><%= file_import.status.humanize %></div>
+
+  <% case file_import.status %>
+  <% when "pending" %>
+    <p class="fi-status__text">Aguardando processamento...</p>
+  <% when "converting" %>
+    <p class="fi-status__text">Convertendo arquivo para markdown...</p>
+  <% when "importing" %>
+    <p class="fi-status__text">Criando notas no acervo...</p>
+  <% when "completed" %>
+    <p class="fi-status__text">
+      Importacao concluida: <strong><%= file_import.notes_created %></strong> nota(s) criada(s).
+    </p>
+  <% when "failed" %>
+    <p class="fi-status__text fi-status__text--error">
+      Erro: <%= file_import.error_message %>
+    </p>
+  <% end %>
+
+  <% if file_import.started_at %>
+    <p class="fi-status__time">
+      Iniciado: <%= l(file_import.started_at, format: :short) rescue file_import.started_at.strftime("%d/%m %H:%M") %>
+      <% if file_import.completed_at %>
+        — Concluido: <%= l(file_import.completed_at, format: :short) rescue file_import.completed_at.strftime("%d/%m %H:%M") %>
+      <% end %>
+    </p>
+  <% end %>
+</div>

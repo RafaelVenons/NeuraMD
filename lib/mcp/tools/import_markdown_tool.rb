@@ -16,32 +16,38 @@ module Mcp
           markdown: {type: "string", description: "Full markdown content to import"},
           base_tag: {type: "string", description: "Base tag for all imported notes (e.g. 'shop', 'plan')"},
           import_tag: {type: "string", description: "Technical tag for reimport cleanup (e.g. 'shop-import')"},
-          extra_tags: {type: "string", description: "Comma-separated additional tags for all notes"}
+          extra_tags: {type: "string", description: "Comma-separated additional tags for all notes"},
+          split_level: {type: "integer", description: "Heading level to fragment at. nil/absent = every heading (default). -1 = auto-detect. 0 = no fragmentation. 1+ = cut at that heading level."}
         },
         required: ["markdown", "base_tag", "import_tag"]
       )
 
       Section = Struct.new(:title, :level, :body_lines, :children, :parent, keyword_init: true)
 
-      def self.call(markdown:, base_tag:, import_tag:, extra_tags: nil, server_context: nil)
+      def self.call(markdown:, base_tag:, import_tag:, extra_tags: nil, split_level: nil, server_context: nil)
         return error_response("Markdown cannot be blank") if markdown.to_s.strip.blank?
 
-        importer = new(markdown: markdown, base_tag: base_tag, import_tag: import_tag, extra_tags: extra_tags)
+        importer = new(markdown: markdown, base_tag: base_tag, import_tag: import_tag, extra_tags: extra_tags, split_level: split_level)
         importer.run
       end
 
-      def initialize(markdown:, base_tag:, import_tag:, extra_tags:)
+      def initialize(markdown:, base_tag:, import_tag:, extra_tags:, split_level:)
         @markdown = markdown
         @base_tag = base_tag
         @import_tag = import_tag
         @extra_tags = (extra_tags.to_s.split(",").map(&:strip).reject(&:blank?))
+        @split_level = split_level&.to_i
         @tag_cache = {}
         @created_notes = []
       end
 
       def run
-        sections = parse_sections
-        return self.class.error_response("No headings found in markdown") if sections.empty?
+        root_sections = parse_tree
+        return self.class.error_response("No headings found in markdown") if root_sections.empty?
+
+        effective_level = resolve_split_level(root_sections)
+        apply_split_level!(root_sections, effective_level)
+        sections = flatten_sections(root_sections)
 
         ActiveRecord::Base.transaction do
           delete_previous_import!
@@ -52,6 +58,7 @@ module Mcp
         data = {
           created_count: @created_notes.size,
           import_tag: @import_tag,
+          split_level_used: effective_level,
           notes: @created_notes.map { |n| {slug: n[:slug], title: n[:title]} }
         }
         MCP::Tool::Response.new([{type: "text", text: data.to_json}])
@@ -59,7 +66,81 @@ module Mcp
 
       private
 
-      def parse_sections
+      # ── Split level resolution ────────────────────────────────────────────
+
+      def resolve_split_level(root_sections)
+        return nil if @split_level.nil?
+        return auto_detect_level(root_sections) if @split_level == -1
+        return nil if @split_level.negative?
+        @split_level
+      end
+
+      def auto_detect_level(root_sections)
+        all = flatten_sections(root_sections)
+        h1_count = all.count { |s| s.level == 1 }
+        h2_count = all.count { |s| s.level == 2 }
+
+        if h1_count == 1 && h2_count > 1
+          2
+        elsif h1_count > 1
+          1
+        elsif h1_count == 0 && h2_count > 1
+          2
+        else
+          0
+        end
+      end
+
+      # ── Tree collapse ─────────────────────────────────────────────────────
+
+      def apply_split_level!(root_sections, effective_level)
+        return if effective_level.nil? # nil = every heading, no collapse
+
+        if effective_level.zero?
+          collapse_all_into_root!(root_sections)
+        else
+          root_sections.each { |s| collapse_children_below!(s, effective_level) }
+        end
+      end
+
+      def collapse_all_into_root!(sections)
+        return if sections.empty?
+        root = sections.first
+        body = rebuild_markdown_body(root)
+        root.body_lines.replace(body)
+        root.children.clear
+        sections.replace([root])
+      end
+
+      def collapse_children_below!(section, level)
+        section.children.each { |child| collapse_children_below!(child, level) }
+
+        remaining = []
+        section.children.each do |child|
+          if child.level > level
+            section.body_lines << "" if section.body_lines.any? && section.body_lines.last&.strip&.present?
+            section.body_lines << "#{"#" * child.level} #{child.title}"
+            section.body_lines.concat(child.body_lines)
+          else
+            remaining << child
+          end
+        end
+        section.children.replace(remaining)
+      end
+
+      def rebuild_markdown_body(section)
+        lines = section.body_lines.dup
+        section.children.each do |child|
+          lines << "" if lines.any? && lines.last&.strip&.present?
+          lines << "#{"#" * child.level} #{child.title}"
+          lines.concat(rebuild_markdown_body(child))
+        end
+        lines
+      end
+
+      # ── Parsing ────────────────────────────────────────────────────────────
+
+      def parse_tree
         lines = @markdown.lines.map(&:chomp)
         root_sections = []
         stack = []
@@ -87,7 +168,7 @@ module Mcp
           end
         end
 
-        flatten_sections(root_sections)
+        root_sections
       end
 
       def flatten_sections(sections)
@@ -98,6 +179,8 @@ module Mcp
         end
         result
       end
+
+      # ── Import operations ──────────────────────────────────────────────────
 
       def delete_previous_import!
         imported_notes = Note.joins(:tags).where(tags: {name: @import_tag})
@@ -140,17 +223,13 @@ module Mcp
 
       def build_content(section)
         lines = []
-        note = section.instance_variable_get(:@note)
 
-        # Clean body: strip trailing blank lines
         body = section.body_lines.dup
         body.pop while body.last&.strip&.empty?
         body.shift while body.first&.strip&.empty?
 
-        # Body content
         lines.concat(body) if body.any?
 
-        # Child index as wikilinks
         if section.children.any?
           lines << "" if lines.any?
           section.children.each_with_index do |child, i|

@@ -1,0 +1,26 @@
+<% content_for :title, "Importacao: #{@import.original_filename} — NeuraMD" %>
+
+<%= turbo_stream_from @import %>
+
+<div class="fi-show">
+  <h1 class="fi-show__title"><%= @import.original_filename %></h1>
+
+  <div class="fi-show__meta">
+    <span>Tag: <strong><%= @import.base_tag %></strong></span>
+    <span>Fragmentacao: <strong><%= split_level_label(@import.split_level) %></strong></span>
+    <% if @import.extra_tags.present? %>
+      <span>Extras: <strong><%= @import.extra_tags %></strong></span>
+    <% end %>
+  </div>
+
+  <div id="file_import_status">
+    <%= render "file_imports/status", file_import: @import %>
+  </div>
+
+  <div class="fi-show__actions">
+    <%= link_to "Voltar", file_imports_path, class: "fi-show__link" %>
+    <% if @import.completed? %>
+      <%= link_to "Ver notas por tag", notes_path(q: "tag:#{@import.import_tag}"), class: "fi-show__link fi-show__link--primary" %>
+    <% end %>
+  </div>
+</div>

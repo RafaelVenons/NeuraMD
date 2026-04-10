@@ -7,6 +7,7 @@
 @import "./components/revision.css";
 @import "./components/note_views.css";
 @import "./components/canvas.css";
+@import "./components/file_imports.css";
 
 @theme {
   /* CJK font fallback stack — Mandarim, Japonês, Coreano */
