@@ -28,6 +28,11 @@ module FileImports
         split_level: import.split_level
       )
 
+      if response.respond_to?(:error?) && response.error?
+        error_text = response.content.first[:text]
+        raise ImportError, "[importing] #{error_text}"
+      end
+
       result_data = response.content.first[:text]
       result = JSON.parse(result_data)
 
@@ -37,13 +42,25 @@ module FileImports
         completed_at: Time.current
       )
       import.broadcast_progress!
+    rescue ConvertService::ConversionError => e
+      fail_import!(import, "[converting] #{e.message}")
+    rescue ImportError => e
+      fail_import!(import, e.message)
     rescue => e
+      fail_import!(import, "[unexpected] #{e.message}")
+    end
+
+    private
+
+    def fail_import!(import, message)
       import&.update!(
         status: "failed",
-        error_message: e.message.truncate(2000),
+        error_message: message.truncate(2000),
         completed_at: Time.current
       )
       import&.broadcast_progress!
     end
+
+    ImportError = Class.new(StandardError)
   end
 end

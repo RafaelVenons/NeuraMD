@@ -1,4 +1,9 @@
-<div class="fi-status fi-status--<%= file_import.status %>">
+<div class="fi-status fi-status--<%= file_import.status %>"
+     <% if file_import.processing? %>
+       data-controller="file-import-poll"
+       data-file-import-poll-url-value="<%= file_import_path(file_import) %>"
+       data-file-import-poll-interval-value="3000"
+     <% end %>>
   <div class="fi-status__badge"><%= file_import.status.humanize %></div>
 
   <% case file_import.status %>
@@ -13,16 +18,19 @@
       Importacao concluida: <strong><%= file_import.notes_created %></strong> nota(s) criada(s).
     </p>
   <% when "failed" %>
+    <% phase, message = parse_error_phase(file_import.error_message) %>
     <p class="fi-status__text fi-status__text--error">
-      Erro: <%= file_import.error_message %>
+      <strong>Falhou na etapa: <%= phase %></strong><br>
+      <%= message %>
     </p>
   <% end %>
 
   <% if file_import.started_at %>
     <p class="fi-status__time">
-      Iniciado: <%= l(file_import.started_at, format: :short) rescue file_import.started_at.strftime("%d/%m %H:%M") %>
+      Iniciado: <%= file_import.started_at.strftime("%d/%m %H:%M") %>
       <% if file_import.completed_at %>
-        — Concluido: <%= l(file_import.completed_at, format: :short) rescue file_import.completed_at.strftime("%d/%m %H:%M") %>
+        — Concluido: <%= file_import.completed_at.strftime("%d/%m %H:%M") %>
+        (<%= ((file_import.completed_at - file_import.started_at).round) %>s)
       <% end %>
     </p>
   <% end %>

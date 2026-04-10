@@ -43,7 +43,11 @@ module Mcp
 
       def run
         root_sections = parse_tree
-        return self.class.error_response("No headings found in markdown") if root_sections.empty?
+
+        if root_sections.empty?
+          # No headings found — create a single note with all content
+          root_sections = [synthesize_root_section]
+        end
 
         effective_level = resolve_split_level(root_sections)
         apply_split_level!(root_sections, effective_level)
@@ -136,6 +140,12 @@ module Mcp
           lines.concat(rebuild_markdown_body(child))
         end
         lines
+      end
+
+      def synthesize_root_section
+        title = @base_tag.tr("-", " ").titleize
+        body = @markdown.lines.map(&:chomp)
+        Section.new(title: title, level: 1, body_lines: body, children: [], parent: nil)
       end
 
       # ── Parsing ────────────────────────────────────────────────────────────

@@ -22,6 +22,7 @@
               class: "nm-graph__primary-btn",
               form: { data: { action: "submit->page-transition#submit", transition_kind: "graph-to-note" } } %>
           <button type="button" class="nm-graph__ghost-btn" data-action="click->note-finder#open">Buscar</button>
+          <%= link_to "Importar", new_file_import_path, class: "nm-graph__ghost-btn" %>
           <%= link_to "IA Ops", ai_requests_dashboard_path, class: "nm-graph__ghost-btn" %>
         </div>
       </header>

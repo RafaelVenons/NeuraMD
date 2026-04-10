@@ -41,7 +41,7 @@ RSpec.describe FileImports::ProcessJob do
     expect(statuses).to include("converting", "importing", "completed")
   end
 
-  it "sets failed status on error" do
+  it "sets failed status on conversion error" do
     fi = FileImport.new(
       user: user,
       base_tag: "x",
@@ -49,13 +49,17 @@ RSpec.describe FileImports::ProcessJob do
       original_filename: "bad.pdf",
       status: "pending"
     )
-    fi.source_file.attach(io: StringIO.new("not a pdf"), filename: "bad.pdf", content_type: "application/pdf")
+    fi.source_file.attach(io: StringIO.new("test"), filename: "bad.pdf", content_type: "application/pdf")
     fi.save!
+
+    allow(FileImports::ConvertService).to receive(:call)
+      .and_raise(FileImports::ConvertService::ConversionError, "markitdown crashed")
 
     described_class.perform_now(fi.id)
     fi.reload
 
     expect(fi.status).to eq("failed")
-    expect(fi.error_message).to be_present
+    expect(fi.error_message).to include("[converting]")
+    expect(fi.error_message).to include("markitdown crashed")
   end
 end
