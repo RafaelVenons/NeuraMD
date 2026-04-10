@@ -30,6 +30,23 @@ class FileImportsController < ApplicationController
     authorize @import
   end
 
+  def retry
+    @import = FileImport.find(params[:id])
+    authorize @import
+
+    @import.update!(status: "pending", error_message: nil, started_at: nil, completed_at: nil)
+    FileImports::ProcessJob.perform_later(@import.id)
+    redirect_to file_import_path(@import), notice: "Tentando novamente..."
+  end
+
+  def destroy
+    @import = FileImport.find(params[:id])
+    authorize @import
+
+    @import.destroy!
+    redirect_to file_imports_path, notice: "Importacao removida."
+  end
+
   private
 
   def import_params

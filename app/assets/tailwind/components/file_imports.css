@@ -142,6 +142,7 @@
   }
   .fi-show__link:hover { text-decoration: underline; }
   .fi-show__link--primary { font-weight: 500; }
+  .fi-show__link--danger { color: var(--theme-error); }
 
   /* ── Status partial ───────────────────────────────────────────────────── */
 
@@ -260,4 +261,28 @@
   .fi-status-dot--importing { color: var(--theme-warning); }
   .fi-status-dot--completed { color: var(--theme-success); }
   .fi-status-dot--failed { color: var(--theme-error); }
+
+  /* Index action buttons */
+  .fi-index__actions {
+    display: flex;
+    gap: 0.5rem;
+    white-space: nowrap;
+  }
+  .fi-index__action-btn {
+    font-size: 0.75rem;
+    padding: 0.2rem 0.5rem;
+    border-radius: 4px;
+    border: 1px solid var(--theme-border);
+    background: var(--theme-bg-secondary);
+    color: var(--theme-text-secondary);
+    cursor: pointer;
+  }
+  .fi-index__action-btn:hover {
+    border-color: var(--theme-accent);
+    color: var(--theme-accent);
+  }
+  .fi-index__action-btn--danger:hover {
+    border-color: var(--theme-error);
+    color: var(--theme-error);
+  }
 }

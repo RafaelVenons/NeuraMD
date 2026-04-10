@@ -22,5 +22,12 @@
     <% if @import.completed? %>
       <%= link_to "Ver notas por tag", notes_path(q: "tag:#{@import.import_tag}"), class: "fi-show__link fi-show__link--primary" %>
     <% end %>
+    <% if @import.failed? %>
+      <%= button_to "Tentar novamente", retry_file_import_path(@import), method: :post, class: "fi-show__link fi-show__link--primary" %>
+    <% end %>
+    <% unless @import.processing? %>
+      <%= button_to "Excluir", file_import_path(@import), method: :delete, class: "fi-show__link fi-show__link--danger",
+            form: { data: { turbo_confirm: "Remover esta importacao do historico?" } } %>
+    <% end %>
   </div>
 </div>

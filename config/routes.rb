@@ -42,7 +42,9 @@ Rails.application.routes.draw do
     end
   end
 
-  resources :file_imports, only: [:index, :new, :create, :show]
+  resources :file_imports, only: [:index, :new, :create, :show, :destroy] do
+    member { post :retry }
+  end
   resources :tags, only: [:index, :create, :destroy]
 
   post   "note_tags", to: "note_tags#create", as: :note_tags

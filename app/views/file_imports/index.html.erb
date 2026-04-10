@@ -15,6 +15,7 @@
           <th>Status</th>
           <th>Notas</th>
           <th>Data</th>
+          <th></th>
         </tr>
       </thead>
       <tbody>
@@ -25,6 +26,15 @@
             <td><span class="fi-status-dot fi-status-dot--<%= imp.status %>"><%= imp.status %></span></td>
             <td><%= imp.notes_created %></td>
             <td><%= imp.created_at.strftime("%d/%m %H:%M") %></td>
+            <td class="fi-index__actions">
+              <% if imp.failed? %>
+                <%= button_to "Retry", retry_file_import_path(imp), method: :post, class: "fi-index__action-btn" %>
+              <% end %>
+              <% unless imp.processing? %>
+                <%= button_to "Excluir", file_import_path(imp), method: :delete, class: "fi-index__action-btn fi-index__action-btn--danger",
+                      form: { data: { turbo_confirm: "Remover?" } } %>
+              <% end %>
+            </td>
           </tr>
         <% end %>
       </tbody>

@@ -63,6 +63,44 @@ RSpec.describe "FileImports", type: :request do
     end
   end
 
+  describe "POST /file_imports/:id/retry" do
+    it "re-enqueues the job for a failed import" do
+      import = FileImport.new(
+        user: user, base_tag: "x", import_tag: "x-import",
+        original_filename: "test.txt", status: "failed",
+        error_message: "[converting] boom"
+      )
+      import.source_file.attach(io: StringIO.new("content"), filename: "test.txt", content_type: "text/plain")
+      import.save!
+
+      expect {
+        post retry_file_import_path(import)
+      }.to have_enqueued_job(FileImports::ProcessJob)
+
+      import.reload
+      expect(import.status).to eq("pending")
+      expect(import.error_message).to be_nil
+      expect(response).to have_http_status(:redirect)
+    end
+  end
+
+  describe "DELETE /file_imports/:id" do
+    it "destroys the import" do
+      import = FileImport.new(
+        user: user, base_tag: "x", import_tag: "x-import",
+        original_filename: "test.txt", status: "failed"
+      )
+      import.source_file.attach(io: StringIO.new("content"), filename: "test.txt", content_type: "text/plain")
+      import.save!
+
+      expect {
+        delete file_import_path(import)
+      }.to change(FileImport, :count).by(-1)
+
+      expect(response).to redirect_to(file_imports_path)
+    end
+  end
+
   context "without authentication" do
     before { sign_out user }
 
