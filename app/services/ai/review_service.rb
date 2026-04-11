@@ -278,7 +278,7 @@ module Ai
       end
 
       def serialized_host_request?(request)
-        %w[ollama local].include?(request.provider)
+        request.provider.start_with?("ollama") || request.provider == "local"
       end
 
       def advisory_lock_key_for(request)

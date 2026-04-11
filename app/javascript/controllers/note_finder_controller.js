@@ -29,6 +29,16 @@ export default class extends Controller {
     this._renderPrompt()
   }
 
+  openWithQuery(event) {
+    event?.preventDefault()
+    const query = event.currentTarget.dataset.noteFinderQuery || event.params?.query
+    if (!query) return this.open(event)
+    this.dialogTarget.classList.remove("hidden")
+    this.inputTarget.value = query
+    this.inputTarget.focus()
+    this._fetchResults()
+  }
+
   close(event) {
     event?.preventDefault()
     this.dialogTarget.classList.add("hidden")

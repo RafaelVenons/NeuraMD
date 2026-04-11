@@ -27,15 +27,15 @@ RSpec.describe "MCP Server integration", type: :integration do
   end
 
   describe "tools/list" do
-    it "lists all 8 tools" do
+    it "lists all 10 tools" do
       response = send_request(server, method: "tools/list")
       tools = response[:result][:tools]
 
-      expect(tools.length).to eq(8)
+      expect(tools.length).to eq(10)
       names = tools.map { |t| t[:name] }
       expect(names).to contain_exactly(
         "search_notes", "read_note", "list_tags", "notes_by_tag", "note_graph",
-        "create_note", "update_note", "import_markdown"
+        "create_note", "update_note", "import_markdown", "merge_notes", "find_anemic_notes"
       )
     end
 

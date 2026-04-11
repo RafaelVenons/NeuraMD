@@ -4,7 +4,8 @@
 
 <section class="nm-graph nm-graph--fullscreen"
          data-controller="graph"
-         data-graph-data-url-value="<%= api_graph_path %>">
+         data-graph-data-url-value="<%= api_graph_path %>"
+         <% if params[:tag].present? %>data-graph-initial-tag-value="<%= params[:tag] %>"<% end %>>
   <div class="nm-graph__stage nm-graph__stage--fullscreen">
     <div class="nm-graph__canvas-wrap nm-graph__canvas-wrap--fullscreen">
       <div class="nm-graph__sigma-host" data-graph-target="graphHost"></div>
@@ -115,6 +116,10 @@
         <label class="nm-graph__check">
           <input type="checkbox" value="same_level" checked data-action="change->graph#toggleRole">
           <span>Mesmo nivel</span>
+        </label>
+        <label class="nm-graph__check">
+          <input type="checkbox" value="next_in_sequence" checked data-action="change->graph#toggleRole">
+          <span>Sequencial</span>
         </label>
         <label class="nm-graph__check">
           <input type="checkbox" value="null" checked data-action="change->graph#toggleRole">

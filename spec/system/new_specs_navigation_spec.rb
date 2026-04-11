@@ -49,7 +49,7 @@ RSpec.describe "New specs navigation", type: :system do
     find(".cm-content").send_keys(" ", :backspace)
     child_path = URI.parse(find(".preview-prose ol a", match: :first, wait: 5)[:href]).path
     child_slug = child_path.split("/").last
-    child_note = Note.find_by!(slug: child_slug)
+    child_note = Note.find_by(slug: child_slug) || Note.find_by!(id: child_slug)
 
     find(".preview-prose ol a", match: :first).click
 

@@ -84,6 +84,7 @@ function edgeSizeForRole(hierRole) {
   if (hierRole === "target_is_parent") return 4.4
   if (hierRole === "target_is_child") return 2.8
   if (hierRole === "same_level") return 3.2
+  if (hierRole === "next_in_sequence") return 2.4
   return 1.7
 }
 
@@ -91,6 +92,7 @@ function edgeColorForRole(hierRole) {
   if (hierRole === "target_is_parent") return "#f97316"
   if (hierRole === "target_is_child") return "#38bdf8"
   if (hierRole === "same_level") return "#a3e635"
+  if (hierRole === "next_in_sequence") return "#a78bfa"
   return "#64748b"
 }
 

@@ -2,7 +2,7 @@ module Ai
   class ModelRouter
     class << self
       def route(provider_name:, configured_model:, capability:, text:, language: nil, target_language: nil, available_models: [])
-        return selection(configured_model, strategy: "configured_default", reason: "provider_non_ollama") unless provider_name == "ollama"
+        return selection(configured_model, strategy: "configured_default", reason: "provider_non_ollama") unless provider_name.to_s.start_with?("ollama")
 
         route_ollama(
           configured_model: configured_model,
@@ -40,6 +40,8 @@ module Ai
           end
         when "translate"
           route_translation(text_length:, configured_model:, language:, target_language:, available_models:)
+        when "import_analyze"
+          selection(select_model("OLLAMA_ROUTE_IMPORT_ANALYZE_MODEL", ["qwen2.5:3b", "llama3.2:3b", "qwen2.5:1.5b"], configured_model:, available_models:), reason: "import_analyze")
         else
           selection(configured_model, strategy: "configured_default", reason: "capability_fallback")
         end

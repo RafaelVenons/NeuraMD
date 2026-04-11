@@ -40,10 +40,24 @@ RSpec.describe FileImport do
       expect(import).to be_failed
     end
 
+    it "#preview?" do
+      expect(FileImport.new(status: "preview")).to be_preview
+      expect(FileImport.new(status: "completed")).not_to be_preview
+    end
+
     it "#processing?" do
+      expect(FileImport.new(status: "pending")).to be_processing
       expect(FileImport.new(status: "converting")).to be_processing
+      expect(FileImport.new(status: "analyzing")).to be_processing
       expect(FileImport.new(status: "importing")).to be_processing
-      expect(FileImport.new(status: "pending")).not_to be_processing
+      expect(FileImport.new(status: "completed")).not_to be_processing
+      expect(FileImport.new(status: "preview")).not_to be_processing
+    end
+
+    it "accepts analyzing status" do
+      import = FileImport.new(status: "analyzing")
+      expect(FileImport::STATUSES).to include("analyzing")
+      expect(import.status).to eq("analyzing")
     end
   end
 end

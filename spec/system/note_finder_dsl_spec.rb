@@ -29,7 +29,6 @@ RSpec.describe "Note finder DSL", type: :system do
       visit root_path
       open_finder
       finder_input.fill_in with: "tag:neuro"
-      finder_input.send_keys(:return) # trigger search
 
       expect(page).to have_css(".note-finder-result__title", text: "Neurociencia Avancada", wait: 5)
       expect(page).not_to have_css(".note-finder-result__title", text: "Cardiologia Basica")

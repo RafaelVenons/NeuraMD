@@ -25,6 +25,13 @@ const MARKER_SHAPES = {
       [0, 0, 5.1, -2.25, 3.2, 0],
       [0, 0, 3.2, 0, 5.1, 2.25]
     ]
+  },
+  next: {
+    depth: 5.6,
+    triangles: [
+      [0, -2.4, 5.6, 0, 0, 2.4],
+      [0, -2.4, 5.6, 0, 5.6, 0]
+    ]
   }
 }
 
@@ -73,6 +80,21 @@ const ROLE_MARKER_CONFIG = {
       brightnessBoost: 0.2,
       programClassName: "ChildTargetMarkerProgram"
     }
+  },
+  next_in_sequence: {
+    type: "next",
+    source: {
+      shape: "next",
+      pointing: "away-from-extremity",
+      brightnessBoost: 0.15,
+      programClassName: "NextSourceMarkerProgram"
+    },
+    target: {
+      shape: "next",
+      pointing: "toward-extremity",
+      brightnessBoost: 0.15,
+      programClassName: "NextTargetMarkerProgram"
+    }
   }
 }
 
@@ -80,6 +102,7 @@ export function resolveSigmaEdgeType(hierRole) {
   if (hierRole === "target_is_parent") return "father"
   if (hierRole === "target_is_child") return "child"
   if (hierRole === "same_level") return "brother"
+  if (hierRole === "next_in_sequence") return "next"
   return "line"
 }
 
@@ -87,6 +110,7 @@ export function resolveArrowDirectionHint(hierRole) {
   if (hierRole === "target_is_parent") return "target"
   if (hierRole === "target_is_child") return "source"
   if (hierRole === "same_level") return "both"
+  if (hierRole === "next_in_sequence") return "target"
   return "none"
 }
 
@@ -107,6 +131,10 @@ export function createEdgeProgramClasses() {
       createNamedBodyProgram("ArrowBothBodyProgram"),
       createMarkerProgram({ extremity: "source", ...ROLE_MARKER_CONFIG.same_level.source }),
       createMarkerProgram({ extremity: "target", ...ROLE_MARKER_CONFIG.same_level.target })
+    ]),
+    next: createEdgeCompoundProgram([
+      createNamedBodyProgram("ArrowNextBodyProgram"),
+      createMarkerProgram({ extremity: "target", ...ROLE_MARKER_CONFIG.next_in_sequence.target })
     ])
   }
 }
@@ -300,6 +328,7 @@ function markerThicknessForRole(hierRole, fallbackThickness) {
   if (hierRole === "target_is_parent") return 2.4
   if (hierRole === "target_is_child") return 2.4
   if (hierRole === "same_level") return 2.4
+  if (hierRole === "next_in_sequence") return 2.0
   return fallbackThickness
 }
 

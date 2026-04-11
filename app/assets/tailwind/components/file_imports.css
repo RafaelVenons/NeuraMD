@@ -150,6 +150,13 @@
     border: 1px solid var(--theme-border);
     border-radius: 8px;
     padding: 1.25rem;
+    text-decoration: none;
+    display: block;
+    color: inherit;
+  }
+  a.fi-status:hover {
+    border-color: var(--theme-accent);
+    cursor: pointer;
   }
   .fi-status__badge {
     display: inline-block;
@@ -164,6 +171,10 @@
   .fi-status--pending .fi-status__badge {
     background: var(--theme-bg-tertiary);
     color: var(--theme-text-muted);
+  }
+  .fi-status--analyzing .fi-status__badge {
+    background: color-mix(in srgb, var(--theme-accent) 20%, transparent);
+    color: var(--theme-accent);
   }
   .fi-status--converting .fi-status__badge,
   .fi-status--importing .fi-status__badge {
@@ -189,6 +200,118 @@
     color: var(--theme-text-faint);
     font-size: 0.75rem;
     margin-top: 0.5rem;
+  }
+
+  /* ── Preview status ───────────────────────────────────────────────────── */
+
+  .fi-status--preview .fi-status__badge {
+    background: color-mix(in srgb, var(--theme-accent) 20%, transparent);
+    color: var(--theme-accent);
+  }
+
+  /* ── Preview split table ─────────────────────────────────────────────── */
+
+  .fi-preview {
+    margin-top: 1.5rem;
+  }
+  .fi-preview__title {
+    font-size: 1rem;
+    font-weight: 600;
+    color: var(--theme-text-primary);
+    margin-bottom: 0.25rem;
+  }
+  .fi-preview__hint {
+    color: var(--theme-text-muted);
+    font-size: 0.8125rem;
+    margin-bottom: 1rem;
+  }
+  .fi-preview__table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-bottom: 1rem;
+  }
+  .fi-preview__table th {
+    text-align: left;
+    font-size: 0.75rem;
+    font-weight: 500;
+    color: var(--theme-text-faint);
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    padding: 0.5rem 0.5rem;
+    border-bottom: 1px solid var(--theme-border);
+  }
+  .fi-preview__table td {
+    padding: 0.375rem 0.5rem;
+    font-size: 0.875rem;
+    color: var(--theme-text-secondary);
+    border-bottom: 1px solid var(--theme-border);
+  }
+  .fi-preview__input {
+    background: var(--theme-bg-secondary);
+    border: 1px solid var(--theme-border);
+    border-radius: 4px;
+    padding: 0.25rem 0.5rem;
+    font-size: 0.8125rem;
+    color: var(--theme-text-primary);
+  }
+  .fi-preview__input:focus {
+    outline: none;
+    border-color: var(--theme-accent);
+  }
+  .fi-preview__input--title {
+    width: 100%;
+  }
+  .fi-preview__input--line {
+    width: 5rem;
+  }
+  .fi-preview__count {
+    color: var(--theme-text-muted);
+    font-size: 0.8125rem;
+    text-align: center;
+  }
+  .fi-preview__snippet-row td {
+    border-bottom: 1px solid var(--theme-border);
+    padding-top: 0;
+    padding-bottom: 0.5rem;
+  }
+  .fi-preview__snippet {
+    margin: 0;
+  }
+  .fi-preview__snippet-toggle {
+    cursor: pointer;
+    font-size: 0.75rem;
+    color: var(--theme-text-faint);
+    list-style: none;
+  }
+  .fi-preview__snippet-toggle::-webkit-details-marker { display: none; }
+  .fi-preview__snippet-toggle::before {
+    content: "\25B6 ";
+    font-size: 0.625rem;
+  }
+  details[open] > .fi-preview__snippet-toggle::before {
+    content: "\25BC ";
+  }
+  .fi-preview__snippet-text {
+    font-family: var(--theme-font-mono, monospace);
+    font-size: 0.6875rem;
+    color: var(--theme-text-faint);
+  }
+  .fi-preview__snippet-full {
+    margin-top: 0.5rem;
+    padding: 0.5rem;
+    background: var(--theme-bg-secondary);
+    border-radius: 4px;
+    font-size: 0.6875rem;
+    font-family: var(--theme-font-mono, monospace);
+    color: var(--theme-text-secondary);
+    max-height: 200px;
+    overflow-y: auto;
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+  .fi-preview__form {
+    display: flex;
+    justify-content: flex-end;
   }
 
   /* ── Index page ───────────────────────────────────────────────────────── */
@@ -257,8 +380,10 @@
     font-weight: 500;
   }
   .fi-status-dot--pending { color: var(--theme-text-muted); }
+  .fi-status-dot--analyzing { color: var(--theme-accent); }
   .fi-status-dot--converting,
   .fi-status-dot--importing { color: var(--theme-warning); }
+  .fi-status-dot--preview { color: var(--theme-accent); }
   .fi-status-dot--completed { color: var(--theme-success); }
   .fi-status-dot--failed { color: var(--theme-error); }
 

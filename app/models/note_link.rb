@@ -1,5 +1,5 @@
 class NoteLink < ApplicationRecord
-  HIER_ROLES = %w[target_is_parent target_is_child same_level].freeze
+  HIER_ROLES = %w[target_is_parent target_is_child same_level next_in_sequence].freeze
 
   belongs_to :src_note, class_name: "Note"
   belongs_to :dst_note, class_name: "Note"

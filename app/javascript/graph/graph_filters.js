@@ -186,7 +186,8 @@ function resolveEdgeDisplaySize(hierRole, incidentToFocus, withinFocus, sourceDe
     hierRole === "target_is_parent" ? 3.4 :
       hierRole === "target_is_child" ? 2.2 :
         hierRole === "same_level" ? 2.5 :
-          1.7
+          hierRole === "next_in_sequence" ? 2.0 :
+            1.7
 
   if (ghostedByTagFilter) return Math.max(0.95, baseSize - 0.9)
   if (incidentToFocus) return baseSize + 1.1

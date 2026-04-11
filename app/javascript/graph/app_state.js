@@ -25,7 +25,7 @@ export function createAppState() {
       topN: null,
       filterMode: "all",
       focusDepth: 3,
-      enabledRoles: new Set(["target_is_parent", "target_is_child", "same_level", "null"]),
+      enabledRoles: new Set(["target_is_parent", "target_is_child", "same_level", "next_in_sequence", "null"]),
       searchQuery: "",
       draggingNodeId: null,
       draggedNodeMoved: false

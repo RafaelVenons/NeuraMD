@@ -15,7 +15,8 @@ module Links
     ROLE_MAP = {
       "f" => "target_is_parent",
       "c" => "target_is_child",
-      "b" => "same_level"
+      "b" => "same_level",
+      "n" => "next_in_sequence"
     }.freeze
 
     UUID_RE = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i

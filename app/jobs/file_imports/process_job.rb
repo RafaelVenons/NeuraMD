@@ -13,33 +13,48 @@ module FileImports
       import.broadcast_progress!
 
       markdown = import.source_file.open do |tempfile|
-        ConvertService.call(file_path: tempfile.path)
+        ConvertService.call(
+          file_path: tempfile.path,
+          content_type: import.source_file.content_type
+        )
       end
 
-      import.update!(converted_markdown: markdown, status: "importing")
-      import.broadcast_progress!
+      # Phase 1.5: Sanitize markdown
+      report = SanitizeService.call(markdown: markdown, filename: import.original_filename)
 
-      # Phase 2: Import markdown as notes
-      response = Mcp::Tools::ImportMarkdownTool.call(
-        markdown: markdown,
-        base_tag: import.base_tag,
-        import_tag: import.import_tag,
-        extra_tags: import.extra_tags,
-        split_level: import.split_level
-      )
-
-      if response.respond_to?(:error?) && response.error?
-        error_text = response.content.first[:text]
-        raise ImportError, "[importing] #{error_text}"
+      unless report.usable
+        raise ImportError, "[quality] #{report.warnings.first}"
       end
 
-      result_data = response.content.first[:text]
-      result = JSON.parse(result_data)
+      markdown = report.markdown
+
+      # Phase 2: AI-assisted analysis (best-effort)
+      ai_suggestions = nil
+      if ai_enabled_for_import?
+        import.update!(status: "analyzing")
+        import.broadcast_progress!
+
+        ai_suggestions = AiAnalyzeService.call(
+          markdown: markdown,
+          filename: import.original_filename
+        )
+      end
+
+      # Phase 3: Generate split suggestions (AI or heading-based fallback)
+      suggestions = if ai_suggestions.present?
+        ai_suggestions
+      else
+        SplitSuggestionService.call(
+          markdown: markdown,
+          filename: import.original_filename,
+          split_level: import.split_level.presence || 0
+        )
+      end
 
       import.update!(
-        status: "completed",
-        notes_created: result["created_count"],
-        completed_at: Time.current
+        converted_markdown: markdown,
+        suggested_splits: suggestions.map(&:to_h),
+        status: "preview"
       )
       import.broadcast_progress!
     rescue ConvertService::ConversionError => e
@@ -51,6 +66,11 @@ module FileImports
     end
 
     private
+
+    def ai_enabled_for_import?
+      Ai::ProviderRegistry.enabled? &&
+        Ai::ProviderRegistry.available_provider_names.any? { |n| n.start_with?("ollama") }
+    end
 
     def fail_import!(import, message)
       import&.update!(

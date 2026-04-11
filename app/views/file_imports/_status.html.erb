@@ -1,9 +1,15 @@
-<div class="fi-status fi-status--<%= file_import.status %>"
-     <% if file_import.processing? %>
-       data-controller="file-import-poll"
-       data-file-import-poll-url-value="<%= file_import_path(file_import) %>"
-       data-file-import-poll-interval-value="3000"
-     <% end %>>
+<% main_note_slug = file_import.completed? && file_import.created_notes_data.present? ? file_import.created_notes_data.first["slug"] : nil %>
+<%= tag.send(main_note_slug ? :a : :div,
+      class: "fi-status fi-status--#{file_import.status}",
+      href: main_note_slug ? note_path(main_note_slug) : nil,
+      **( file_import.processing? ? {
+        data: {
+          controller: "file-import-poll",
+          "file-import-poll-url-value": file_import_path(file_import),
+          "file-import-poll-interval-value": "3000"
+        }
+      } : {} )
+    ) do %>
   <div class="fi-status__badge"><%= file_import.status.humanize %></div>
 
   <% case file_import.status %>
@@ -11,12 +17,24 @@
     <p class="fi-status__text">Aguardando processamento...</p>
   <% when "converting" %>
     <p class="fi-status__text">Convertendo arquivo para markdown...</p>
+  <% when "analyzing" %>
+    <p class="fi-status__text">Analisando estrutura com IA...</p>
+  <% when "preview" %>
+    <p class="fi-status__text">
+      Preview: <strong><%= file_import.suggested_splits.size %></strong> nota(s) sugerida(s).
+      Revise e confirme abaixo.
+    </p>
   <% when "importing" %>
     <p class="fi-status__text">Criando notas no acervo...</p>
   <% when "completed" %>
     <p class="fi-status__text">
       Importacao concluida: <strong><%= file_import.notes_created %></strong> nota(s) criada(s).
     </p>
+    <% if file_import.created_notes_data.present? %>
+      <p class="fi-status__text">
+        Nota principal: <strong><%= file_import.created_notes_data.first["title"] %></strong>
+      </p>
+    <% end %>
   <% when "failed" %>
     <% phase, message = parse_error_phase(file_import.error_message) %>
     <p class="fi-status__text fi-status__text--error">
@@ -34,4 +52,4 @@
       <% end %>
     </p>
   <% end %>
-</div>
+<% end %>

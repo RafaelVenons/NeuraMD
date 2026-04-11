@@ -81,11 +81,36 @@ module Ai
       - Return only the markdown content
     PROMPT
 
+    IMPORT_ANALYZE_PROMPT = <<~PROMPT.freeze
+      You are a document structure analyst.
+      You receive a markdown document converted from a PDF, DOCX, EPUB, or PPTX file.
+      Your task: suggest logical split points to divide this into study notes.
+
+      Rules:
+      1. If there is a Table of Contents, Summary, or "Sumario", use it as the PRIMARY guide for segmentation.
+         The TOC defines the logical chapters — each TOC entry should map to one note (or fewer if entries are small).
+      2. Prefer FEWER, LARGER notes — minimum 30 content lines per note. Merge small sections into their neighbors.
+      3. When in doubt, DO NOT split — keep content together in a single note.
+      4. Each note should represent a coherent topic, chapter, or logical unit.
+      5. Never create a note that is just a list of links, references, or a table of contents.
+         The TOC itself should be merged into the first content section.
+      6. Slides or pages without clear topic boundaries should be merged together.
+      7. If the document has no clear structure (no headings, no TOC), return a single entry covering all lines.
+
+      Respond ONLY with a valid JSON array, no other text:
+      [{"title": "Chapter title", "start_line": 0, "end_line": 45, "reason": "Brief reason"}]
+
+      Line numbers are 0-indexed. The last entry's end_line must equal the total lines minus 1.
+      Entries must be contiguous (no gaps, no overlaps).
+      If the document should NOT be split, return a single entry covering all lines.
+    PROMPT
+
     PROMPTS = {
       "grammar_review" => GRAMMAR_REVIEW_PROMPT,
       "rewrite" => REWRITE_PROMPT,
       "translate" => TRANSLATE_PROMPT,
-      "seed_note" => SEED_NOTE_PROMPT
+      "seed_note" => SEED_NOTE_PROMPT,
+      "import_analyze" => IMPORT_ANALYZE_PROMPT
     }.freeze
 
     def self.system_prompt(capability:, language: nil, target_language: nil)

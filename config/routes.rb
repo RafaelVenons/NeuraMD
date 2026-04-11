@@ -43,7 +43,10 @@ Rails.application.routes.draw do
   end
 
   resources :file_imports, only: [:index, :new, :create, :show, :destroy] do
-    member { post :retry }
+    member do
+      post :retry
+      post :confirm
+    end
   end
   resources :tags, only: [:index, :create, :destroy]
 

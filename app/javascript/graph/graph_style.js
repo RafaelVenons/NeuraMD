@@ -58,6 +58,7 @@ export function roleLabel(hierRole) {
   if (hierRole === "target_is_parent") return "target = pai"
   if (hierRole === "target_is_child") return "target = filho"
   if (hierRole === "same_level") return "mesmo nivel"
+  if (hierRole === "next_in_sequence") return "sequencial"
   return "sem classificacao"
 }
 
@@ -65,6 +66,7 @@ function baseEdgeColor(hierRole) {
   if (hierRole === "target_is_parent") return "#f97316"
   if (hierRole === "target_is_child") return "#0ea5e9"
   if (hierRole === "same_level") return "#84cc16"
+  if (hierRole === "next_in_sequence") return "#a78bfa"
   return "#64748b"
 }
 

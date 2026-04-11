@@ -1,0 +1,62 @@
+#!/usr/bin/env python3
+"""Convert PDF to Markdown using pymupdf4llm.
+
+Usage: bin/pdf2md <input.pdf> [--pages 0,1,2-5]
+
+Outputs markdown to stdout. Exits non-zero on failure.
+"""
+
+import sys
+
+try:
+    import pymupdf4llm
+except ImportError:
+    print("pymupdf4llm not installed. Install with: uv pip install pymupdf4llm", file=sys.stderr)
+    sys.exit(1)
+
+
+def main():
+    if len(sys.argv) < 2:
+        print("Usage: pdf2md <input.pdf> [--pages 0,1,2-5]", file=sys.stderr)
+        sys.exit(1)
+
+    pdf_path = sys.argv[1]
+    pages = None
+
+    if "--pages" in sys.argv:
+        idx = sys.argv.index("--pages")
+        if idx + 1 < len(sys.argv):
+            pages = parse_pages(sys.argv[idx + 1])
+
+    try:
+        kwargs = {"show_progress": False}
+        if pages is not None:
+            kwargs["pages"] = pages
+
+        md = pymupdf4llm.to_markdown(pdf_path, **kwargs)
+
+        if not md or not md.strip():
+            print("pymupdf4llm produced empty output", file=sys.stderr)
+            sys.exit(1)
+
+        sys.stdout.write(md)
+    except Exception as e:
+        print(f"pymupdf4llm error: {e}", file=sys.stderr)
+        sys.exit(1)
+
+
+def parse_pages(spec):
+    """Parse page spec like '0,1,5-10' into a list of ints."""
+    pages = []
+    for part in spec.split(","):
+        part = part.strip()
+        if "-" in part:
+            start, end = part.split("-", 1)
+            pages.extend(range(int(start), int(end) + 1))
+        else:
+            pages.append(int(part))
+    return pages
+
+
+if __name__ == "__main__":
+    main()

@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
 class FileImport < ApplicationRecord
-  STATUSES = %w[pending converting importing completed failed].freeze
+  STATUSES = %w[pending converting analyzing preview importing completed failed].freeze
   ACCEPTED_TYPES = %w[
     application/pdf
     application/vnd.openxmlformats-officedocument.wordprocessingml.document
@@ -34,5 +34,6 @@ class FileImport < ApplicationRecord
 
   def completed? = status == "completed"
   def failed? = status == "failed"
-  def processing? = status.in?(%w[converting importing])
+  def preview? = status == "preview"
+  def processing? = status.in?(%w[pending converting analyzing importing])
 end

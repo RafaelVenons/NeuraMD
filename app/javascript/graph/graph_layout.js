@@ -374,6 +374,7 @@ function resolveRelativePlacement(role, direction) {
   }
 
   if (role === "same_level") return { side, verticalBand: "mid", distanceBand: "normal" }
+  if (role === "next_in_sequence") return { side, verticalBand: "mid", distanceBand: "normal" }
   return { side: "free", verticalBand: "soft", distanceBand: "far", placementMode: "soft" }
 }
 

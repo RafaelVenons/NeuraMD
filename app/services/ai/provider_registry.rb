@@ -47,7 +47,7 @@ module Ai
           OpenaiCompatibleProvider.new(**config.slice(:name, :model, :base_url, :api_key))
         when "anthropic"
           AnthropicProvider.new(**config.slice(:name, :model, :base_url, :api_key))
-        when "ollama"
+        when /\Aollama/
           OllamaProvider.new(**config.slice(:name, :model, :base_url, :api_key))
         when "google_translate"
           GoogleTranslateProvider.new(**config.slice(:name, :model, :base_url, :api_key))
@@ -149,7 +149,7 @@ module Ai
         case name
         when "openai", "anthropic", "azure_openai"
           config[:api_key].present? && config[:model].present? && config[:base_url].present?
-        when "ollama", "local"
+        when /\Aollama/, "local"
           explicitly_enabled?(name) && config[:model].present? && config[:base_url].present?
         when "google_translate"
           true
@@ -186,23 +186,36 @@ module Ai
       def available_models_for(name)
         record = AiProvider.find_by(name: name)
         record_models = normalize_models(record&.config&.fetch("models", nil))
-        live_models = name == "ollama" ? OllamaProvider.available_models(base_url: provider_config(name)[:base_url]) : []
+        live_models = name.start_with?("ollama") ? OllamaProvider.available_models(base_url: provider_config(name)[:base_url]) : []
         configured_model = provider_config(name)[:model]
 
         (live_models + record_models + [configured_model]).compact_blank.uniq
       end
 
       def env_value(name, field)
-        env_key = case [name, field]
+        env_key = if name.start_with?("ollama")
+          ollama_env_key(name, field)
+        else
+          static_env_key(name, field)
+        end
+
+        env_key ? ENV[env_key].presence : nil
+      end
+
+      def ollama_env_key(name, field)
+        prefix = name.upcase.tr("-", "_")
+        field_suffix = { api_key: "API_KEY", model: "MODEL", base_url: "API_BASE" }[field]
+        field_suffix ? "#{prefix}_#{field_suffix}" : nil
+      end
+
+      def static_env_key(name, field)
+        case [name, field]
         when ["openai", :api_key] then "OPENAI_API_KEY"
         when ["openai", :model] then "OPENAI_MODEL"
         when ["openai", :base_url] then "OPENAI_BASE_URL"
         when ["anthropic", :api_key] then "ANTHROPIC_API_KEY"
         when ["anthropic", :model] then "ANTHROPIC_MODEL"
         when ["anthropic", :base_url] then "ANTHROPIC_BASE_URL"
-        when ["ollama", :api_key] then "OLLAMA_API_KEY"
-        when ["ollama", :model] then "OLLAMA_MODEL"
-        when ["ollama", :base_url] then "OLLAMA_API_BASE"
         when ["azure_openai", :api_key] then "AZURE_OPENAI_API_KEY"
         when ["azure_openai", :model] then "AZURE_OPENAI_MODEL"
         when ["azure_openai", :base_url] then "AZURE_OPENAI_BASE_URL"
@@ -213,15 +226,14 @@ module Ai
         when ["google_translate", :model] then nil
         when ["google_translate", :base_url] then "GOOGLE_TRANSLATE_BASE_URL"
         end
-
-        env_key ? ENV[env_key].presence : nil
       end
 
       def default_model(name)
+        return "llama3.2" if name.start_with?("ollama")
+
         {
           "openai" => "gpt-4o-mini",
           "anthropic" => "claude-3-5-sonnet-latest",
-          "ollama" => "llama3.2",
           "azure_openai" => nil,
           "local" => nil,
           "google_translate" => "free"
@@ -229,10 +241,12 @@ module Ai
       end
 
       def default_base_url(name)
+        return "http://AIrch:11434" if name == "ollama"
+        return nil if name.start_with?("ollama") # ollama_* must configure their own base_url
+
         {
           "openai" => "https://api.openai.com/v1",
           "anthropic" => "https://api.anthropic.com/v1",
-          "ollama" => "http://AIrch:11434",
           "azure_openai" => nil,
           "local" => "http://127.0.0.1:1234/v1",
           "google_translate" => "https://translate.googleapis.com"
@@ -255,6 +269,8 @@ module Ai
       end
 
       def provider_label(name)
+        return "Ollama (#{name.delete_prefix("ollama_")})" if name.start_with?("ollama_")
+
         {
           "openai" => "OpenAI",
           "anthropic" => "Anthropic",

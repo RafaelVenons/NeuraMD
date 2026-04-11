@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_04_10_011601) do
+ActiveRecord::Schema[8.1].define(version: 2026_04_11_034809) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
   enable_extension "pg_trgm"
@@ -139,8 +139,10 @@ ActiveRecord::Schema[8.1].define(version: 2026_04_10_011601) do
   create_table "file_imports", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
     t.string "base_tag", null: false
     t.datetime "completed_at"
+    t.jsonb "confirmed_splits"
     t.text "converted_markdown"
     t.datetime "created_at", null: false
+    t.jsonb "created_notes_data", default: []
     t.text "error_message"
     t.string "extra_tags"
     t.string "import_tag", null: false
@@ -149,6 +151,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_04_10_011601) do
     t.integer "split_level"
     t.datetime "started_at"
     t.string "status", default: "pending", null: false
+    t.jsonb "suggested_splits", default: []
     t.datetime "updated_at", null: false
     t.uuid "user_id", null: false
     t.index ["user_id"], name: "index_file_imports_on_user_id"

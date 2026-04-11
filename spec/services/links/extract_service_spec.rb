@@ -30,6 +30,12 @@ RSpec.describe Links::ExtractService do
       expect(result).to eq([{dst_note_id: uuid, hier_role: "same_level"}])
     end
 
+    it "extracts next role (n:)" do
+      uuid = SecureRandom.uuid
+      result = described_class.call("[[Next Chapter|n:#{uuid}]]")
+      expect(result).to eq([{dst_note_id: uuid, hier_role: "next_in_sequence"}])
+    end
+
     it "treats unknown roles as plain links while preserving the destination" do
       uuid = SecureRandom.uuid
       result = described_class.call("[[Sibling|x:#{uuid}]]")

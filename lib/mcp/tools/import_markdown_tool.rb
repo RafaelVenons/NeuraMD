@@ -51,6 +51,7 @@ module Mcp
 
         effective_level = resolve_split_level(root_sections)
         apply_split_level!(root_sections, effective_level)
+        root_sections.each { |s| group_children!(s) }
         sections = flatten_sections(root_sections)
 
         ActiveRecord::Base.transaction do
@@ -69,6 +70,29 @@ module Mcp
       end
 
       private
+
+      # ── Chapter grouping ────────────────────────────────────────────────
+
+      MAX_CHILDREN = 20
+      CHILDREN_PER_GROUP = 10
+
+      def group_children!(section)
+        section.children.each { |c| group_children!(c) }
+        return if section.children.size <= MAX_CHILDREN
+
+        groups = section.children.each_slice(CHILDREN_PER_GROUP).with_index(1).map do |batch, idx|
+          part = Section.new(
+            title: "Parte #{idx}",
+            level: section.level + 1,
+            body_lines: [],
+            children: batch,
+            parent: section
+          )
+          batch.each { |c| c.parent = part }
+          part
+        end
+        section.children.replace(groups)
+      end
 
       # ── Split level resolution ────────────────────────────────────────────
 
@@ -193,7 +217,7 @@ module Mcp
       # ── Import operations ──────────────────────────────────────────────────
 
       def delete_previous_import!
-        imported_notes = Note.joins(:tags).where(tags: {name: @import_tag})
+        imported_notes = Note.joins(:tags).where(tags: {name: @import_tag.downcase})
         note_ids = imported_notes.pluck(:id)
         return if note_ids.empty?
 
@@ -248,7 +272,28 @@ module Mcp
           end
         end
 
-        lines.join("\n")
+        # Sequential navigation between siblings
+        siblings = section.parent&.children
+        if siblings && siblings.size > 1
+          idx = siblings.index(section)
+          nav = []
+          if idx && idx > 0
+            prev_note = siblings[idx - 1].instance_variable_get(:@note)
+            nav << "Anterior: [[#{siblings[idx - 1].title}|n:#{prev_note.id}]]"
+          end
+          if idx && idx < siblings.size - 1
+            next_note = siblings[idx + 1].instance_variable_get(:@note)
+            nav << "Proximo: [[#{siblings[idx + 1].title}|n:#{next_note.id}]]"
+          end
+          if nav.any?
+            lines << ""
+            lines << "---"
+            lines << nav.join(" | ")
+          end
+        end
+
+        content = lines.join("\n")
+        content.presence || "(sem conteudo textual)"
       end
 
       def attach_tags!(section)

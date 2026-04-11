@@ -88,7 +88,7 @@ class AiRequest < ApplicationRecord
   end
 
   def remote_long_job?(now: Time.current)
-    return false unless provider == "ollama"
+    return false unless provider.start_with?("ollama")
 
     if running? && started_at.present?
       return started_at < now - remote_long_job_after
@@ -102,12 +102,13 @@ class AiRequest < ApplicationRecord
   end
 
   def remote_status_hint(now: Time.current)
-    return nil unless provider == "ollama"
+    return nil unless provider.start_with?("ollama")
 
+    host = provider == "ollama" ? "AIrch" : provider.delete_prefix("ollama_").capitalize
     return "Job remoto aguardando a vez na fila local. Pode fechar e voltar depois." if queued?
-    return "Nova tentativa agendada para reenviar ao AIrch." if retrying?
-    return "Job remoto longo no AIrch. Pode fechar e voltar depois." if remote_long_job?(now:)
-    return "Processando no AIrch. Em CPU-only isso pode levar varios minutos." if running?
+    return "Nova tentativa agendada para reenviar ao #{host}." if retrying?
+    return "Job remoto longo no #{host}. Pode fechar e voltar depois." if remote_long_job?(now:)
+    return "Processando no #{host}. Em CPU-only isso pode levar varios minutos." if running?
 
     nil
   end
@@ -317,8 +318,9 @@ class AiRequest < ApplicationRecord
   end
 
   def timeout_window_for(suffix, default:, ollama_default:)
-    provider_default = provider == "ollama" ? ollama_default : default
-    env_key = provider == "ollama" ? "OLLAMA_#{suffix}" : "AI_REQUEST_#{suffix}"
+    is_ollama = provider.start_with?("ollama")
+    provider_default = is_ollama ? ollama_default : default
+    env_key = is_ollama ? "#{provider.upcase.tr("-", "_")}_#{suffix}" : "AI_REQUEST_#{suffix}"
     seconds = ENV[env_key].to_i
     seconds.positive? ? seconds.seconds : provider_default
   end

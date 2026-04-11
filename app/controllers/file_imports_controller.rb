@@ -30,6 +30,18 @@ class FileImportsController < ApplicationController
     authorize @import
   end
 
+  def confirm
+    @import = FileImport.find(params[:id])
+    authorize @import
+
+    if params[:splits].present?
+      @import.update!(confirmed_splits: JSON.parse(params[:splits]))
+    end
+
+    FileImports::ImportJob.perform_later(@import.id)
+    redirect_to file_import_path(@import), notice: "Importacao confirmada. Criando notas..."
+  end
+
   def retry
     @import = FileImport.find(params[:id])
     authorize @import

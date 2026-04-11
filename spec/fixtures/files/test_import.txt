@@ -1,0 +1,19 @@
+# Introducao a Redes Neurais
+
+Redes neurais artificiais sao modelos computacionais inspirados no cerebro humano.
+
+## Perceptron
+
+O perceptron e a unidade basica de uma rede neural. Recebe entradas ponderadas e aplica uma funcao de ativacao.
+
+### Funcao de ativacao
+
+A funcao sigmoide e uma das mais utilizadas: f(x) = 1 / (1 + e^-x)
+
+## Backpropagation
+
+O algoritmo de retropropagacao permite o treinamento de redes multicamadas ajustando os pesos com base no erro.
+
+## Redes Convolucionais
+
+CNNs sao especializadas em processar dados com topologia de grade, como imagens.

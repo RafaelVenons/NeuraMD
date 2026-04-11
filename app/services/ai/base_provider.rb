@@ -69,9 +69,9 @@ module Ai
     end
 
     def provider_timeout_key(suffix)
+      return "#{name.upcase.tr("-", "_")}_#{suffix}" if name.start_with?("ollama")
+
       case name
-      when "ollama"
-        "OLLAMA_#{suffix}"
       when "anthropic"
         "ANTHROPIC_#{suffix}"
       when "openai", "azure_openai"
@@ -82,7 +82,7 @@ module Ai
     end
 
     def default_read_timeout
-      name == "ollama" ? 7200 : 180
+      name.start_with?("ollama") ? 7200 : 180
     end
   end
 end

@@ -682,8 +682,8 @@ export default class extends Controller {
     this.processingBoxTarget.classList.remove("flex")
     this.processingProviderTarget.textContent = provider && model ? `${provider}: ${model}` : "IA"
     this.processingStateTarget.textContent = "Na fila"
-    this.processingHintTarget.textContent = provider === "ollama"
-      ? "Job remoto no AIrch. Pode continuar usando a aplicacao enquanto a tarefa roda."
+    this.processingHintTarget.textContent = provider?.startsWith("ollama")
+      ? "Job remoto no Ollama. Pode continuar usando a aplicacao enquanto a tarefa roda."
       : "Processamento assíncrono em andamento."
     this.processingMetaTarget.textContent = "Aguardando execução..."
     this.processingErrorTarget.textContent = ""

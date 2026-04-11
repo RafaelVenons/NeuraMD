@@ -106,6 +106,67 @@ RSpec.describe Mcp::Tools::ImportMarkdownTool do
     end
   end
 
+  describe "sequential navigation links" do
+    let(:markdown) do
+      <<~MD
+        # Book
+
+        Intro.
+
+        ## Chapter 1
+
+        Content one.
+
+        ## Chapter 2
+
+        Content two.
+
+        ## Chapter 3
+
+        Content three.
+      MD
+    end
+
+    it "adds prev/next links between sibling notes" do
+      described_class.call(markdown: markdown, base_tag: "nav", import_tag: "nav-import")
+
+      ch1 = Note.joins(:tags).where(tags: {name: "nav-import"}).find_by(title: "Chapter 1")
+      ch2 = Note.joins(:tags).where(tags: {name: "nav-import"}).find_by(title: "Chapter 2")
+      ch3 = Note.joins(:tags).where(tags: {name: "nav-import"}).find_by(title: "Chapter 3")
+
+      body1 = ch1.head_revision.content_markdown
+      expect(body1).to include("Proximo: [[Chapter 2|n:#{ch2.id}]]")
+      expect(body1).not_to include("Anterior:")
+
+      body2 = ch2.head_revision.content_markdown
+      expect(body2).to include("Anterior: [[Chapter 1|n:#{ch1.id}]]")
+      expect(body2).to include("Proximo: [[Chapter 3|n:#{ch3.id}]]")
+
+      body3 = ch3.head_revision.content_markdown
+      expect(body3).to include("Anterior: [[Chapter 2|n:#{ch2.id}]]")
+      expect(body3).not_to include("Proximo:")
+    end
+
+    it "does not add nav links to single-child sections" do
+      single_child_md = "# Root\n\nIntro.\n\n## Only Child\n\nContent."
+      described_class.call(markdown: single_child_md, base_tag: "nav", import_tag: "nav-import")
+
+      child = Note.joins(:tags).where(tags: {name: "nav-import"}).find_by(title: "Only Child")
+      body = child.head_revision.content_markdown
+      expect(body).not_to include("Anterior:")
+      expect(body).not_to include("Proximo:")
+    end
+
+    it "does not add nav links to root note" do
+      described_class.call(markdown: markdown, base_tag: "nav", import_tag: "nav-import")
+
+      root = Note.joins(:tags).where(tags: {name: "nav-import"}).find_by(title: "Book")
+      body = root.head_revision.content_markdown
+      expect(body).not_to include("Anterior:")
+      expect(body).not_to include("Proximo:")
+    end
+  end
+
   describe "reimport cleans previous batch" do
     let(:markdown) { "# Titulo\n\nConteudo." }
 
@@ -131,6 +192,35 @@ RSpec.describe Mcp::Tools::ImportMarkdownTool do
 
       note = Note.joins(:tags).where(tags: {name: "shop-import"}).first
       expect(note.tags.pluck(:name)).to include("iniciativa", "estrutura-sistemica")
+    end
+  end
+
+  describe "chapter grouping" do
+    it "groups children into Parte N when >20 children" do
+      chapters = (1..25).map { |i| "## Chapter #{i}\n\nContent for chapter #{i}." }.join("\n\n")
+      md = "# Big Book\n\nIntro.\n\n#{chapters}"
+
+      response = described_class.call(markdown: md, base_tag: "group", import_tag: "group-import")
+      result = JSON.parse(response.content.first[:text])
+      titles = result["notes"].map { |n| n["title"] }
+
+      expect(titles).to include("Parte 1", "Parte 2", "Parte 3")
+      expect(titles).not_to include("Big Book" => have_attributes(size: 25))
+
+      root = Note.joins(:tags).where(tags: {name: "group-import"}).find_by(title: "Big Book")
+      root_children = root.active_outgoing_links.where(hier_role: "target_is_child")
+      expect(root_children.count).to eq(3) # 3 parts instead of 25 chapters
+    end
+
+    it "does not group when <=20 children" do
+      chapters = (1..5).map { |i| "## Ch #{i}\n\nContent #{i}." }.join("\n\n")
+      md = "# Small Book\n\nIntro.\n\n#{chapters}"
+
+      response = described_class.call(markdown: md, base_tag: "group", import_tag: "group-import")
+      result = JSON.parse(response.content.first[:text])
+      titles = result["notes"].map { |n| n["title"] }
+
+      expect(titles).not_to include(match(/Parte/))
     end
   end
 

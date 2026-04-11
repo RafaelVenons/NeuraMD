@@ -17,10 +17,76 @@
     <%= render "file_imports/status", file_import: @import %>
   </div>
 
+  <% if @import.preview? && @import.suggested_splits.present? %>
+    <div class="fi-preview" data-controller="split-preview">
+      <h2 class="fi-preview__title">Sugestao de notas</h2>
+      <p class="fi-preview__hint">Ajuste os titulos e intervalos de linhas antes de confirmar.</p>
+
+      <% md_lines = @import.converted_markdown.to_s.lines.map(&:chomp) %>
+      <table class="fi-preview__table">
+        <thead>
+          <tr>
+            <th>#</th>
+            <th>Titulo</th>
+            <th>Linha inicio</th>
+            <th>Linha fim</th>
+            <th>Linhas</th>
+          </tr>
+        </thead>
+        <tbody data-split-preview-target="tbody">
+          <% @import.suggested_splits.each_with_index do |split, idx| %>
+            <tr>
+              <td><%= idx + 1 %></td>
+              <td>
+                <input type="text" class="fi-preview__input fi-preview__input--title"
+                       value="<%= split["title"] %>"
+                       data-field="title" data-index="<%= idx %>"
+                       data-action="input->split-preview#changed">
+              </td>
+              <td>
+                <input type="number" class="fi-preview__input fi-preview__input--line"
+                       value="<%= split["start_line"] %>"
+                       data-field="start_line" data-index="<%= idx %>"
+                       data-action="input->split-preview#changed" min="0">
+              </td>
+              <td>
+                <input type="number" class="fi-preview__input fi-preview__input--line"
+                       value="<%= split["end_line"] %>"
+                       data-field="end_line" data-index="<%= idx %>"
+                       data-action="input->split-preview#changed" min="0">
+              </td>
+              <td class="fi-preview__count" data-split-preview-target="count" data-index="<%= idx %>">
+                <%= split["line_count"] %>
+              </td>
+            </tr>
+            <tr class="fi-preview__snippet-row">
+              <td></td>
+              <td colspan="4">
+                <details class="fi-preview__snippet">
+                  <summary class="fi-preview__snippet-toggle">
+                    <% snippet = md_lines[split["start_line"]..([split["start_line"] + 2, split["end_line"]].min)] %>
+                    <code class="fi-preview__snippet-text"><%= snippet&.reject(&:blank?)&.first(3)&.join(" / ")&.truncate(120) %></code>
+                  </summary>
+                  <pre class="fi-preview__snippet-full"><%= md_lines[split["start_line"]..split["end_line"]]&.join("\n") %></pre>
+                </details>
+              </td>
+            </tr>
+          <% end %>
+        </tbody>
+      </table>
+
+      <%= form_with url: confirm_file_import_path(@import), method: :post, class: "fi-preview__form" do |f| %>
+        <input type="hidden" name="splits" data-split-preview-target="splitsInput"
+               value="<%= @import.suggested_splits.to_json %>">
+        <%= f.submit "Confirmar e importar", class: "fi-show__link fi-show__link--primary" %>
+      <% end %>
+    </div>
+  <% end %>
+
   <div class="fi-show__actions">
     <%= link_to "Voltar", file_imports_path, class: "fi-show__link" %>
     <% if @import.completed? %>
-      <%= link_to "Ver notas por tag", notes_path(q: "tag:#{@import.import_tag}"), class: "fi-show__link fi-show__link--primary" %>
+      <%= link_to "Ver notas no grafo", graph_path(tag: @import.import_tag), class: "fi-show__link fi-show__link--primary" %>
     <% end %>
     <% if @import.failed? %>
       <%= button_to "Tentar novamente", retry_file_import_path(@import), method: :post, class: "fi-show__link fi-show__link--primary" %>

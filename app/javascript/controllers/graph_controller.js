@@ -42,6 +42,7 @@ export default class extends Controller {
   static values = {
     dataUrl: String,
     initialFocusedNodeId: String,
+    initialTag: String,
     embeddedMode: Boolean
   }
 
@@ -122,6 +123,17 @@ export default class extends Controller {
         this.state.ui.pinnedTooltipNodeId = this.embeddedModeValue ? null : this.initialFocusedNodeIdValue
         this.state.ui.focusDepth = 2
         if (this.hasFocusDepthTarget) this.focusDepthTarget.value = "2"
+      }
+
+      if (!reloadingWithPreservedCamera && this.hasInitialTagValue && this.initialTagValue) {
+        const targetName = this.initialTagValue.toLowerCase()
+        for (const [tagId, tagMeta] of this.state.indexes.tagMetaById) {
+          if (tagMeta.name.toLowerCase() === targetName) {
+            this.state.ui.selectedTagIds = [tagId]
+            this.state.ui.filterMode = "focused-tags"
+            break
+          }
+        }
       }
 
       applyLayout(graph, this.state, { rebuild: true })
@@ -944,6 +956,16 @@ export default class extends Controller {
         source: calculateArrowHeadGeometry(source, target, edge, {
           extremity: "source",
           shape: "brother",
+          pointing: "toward-extremity"
+        })
+      }
+    }
+
+    if (edge.hierRole === "next_in_sequence") {
+      return {
+        target: calculateArrowHeadGeometry(source, target, edge, {
+          extremity: "target",
+          shape: "next",
           pointing: "toward-extremity"
         })
       }
