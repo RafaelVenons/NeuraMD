@@ -201,7 +201,6 @@ docker-compose.local.yml
 # CLAUDE.md é o spec principal do projeto — incluído no repo intencionalmente
 
 # Documentação operacional local da iniciativa/importação do plano
-INITI.md
 PLAN.md
 QUEUE.md
 new_specs.md
@@ -211,3 +210,9 @@ script/import_*.rb
 script/check_imported_orphans.rb
 script/e2e/bootstrap_new_specs_navigation.rb
 bin/import-notes
+
+# PDFs de fixture para pipeline de import (grandes, não versionados)
+spec/fixtures/files/*.pdf
+
+# State local do Codex CLI
+.codex

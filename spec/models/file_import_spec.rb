@@ -48,6 +48,7 @@ RSpec.describe FileImport do
     it "#processing?" do
       expect(FileImport.new(status: "pending")).to be_processing
       expect(FileImport.new(status: "converting")).to be_processing
+      expect(FileImport.new(status: "enriching")).to be_processing
       expect(FileImport.new(status: "analyzing")).to be_processing
       expect(FileImport.new(status: "importing")).to be_processing
       expect(FileImport.new(status: "completed")).not_to be_processing

@@ -23,18 +23,21 @@ module Ai
     end
 
     def review(capability:, text:, language:, target_language: nil)
+      body = {
+        model: model,
+        stream: false,
+        messages: [
+          { role: "system", content: PromptBuilder.system_prompt(capability:, language:, target_language:) },
+          { role: "user", content: text }
+        ],
+        options: { temperature: 0.2 }
+      }
+      body[:think] = false if model.to_s.match?(/\Aqwen3/)
+
       payload = post_json(
         "#{base_url}/api/chat",
         headers: {},
-        body: {
-          model: model,
-          stream: false,
-          messages: [
-            { role: "system", content: PromptBuilder.system_prompt(capability:, language:, target_language:) },
-            { role: "user", content: text }
-          ],
-          options: { temperature: 0.2 }
-        }
+        body: body
       )
 
       content = payload.dig("message", "content").to_s

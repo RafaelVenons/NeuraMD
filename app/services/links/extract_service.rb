@@ -20,7 +20,8 @@ module Links
     }.freeze
 
     UUID_RE = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i
-    WIKILINK_RE = /(?<!!)\[\[(?:[^\]|]+)\|(?:(?<role>[a-z]+):)?(?<uuid>#{UUID_RE})(?:#(?<heading>[a-z0-9_-]+)|\^(?<block>[a-zA-Z0-9-]+))?\]\]/i
+    SLUG_RE = /[a-z0-9]+(?:-[a-z0-9]+)*/
+    WIKILINK_RE = /(?<!!)\[\[(?:[^\]|]+)\|(?:(?<role>[a-z]+):)?(?<id>#{UUID_RE}|#{SLUG_RE})(?:#(?<heading>[a-z0-9_-]+)|\^(?<block>[a-zA-Z0-9-]+))?\]\]/i
 
     def self.call(content)
       new(content).call
@@ -33,7 +34,8 @@ module Links
     def call
       @content
         .scan(WIKILINK_RE)
-        .map { |role_prefix, uuid, heading, block| build_link(role_prefix, uuid, heading, block) }
+        .map { |role_prefix, id_or_slug, heading, block| build_link(role_prefix, id_or_slug, heading, block) }
+        .compact
         .each_with_object({}) do |link, by_destination|
           current = by_destination[link[:dst_note_id]]
           if current
@@ -50,18 +52,28 @@ module Links
 
     private
 
-    def build_link(role_prefix, uuid, heading, block)
+    def build_link(role_prefix, id_or_slug, heading, block)
       role_key = role_prefix.to_s.downcase
       heading_slug = heading.presence
       block_id = block.presence
 
+      uuid = resolve_id(id_or_slug)
+      return nil unless uuid
+
       link = {
-        dst_note_id: uuid.downcase,
+        dst_note_id: uuid,
         hier_role: ROLE_MAP[role_key]
       }
       link[:heading_slugs] = [heading_slug] if heading_slug
       link[:block_ids] = [block_id] if block_id
       link
+    end
+
+    def resolve_id(id_or_slug)
+      value = id_or_slug.to_s
+      return value.downcase if value.match?(/\A#{UUID_RE}\z/)
+
+      Note.where(slug: value).pick(:id)
     end
 
     def merge_fragments!(current, candidate)

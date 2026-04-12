@@ -6,7 +6,14 @@ namespace :ai do
     require_relative "../../app/services/ai/ollama_provider"
     require_relative "../../app/services/ai/prompt_builder"
 
-    CAPABILITIES = %w[grammar_review rewrite seed_note translate].freeze
+    $stdout.sync = true
+
+    ALL_CAPABILITIES = %w[grammar_review rewrite seed_note translate import_analyze].freeze
+    CAPABILITIES = if ENV["CAPABILITY"].present?
+      ENV["CAPABILITY"].split(",").map(&:strip) & ALL_CAPABILITIES
+    else
+      ALL_CAPABILITIES
+    end
 
     SAMPLES = {
       short: {
@@ -113,6 +120,67 @@ namespace :ai do
 
     TRANSLATE_OPTS = { language: "pt", target_language: "en" }.freeze
 
+    IMPORT_ANALYZE_SAMPLE = <<~MD
+      # Sumário
+
+      1. Introdução às Redes Neurais
+      2. Arquitetura de Camadas
+      3. Treinamento e Retropropagação
+      4. Aplicações Práticas
+
+      ---
+
+      # 1. Introdução às Redes Neurais
+
+      As redes neurais artificiais são modelos computacionais inspirados na estrutura
+      e funcionamento do cérebro humano. Compostas por camadas de neurônios
+      interconectados, essas redes aprendem a reconhecer padrões complexos nos dados
+      através de um processo iterativo de treinamento.
+
+      O conceito surgiu na década de 1940, mas só se tornou prático com o aumento
+      do poder computacional nas últimas décadas. Hoje, redes neurais são usadas
+      em reconhecimento de imagem, processamento de linguagem natural, diagnóstico
+      médico e muitas outras áreas.
+
+      # 2. Arquitetura de Camadas
+
+      Uma rede neural típica consiste em três tipos de camadas:
+
+      - **Camada de entrada**: Recebe os dados brutos
+      - **Camadas ocultas**: Processam e transformam os dados
+      - **Camada de saída**: Produz o resultado final
+
+      O número de camadas ocultas define a "profundidade" da rede.
+      Redes profundas (deep learning) podem ter centenas de camadas.
+
+      ## Funções de Ativação
+
+      As funções de ativação introduzem não-linearidade:
+      - Sigmoid: (0, 1)
+      - ReLU: max(0, x)
+      - Tanh: (-1, 1)
+
+      # 3. Treinamento e Retropropagação
+
+      O treinamento segue um ciclo:
+
+      1. Propagação direta dos dados
+      2. Cálculo do erro (loss function)
+      3. Retropropagação do erro
+      4. Atualização dos pesos via otimizador
+
+      Este ciclo se repete por muitas épocas. Técnicas como dropout e
+      regularização L2 previnem overfitting.
+
+      # 4. Aplicações Práticas
+
+      - Visão computacional (classificação de imagens, detecção de objetos)
+      - NLP (tradução, chatbots, análise de sentimento)
+      - Sistemas de recomendação
+      - Veículos autônomos
+      - Diagnóstico médico por imagem
+    MD
+
     hosts = discover_ollama_hosts
     if hosts.empty?
       puts "Nenhum host Ollama configurado ou acessivel."
@@ -137,7 +205,13 @@ namespace :ai do
       puts "Capability: #{capability}"
       puts "-" * 90
 
-      SAMPLES.each do |size_key, sample|
+      samples = if capability == "import_analyze"
+        { import: { label: "Documento markdown (~60 linhas)", text: IMPORT_ANALYZE_SAMPLE } }
+      else
+        SAMPLES
+      end
+
+      samples.each do |size_key, sample|
         puts "\n  #{sample[:label]} (#{sample[:text].length} chars):"
 
         hosts.each do |host|

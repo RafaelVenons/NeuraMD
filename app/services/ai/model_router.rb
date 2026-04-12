@@ -42,6 +42,8 @@ module Ai
           route_translation(text_length:, configured_model:, language:, target_language:, available_models:)
         when "import_analyze"
           selection(select_model("OLLAMA_ROUTE_IMPORT_ANALYZE_MODEL", ["qwen2.5:3b", "llama3.2:3b", "qwen2.5:1.5b"], configured_model:, available_models:), reason: "import_analyze")
+        when "import_enrich"
+          selection(select_model("OLLAMA_ROUTE_IMPORT_ENRICH_MODEL", ["qwen3.5:2b", "qwen3.5:4b", "qwen2.5:3b"], configured_model:, available_models:), reason: "import_enrich")
         else
           selection(configured_model, strategy: "configured_default", reason: "capability_fallback")
         end

@@ -33,18 +33,19 @@ RSpec.describe FileImports::ProcessJob do
     expect(import.suggested_splits.first).to include("title", "start_line", "end_line")
   end
 
-  it "transitions through converting → analyzing → preview when AI is available" do
+  it "transitions through converting → enriching → analyzing → preview when AI is available" do
     statuses = []
     allow_any_instance_of(FileImport).to receive(:broadcast_progress!) { |fi|
       statuses << fi.status
     }
     allow(Ai::ProviderRegistry).to receive(:enabled?).and_return(true)
     allow(Ai::ProviderRegistry).to receive(:available_provider_names).and_return(["ollama"])
+    allow(FileImports::ImportEnrichService).to receive(:call) { |args| args[:markdown] }
     allow(FileImports::AiAnalyzeService).to receive(:call).and_return(nil)
 
     described_class.perform_now(import.id)
 
-    expect(statuses).to include("converting", "analyzing", "preview")
+    expect(statuses).to include("converting", "enriching", "analyzing", "preview")
     expect(statuses).not_to include("importing", "completed")
   end
 

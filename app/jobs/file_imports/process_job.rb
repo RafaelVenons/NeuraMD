@@ -28,6 +28,17 @@ module FileImports
 
       markdown = report.markdown
 
+      # Phase 1.75: AI enrichment (formatting + wikilinks to existing notes)
+      if ai_enabled_for_import?
+        import.update!(status: "enriching")
+        import.broadcast_progress!
+
+        markdown = ImportEnrichService.call(
+          markdown: markdown,
+          filename: import.original_filename
+        )
+      end
+
       # Phase 2: AI-assisted analysis (best-effort)
       ai_suggestions = nil
       if ai_enabled_for_import?

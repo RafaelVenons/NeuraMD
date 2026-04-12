@@ -172,7 +172,8 @@
     background: var(--theme-bg-tertiary);
     color: var(--theme-text-muted);
   }
-  .fi-status--analyzing .fi-status__badge {
+  .fi-status--analyzing .fi-status__badge,
+  .fi-status--enriching .fi-status__badge {
     background: color-mix(in srgb, var(--theme-accent) 20%, transparent);
     color: var(--theme-accent);
   }
@@ -380,7 +381,8 @@
     font-weight: 500;
   }
   .fi-status-dot--pending { color: var(--theme-text-muted); }
-  .fi-status-dot--analyzing { color: var(--theme-accent); }
+  .fi-status-dot--analyzing,
+  .fi-status-dot--enriching { color: var(--theme-accent); }
   .fi-status-dot--converting,
   .fi-status-dot--importing { color: var(--theme-warning); }
   .fi-status-dot--preview { color: var(--theme-accent); }

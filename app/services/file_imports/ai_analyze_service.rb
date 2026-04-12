@@ -63,6 +63,9 @@ module FileImports
       return @provider_name if @provider_name.present?
 
       available = Ai::ProviderRegistry.available_provider_names
+      preferred = ENV["IMPORT_AI_PROVIDER"].to_s.presence
+      return preferred if preferred && available.include?(preferred)
+
       available.find { |n| n.start_with?("ollama") }
     end
 

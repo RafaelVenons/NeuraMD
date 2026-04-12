@@ -174,6 +174,38 @@ RSpec.describe Links::ExtractService do
       expect(result.first[:dst_note_id]).to eq(uuid2)
     end
 
+    # ── Slug-based wikilinks (Import Enrich Fase E1) ─────────
+
+    it "resolves a slug-based wikilink to its UUID" do
+      note = create(:note, title: "Slug Target")
+      result = described_class.call("See [[Slug Target|#{note.slug}]] here.")
+      expect(result).to eq([{dst_note_id: note.id, hier_role: nil}])
+    end
+
+    it "resolves a slug-based wikilink with role prefix" do
+      note = create(:note, title: "Parent Slug")
+      result = described_class.call("[[Parent Slug|f:#{note.slug}]]")
+      expect(result).to eq([{dst_note_id: note.id, hier_role: "target_is_parent"}])
+    end
+
+    it "ignores slug-based wikilinks that do not match any note" do
+      result = described_class.call("[[Ghost|nonexistent-slug-xyz]]")
+      expect(result).to eq([])
+    end
+
+    it "merges slug and uuid references to the same note" do
+      note = create(:note, title: "Same Note")
+      content = "[[Same|#{note.slug}]] and [[Parent|f:#{note.id}]]"
+      result = described_class.call(content)
+      expect(result).to eq([{dst_note_id: note.id, hier_role: "target_is_parent"}])
+    end
+
+    it "supports slug-based wikilinks with heading fragment" do
+      note = create(:note, title: "Heading Note")
+      result = described_class.call("[[Heading Note|#{note.slug}#intro]]")
+      expect(result).to eq([{dst_note_id: note.id, hier_role: nil, heading_slugs: ["intro"]}])
+    end
+
     it "keeps heading and block separate for different links" do
       uuid1 = SecureRandom.uuid
       uuid2 = SecureRandom.uuid

@@ -105,12 +105,34 @@ module Ai
       If the document should NOT be split, return a single entry covering all lines.
     PROMPT
 
+    IMPORT_ENRICH_PROMPT = <<~PROMPT.freeze
+      You receive a markdown document converted from a PDF/DOCX/PPTX and a catalogue of existing notes.
+
+      Do BOTH tasks in a single pass:
+      1. FORMATTING: Repair broken headings, paragraphs split by page breaks, slide artefacts,
+         malformed lists and inconsistent spacing. Preserve the original heading levels (H1-H6).
+      2. LINKS: Where concepts in the document match notes in the catalogue, insert wikilinks
+         using the format [[Note Title|f:slug]] (role `f:` = filed_under).
+         The slug is the value provided in the catalogue (Ruby resolves it to the UUID later).
+
+      Strict rules:
+      - DO NOT add new content, DO NOT remove content, DO NOT summarise or paraphrase.
+      - DO NOT invent links to notes that are not in the catalogue.
+      - Insert links inline in the natural flow of the text (never as a list at the end).
+      - At most ONE link per concept per section (do not repeat the same link).
+      - Keep the original language of the document.
+      - Keep all existing wikilinks intact (do not rewrite, merge, split or reorder them).
+
+      Respond ONLY with the corrected and enriched markdown — no explanations, no fences.
+    PROMPT
+
     PROMPTS = {
       "grammar_review" => GRAMMAR_REVIEW_PROMPT,
       "rewrite" => REWRITE_PROMPT,
       "translate" => TRANSLATE_PROMPT,
       "seed_note" => SEED_NOTE_PROMPT,
-      "import_analyze" => IMPORT_ANALYZE_PROMPT
+      "import_analyze" => IMPORT_ANALYZE_PROMPT,
+      "import_enrich" => IMPORT_ENRICH_PROMPT
     }.freeze
 
     def self.system_prompt(capability:, language: nil, target_language: nil)
