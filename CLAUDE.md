@@ -40,18 +40,21 @@ Arquivo `.mcp.json` na raiz do projeto consumidor:
 
 | Tool | Descrição |
 |------|-----------|
-| `search_notes` | Busca por texto em títulos e conteúdo |
+| `search_notes` | Busca por texto em títulos e conteúdo. `regex: true` habilita POSIX regex (case-insensitive, timeout 150ms). `property_filters` aceita JSON. |
 | `read_note` | Lê nota completa por slug (com outgoing links e backlinks) |
 | `list_tags` | Lista todas as tags com contagem de notas |
 | `notes_by_tag` | Filtra notas por tag |
 | `note_graph` | Vizinhos no grafo de uma nota |
+| `recent_changes` | Lista notas ordenadas por head revision desc. Filtros: `since` (ISO8601), `tag`, `limit` (≤100) |
 
 #### Escrita
 
 | Tool | Descrição |
 |------|-----------|
 | `create_note` | Cria nota com título, conteúdo markdown e tags |
-| `update_note` | Atualiza conteúdo, título, tags e links |
+| `update_note` | Atualiza conteúdo, título, tags, aliases, propriedades e links |
+| `patch_note` | Edita seção por heading: `append`, `prepend` ou `replace_section`. Cria checkpoint. Seção vai até o próximo heading de mesmo nível ou mais raso. |
+| `manage_property` | Get/set/delete de uma única propriedade tipada. Validações do `Properties::SetService`; set/delete criam checkpoint. Valor aceita JSON ou string bruta. |
 | `import_markdown` | Importa `.md` inteiro — cada heading vira nota |
 | `merge_notes` | Merge source→target: appenda conteúdo, retargeta links, cria redirect, soft-deleta source |
 | `find_anemic_notes` | Detecta notas com poucas linhas de conteúdo real, sugere targets de merge |
