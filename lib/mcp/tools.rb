@@ -12,6 +12,7 @@ module Mcp
         CreateNoteTool,
         UpdateNoteTool,
         PatchNoteTool,
+        ManagePropertyTool,
         ImportMarkdownTool,
         MergeNotesTool,
         FindAnemicNotesTool
