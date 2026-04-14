@@ -87,6 +87,23 @@ RSpec.describe Mcp::Tools::SearchNotesTool do
     end
   end
 
+  context "with regex: true" do
+    it "matches a POSIX regex pattern in title" do
+      response = described_class.call(query: "^Arqu", regex: true)
+      content = JSON.parse(response.content.first[:text])
+      titles = content["notes"].map { |n| n["title"] }
+
+      expect(titles).to include("Arquitetura do sistema")
+      expect(titles).not_to include("Busca textual avancada")
+      expect(content["regex"]).to be true
+    end
+
+    it "returns an error response for invalid regex" do
+      response = described_class.call(query: "(unclosed", regex: true)
+      expect(response.error?).to be true
+    end
+  end
+
   context "with aliases" do
     it "includes aliases in search results" do
       create(:note_alias, note: note1, name: "SysArch")

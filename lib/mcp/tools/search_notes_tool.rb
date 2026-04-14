@@ -11,22 +11,28 @@ module Mcp
       input_schema(
         type: "object",
         properties: {
-          query: {type: "string", description: "Text to search for in note titles and content"},
+          query: {type: "string", description: "Text to search for in note titles and content. When regex: true, this is a POSIX regex pattern."},
           limit: {type: "integer", description: "Maximum number of results (default: 10, max: 50)"},
+          regex: {type: "boolean", description: "If true, interpret query as a POSIX regex matched against title and content (case-insensitive). Defaults to false."},
           property_filters: {type: "string", description: 'JSON object of property key-value pairs to filter by. Example: \'{"status":"draft"}\'. Combine with query for text+property search, or use alone to list notes by property value.'}
         },
         required: ["query"]
       )
 
-      def self.call(query: "", limit: 10, property_filters: nil, server_context: nil)
+      def self.call(query: "", limit: 10, regex: false, property_filters: nil, server_context: nil)
         parsed_filters = parse_property_filters(property_filters)
 
         result = Search::NoteQueryService.call(
           scope: Note.active.includes(:note_aliases),
           query: query.to_s,
+          regex: regex,
           limit: [limit.to_i, 1].max,
           property_filters: parsed_filters
         )
+
+        if result.error.present?
+          return MCP::Tool::Response.new([{type: "text", text: result.error}], error: true)
+        end
 
         notes = result.notes.map do |note|
           {
@@ -38,7 +44,7 @@ module Mcp
           }
         end
 
-        json_response(notes: notes, query: query, has_more: result.has_more)
+        json_response(notes: notes, query: query, regex: regex, has_more: result.has_more)
       end
 
       def self.excerpt_for(note)
