@@ -17,10 +17,10 @@ RSpec.describe "MCP Server boot" do
   it "registers all NeuraMD tools" do
     tools = Mcp::Tools.all
     expect(tools).to be_an(Array)
-    expect(tools.length).to eq(10)
+    expect(tools.length).to eq(11)
     expect(tools.map(&:name_value)).to contain_exactly(
       "search_notes", "read_note", "list_tags", "notes_by_tag", "note_graph",
-      "create_note", "update_note", "import_markdown", "merge_notes", "find_anemic_notes"
+      "create_note", "update_note", "patch_note", "import_markdown", "merge_notes", "find_anemic_notes"
     )
   end
 
@@ -33,6 +33,6 @@ RSpec.describe "MCP Server boot" do
       params: {}
     })
     result = response[:result]
-    expect(result[:tools].length).to eq(10)
+    expect(result[:tools].length).to eq(11)
   end
 end

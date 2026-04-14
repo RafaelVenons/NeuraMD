@@ -11,6 +11,7 @@ module Mcp
         NoteGraphTool,
         CreateNoteTool,
         UpdateNoteTool,
+        PatchNoteTool,
         ImportMarkdownTool,
         MergeNotesTool,
         FindAnemicNotesTool
