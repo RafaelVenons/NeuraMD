@@ -9,6 +9,7 @@ module Mcp
         ListTagsTool,
         NotesByTagTool,
         NoteGraphTool,
+        RecentChangesTool,
         CreateNoteTool,
         UpdateNoteTool,
         PatchNoteTool,
