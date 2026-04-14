@@ -114,6 +114,51 @@ RSpec.describe "MCP Server integration", type: :integration do
       expect(content["links"].first["target_title"]).to eq("Vizinha")
     end
 
+    it "calls patch_note and edits a section" do
+      body = "# Intro\n\ntexto\n\n## Tarefas\n\n- a\n"
+      patched = create(:note, title: "Nota patch")
+      Notes::CheckpointService.call(note: patched, content: body, author: nil, accepted_ai_request: nil)
+
+      response = send_request(server,
+        method: "tools/call",
+        params: {name: "patch_note", arguments: {
+          slug: patched.slug, heading: "Tarefas", operation: "append", content: "- b"
+        }})
+
+      content = JSON.parse(response[:result][:content].first[:text])
+      expect(content["patched"]).to be true
+      md = patched.reload.head_revision.content_markdown
+      expect(md).to match(/- a.*- b/m)
+    end
+
+    it "calls manage_property set and get" do
+      create(:property_definition, key: "status", value_type: "enum", config: {"options" => %w[draft published]})
+
+      set_response = send_request(server,
+        method: "tools/call",
+        params: {name: "manage_property", arguments: {
+          slug: note.slug, operation: "set", key: "status", value: '"draft"'
+        }})
+      expect(JSON.parse(set_response[:result][:content].first[:text])["value"]).to eq("draft")
+
+      get_response = send_request(server,
+        method: "tools/call",
+        params: {name: "manage_property", arguments: {
+          slug: note.slug, operation: "get", key: "status"
+        }})
+      expect(JSON.parse(get_response[:result][:content].first[:text])["value"]).to eq("draft")
+    end
+
+    it "calls recent_changes and returns the note" do
+      response = send_request(server,
+        method: "tools/call",
+        params: {name: "recent_changes", arguments: {limit: 5}})
+
+      content = JSON.parse(response[:result][:content].first[:text])
+      slugs = content["notes"].map { |n| n["slug"] }
+      expect(slugs).to include(note.slug)
+    end
+
     it "returns error for unknown tool" do
       response = send_request(server,
         method: "tools/call",
