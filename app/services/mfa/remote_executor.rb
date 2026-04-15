@@ -4,18 +4,20 @@ require_relative "error"
 
 module Mfa
   class RemoteExecutor
-    SSH_HOST = ENV.fetch("MFA_SSH_HOST", "rafael@bazzite.local")
+    SSH_HOST = ENV.fetch("MFA_SSH_HOST", "venom@bazzite.local")
     SSH_TIMEOUT = ENV.fetch("MFA_SSH_TIMEOUT", "10").to_i
     EXEC_TIMEOUT = ENV.fetch("MFA_EXEC_TIMEOUT", "300").to_i # 5 min max
+
+    # MFA now runs inside a podman container on bazzite. Commands are wrapped
+    # with `podman exec` so callers keep passing plain `mfa ...` strings.
+    MFA_CONTAINER = ENV.fetch("MFA_CONTAINER", "mfa-service")
+
     def self.call(command)
       new.execute(command)
     end
 
-    # MFA conda env bin dir — needed because SSH non-login shells don't activate conda
-    MFA_ENV_BIN = ENV.fetch("MFA_ENV_BIN", "~/.local/share/mamba/envs/mfa/bin")
-
     def execute(command)
-      wrapped = "export PATH=#{MFA_ENV_BIN}:$PATH && #{command}"
+      wrapped = "podman exec #{MFA_CONTAINER} sh -c #{shell_quote(command)}"
       ssh_cmd = [
         "ssh",
         "-o", "ConnectTimeout=#{SSH_TIMEOUT}",
@@ -35,6 +37,12 @@ module Mfa
       end
 
       stdout
+    end
+
+    private
+
+    def shell_quote(str)
+      "'" + str.gsub("'", %q('\\''))+ "'"
     end
   end
 end

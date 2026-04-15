@@ -4,14 +4,14 @@ require_relative "error"
 
 module Mfa
   class AlignService
-    # Local (NFS) paths — where Rails reads/writes files
-    MFA_INPUT_ROOT = ENV.fetch("MFA_LOCAL_ROOT", "/mnt/AIrch/data/mfa") + "/input"
-    MFA_OUTPUT_ROOT = ENV.fetch("MFA_LOCAL_ROOT", "/mnt/AIrch/data/mfa") + "/output"
-    ALIGNMENT_ROOT = ENV.fetch("ALIGNMENT_ROOT", "/mnt/AIrch/data/alignments")
+    # Local paths — where Rails reads/writes files (must be a shared FS with bazzite)
+    MFA_INPUT_ROOT = ENV.fetch("MFA_LOCAL_ROOT", "/mnt/bazzite/mfa-data") + "/input"
+    MFA_OUTPUT_ROOT = ENV.fetch("MFA_LOCAL_ROOT", "/mnt/bazzite/mfa-data") + "/output"
+    ALIGNMENT_ROOT = ENV.fetch("ALIGNMENT_ROOT", "/mnt/bazzite/alignments")
 
-    # Remote paths — how the same dirs appear on the MFA host (via NFS bind)
-    MFA_REMOTE_INPUT = ENV.fetch("MFA_REMOTE_ROOT", "/srv/airch-data/mfa") + "/input"
-    MFA_REMOTE_OUTPUT = ENV.fetch("MFA_REMOTE_ROOT", "/srv/airch-data/mfa") + "/output"
+    # Remote paths — how the same dirs appear inside the MFA container (/data mount)
+    MFA_REMOTE_INPUT = ENV.fetch("MFA_REMOTE_ROOT", "/data") + "/input"
+    MFA_REMOTE_OUTPUT = ENV.fetch("MFA_REMOTE_ROOT", "/data") + "/output"
 
     DICTIONARY_MAP = {
       "pt-BR" => "portuguese_brazil_mfa",
@@ -92,7 +92,7 @@ module Mfa
     end
 
     def run_alignment
-      mfa_bin = ENV.fetch("MFA_BIN", "~/.local/share/mamba/envs/mfa/bin/mfa")
+      mfa_bin = ENV.fetch("MFA_BIN", "mfa")
       mfa_cmd = [
         mfa_bin, "align",
         File.join(MFA_REMOTE_INPUT, @asset.id.to_s),

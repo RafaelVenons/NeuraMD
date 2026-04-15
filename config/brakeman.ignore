@@ -1,7 +1,7 @@
 {
   "ignored_warnings": [
     {
-      "fingerprint": "d43d8e93226fe7fb7a416f7be05c5edf44ede0f77b9cf593aaecc8b83b1543b3",
+      "fingerprint": "9671fc5962d80a76172eabb768cd7ed3f271a4c70c0bbdff721d4b64c0e24a53",
       "note": "MFA RemoteExecutor: command is built internally from trusted ENV values, not user input"
     },
     {
