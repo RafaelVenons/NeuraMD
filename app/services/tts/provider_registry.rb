@@ -33,7 +33,7 @@ module Tts
       "elevenlabs" => "https://api.elevenlabs.io",
       "fish_audio" => "https://api.fish.audio",
       "gemini" => "https://generativelanguage.googleapis.com",
-      "kokoro" => "http://AIrch:8880"
+      "kokoro" => "http://bazzite.local:8880"
     }.freeze
 
     class << self

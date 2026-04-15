@@ -211,7 +211,7 @@ import_markdown(
 
 ## Testes
 
-- **AIrch** é o host preferencial para RSpec via `bin/test-airch`.
+- **bazzite** é o host preferencial para RSpec via `bin/test-bazzite`.
 - **HomeLab** para testes que dependem de interface real local.
 - **Playwright** via `bin/e2e-local` no HomeLab (com `bin/start` rodando).
 - TDD estrito: teste falhando primeiro, depois implementação.

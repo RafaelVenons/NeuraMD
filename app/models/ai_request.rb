@@ -104,7 +104,7 @@ class AiRequest < ApplicationRecord
   def remote_status_hint(now: Time.current)
     return nil unless provider.start_with?("ollama")
 
-    host = provider == "ollama" ? "AIrch" : provider.delete_prefix("ollama_").capitalize
+    host = provider == "ollama" ? "Bazzite" : provider.delete_prefix("ollama_").capitalize
     return "Job remoto aguardando a vez na fila local. Pode fechar e voltar depois." if queued?
     return "Nova tentativa agendada para reenviar ao #{host}." if retrying?
     return "Job remoto longo no #{host}. Pode fechar e voltar depois." if remote_long_job?(now:)

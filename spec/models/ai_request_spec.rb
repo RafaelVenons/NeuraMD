@@ -76,11 +76,11 @@ RSpec.describe AiRequest, type: :model do
 
     expect(request.duration_human).to match(/2min/)
     expect(request.remote_long_job?).to be(true)
-    expect(request.remote_status_hint).to eq("Job remoto longo no AIrch. Pode fechar e voltar depois.")
+    expect(request.remote_status_hint).to eq("Job remoto longo no Bazzite. Pode fechar e voltar depois.")
     expect(request.realtime_payload).to include(
       duration_human: request.duration_human,
       remote_long_job: true,
-      remote_hint: "Job remoto longo no AIrch. Pode fechar e voltar depois."
+      remote_hint: "Job remoto longo no Bazzite. Pode fechar e voltar depois."
     )
   end
 

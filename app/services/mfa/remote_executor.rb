@@ -4,7 +4,7 @@ require_relative "error"
 
 module Mfa
   class RemoteExecutor
-    SSH_HOST = ENV.fetch("MFA_SSH_HOST", "rafael@AIrch.local")
+    SSH_HOST = ENV.fetch("MFA_SSH_HOST", "rafael@bazzite.local")
     SSH_TIMEOUT = ENV.fetch("MFA_SSH_TIMEOUT", "10").to_i
     EXEC_TIMEOUT = ENV.fetch("MFA_EXEC_TIMEOUT", "300").to_i # 5 min max
     def self.call(command)

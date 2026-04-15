@@ -9,7 +9,7 @@ module Mfa
     MFA_OUTPUT_ROOT = ENV.fetch("MFA_LOCAL_ROOT", "/mnt/AIrch/data/mfa") + "/output"
     ALIGNMENT_ROOT = ENV.fetch("ALIGNMENT_ROOT", "/mnt/AIrch/data/alignments")
 
-    # Remote paths — how the same dirs appear on AIrch (via NFS bind)
+    # Remote paths — how the same dirs appear on the MFA host (via NFS bind)
     MFA_REMOTE_INPUT = ENV.fetch("MFA_REMOTE_ROOT", "/srv/airch-data/mfa") + "/input"
     MFA_REMOTE_OUTPUT = ENV.fetch("MFA_REMOTE_ROOT", "/srv/airch-data/mfa") + "/output"
 

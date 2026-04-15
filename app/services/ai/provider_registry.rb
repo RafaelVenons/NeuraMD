@@ -241,7 +241,7 @@ module Ai
       end
 
       def default_base_url(name)
-        return "http://AIrch:11434" if name == "ollama"
+        return "http://bazzite.local:11434" if name == "ollama"
         return nil if name.start_with?("ollama") # ollama_* must configure their own base_url
 
         {
