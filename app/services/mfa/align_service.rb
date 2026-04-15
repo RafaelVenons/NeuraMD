@@ -4,12 +4,16 @@ require_relative "error"
 
 module Mfa
   class AlignService
-    # Local paths — where Rails reads/writes files (must be a shared FS with bazzite)
-    MFA_INPUT_ROOT = ENV.fetch("MFA_LOCAL_ROOT", "/mnt/bazzite/mfa-data") + "/input"
-    MFA_OUTPUT_ROOT = ENV.fetch("MFA_LOCAL_ROOT", "/mnt/bazzite/mfa-data") + "/output"
-    ALIGNMENT_ROOT = ENV.fetch("ALIGNMENT_ROOT", "/mnt/bazzite/alignments")
+    # Local paths — Rails writes the WAV/transcript here, then rsyncs to bazzite.
+    MFA_INPUT_ROOT = ENV.fetch("MFA_LOCAL_ROOT", Rails.root.join("tmp/mfa").to_s) + "/input"
+    MFA_OUTPUT_ROOT = ENV.fetch("MFA_LOCAL_ROOT", Rails.root.join("tmp/mfa").to_s) + "/output"
+    ALIGNMENT_ROOT = ENV.fetch("ALIGNMENT_ROOT", Rails.root.join("storage/alignments").to_s)
 
-    # Remote paths — how the same dirs appear inside the MFA container (/data mount)
+    # Host paths on bazzite — mapped into the container at $MFA_REMOTE_ROOT.
+    MFA_HOST_INPUT = ENV.fetch("MFA_HOST_ROOT", "/home/venom/mfa-data") + "/input"
+    MFA_HOST_OUTPUT = ENV.fetch("MFA_HOST_ROOT", "/home/venom/mfa-data") + "/output"
+
+    # Paths inside the MFA container (what the `mfa` CLI sees).
     MFA_REMOTE_INPUT = ENV.fetch("MFA_REMOTE_ROOT", "/data") + "/input"
     MFA_REMOTE_OUTPUT = ENV.fetch("MFA_REMOTE_ROOT", "/data") + "/output"
 
@@ -58,7 +62,9 @@ module Mfa
     def perform
       validate!
       prepare_input
+      push_input_to_bazzite
       run_alignment
+      pull_output_from_bazzite
       alignment_data = parse_output
       store_alignment(alignment_data)
       cleanup
@@ -222,9 +228,20 @@ module Mfa
       File.write(json_dest, data.to_json)
     end
 
+    def push_input_to_bazzite
+      executor.push_dir(input_dir, host_input_dir)
+    end
+
+    def pull_output_from_bazzite
+      executor.pull_dir(host_output_dir, output_dir)
+    end
+
     def cleanup
       FileUtils.rm_rf(input_dir)
       FileUtils.rm_rf(output_dir)
+      executor.execute_host_cleanup(host_input_dir, host_output_dir)
+    rescue => e
+      Rails.logger.warn("[MFA] cleanup warning: #{e.message}")
     end
 
     def input_dir
@@ -233,6 +250,14 @@ module Mfa
 
     def output_dir
       File.join(MFA_OUTPUT_ROOT, @asset.id.to_s)
+    end
+
+    def host_input_dir
+      File.join(MFA_HOST_INPUT, @asset.id.to_s)
+    end
+
+    def host_output_dir
+      File.join(MFA_HOST_OUTPUT, @asset.id.to_s)
     end
 
     def dictionary

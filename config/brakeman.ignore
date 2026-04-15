@@ -5,6 +5,14 @@
       "note": "MFA RemoteExecutor: command is built internally from trusted ENV values, not user input"
     },
     {
+      "fingerprint": "863f5b43018e0419c488d89cf0c1d7a734786cf46780b0dc4f11319908bf6555",
+      "note": "MFA RemoteExecutor: host command is built from asset id + trusted ENV, not user input"
+    },
+    {
+      "fingerprint": "9dd41d3aad245a84f26cb0af7159ceb2b26fa1539185e7a2d55278ff2aecd6cd",
+      "note": "MFA RemoteExecutor: host command is built from asset id + trusted ENV, not user input"
+    },
+    {
       "fingerprint": "cf74f65ea2ddd8b0319156a88dbfd4494700438c52be056a3b55fe40c87c0bed",
       "note": "PropertiesController: permit! is intentional — property keys are dynamic and validated by Properties::SetService"
     }

@@ -30,6 +30,9 @@ RSpec.describe Mfa::AlignService do
   before do
     allow(Mfa::RemoteExecutor).to receive(:new).and_return(executor)
     allow(executor).to receive(:execute)
+    allow(executor).to receive(:push_dir)
+    allow(executor).to receive(:pull_dir)
+    allow(executor).to receive(:execute_host_cleanup)
     # Stub filesystem operations so we don't need ffmpeg or real files
     allow_any_instance_of(described_class).to receive(:prepare_input)
     allow_any_instance_of(described_class).to receive(:cleanup)
