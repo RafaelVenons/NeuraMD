@@ -102,6 +102,9 @@ Rails.application.routes.draw do
     end
   end
 
+  get "/tentacles",       to: "tentacles/dashboard#index", as: :tentacles_dashboard
+  get "/tentacles/multi", to: "tentacles/dashboard#multi", as: :tentacles_multi
+
   if Rails.env.test?
     namespace :test_support do
       post "ai_requests/:id/transition", to: "ai_requests#transition"

@@ -15,6 +15,7 @@
       <h1><%= @note.title %></h1>
       <p class="nm-tentacle__meta">
         Worktree: <code><%= @worktree %></code>
+        · <%= link_to "↗ Dashboard", tentacles_dashboard_path, class: "nm-tentacle__meta-link" %>
       </p>
     </div>
     <div class="nm-tentacle__actions">
@@ -93,6 +94,11 @@
     color: rgba(255, 255, 255, 0.5);
     margin: 0.25rem 0 0;
   }
+  .nm-tentacle__meta-link {
+    color: #a5b4fc;
+    text-decoration: none;
+  }
+  .nm-tentacle__meta-link:hover { text-decoration: underline; }
   .nm-tentacle__actions {
     display: flex;
     align-items: center;
