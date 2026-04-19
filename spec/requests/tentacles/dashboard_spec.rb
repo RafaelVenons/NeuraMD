@@ -90,6 +90,20 @@ RSpec.describe "Tentacles dashboard", type: :request do
       expect(response.body).to include("Other Note")
     end
 
+    it "flags alive panels so the Stimulus controller auto-reattaches" do
+      fake_session = instance_double(TentacleRuntime::Session, pid: 4242, alive?: true, started_at: Time.current)
+      allow(fake_session).to receive(:instance_variable_get).with(:@command).and_return(["bash", "-l"])
+      TentacleRuntime::SESSIONS[note.id] = fake_session
+
+      get tentacles_multi_path, params: { ids: [note.id] }
+
+      expect(response.body).to include("data-tentacle-alive-value=\"true\"")
+      expect(response.body).to match(/data-tentacle-target="startButton"[^>]*hidden/)
+      expect(response.body).not_to match(/data-tentacle-target="stopButton"[^>]*hidden/)
+    ensure
+      TentacleRuntime::SESSIONS.delete(note.id)
+    end
+
     it "blocks access when tentacles are disabled" do
       allow(Tentacles::Authorization).to receive(:enabled?).and_return(false)
 

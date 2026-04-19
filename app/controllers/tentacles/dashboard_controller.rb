@@ -40,8 +40,8 @@ module Tentacles
       note = Note.active.find_by(id: id)
       return nil unless note
 
-      session = TentacleRuntime.get(id)
-      { tentacle_id: id, note: note, alive: session&.alive? || false }
+      session = TentacleRuntime.get(note.id)
+      { tentacle_id: note.id, note: note, alive: session&.alive? || false }
     end
 
     def ensure_tentacles_enabled!

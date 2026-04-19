@@ -15,7 +15,8 @@ export default class extends Controller {
     tentacleId: String,
     startUrl: String,
     stopUrl: String,
-    csrf: String
+    csrf: String,
+    alive: Boolean
   }
 
   connect() {
@@ -38,6 +39,16 @@ export default class extends Controller {
 
     this.resizeObserver = new ResizeObserver(() => this.handleResize())
     this.resizeObserver.observe(this.terminalTarget)
+
+    if (this.aliveValue) this.attachExisting()
+  }
+
+  attachExisting() {
+    this.terminal.writeln(`\x1b[90m[tentacle ${this.tentacleIdValue} — reattached]\x1b[0m`)
+    this.subscribe()
+    this.setStatus("running")
+    if (this.hasStartButtonTarget) this.startButtonTarget.hidden = true
+    if (this.hasStopButtonTarget) this.stopButtonTarget.hidden = false
   }
 
   disconnect() {

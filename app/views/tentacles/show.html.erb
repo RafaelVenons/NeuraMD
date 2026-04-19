@@ -8,7 +8,8 @@
      data-tentacle-tentacle-id-value="<%= @tentacle_id %>"
      data-tentacle-start-url-value="<%= note_tentacle_path(@note.slug, format: :json) %>"
      data-tentacle-stop-url-value="<%= note_tentacle_path(@note.slug, format: :json) %>"
-     data-tentacle-csrf-value="<%= form_authenticity_token %>">
+     data-tentacle-csrf-value="<%= form_authenticity_token %>"
+     data-tentacle-alive-value="<%= @session&.alive? || false %>">
 
   <header class="nm-tentacle__header">
     <div class="nm-tentacle__title">
