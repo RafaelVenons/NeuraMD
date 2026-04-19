@@ -17,6 +17,8 @@ class Note < ApplicationRecord
   has_many :note_blocks, dependent: :destroy
   has_many :note_tags, dependent: :destroy
   has_many :tags, through: :note_tags
+  has_many :outgoing_agent_messages, class_name: "AgentMessage", foreign_key: :from_note_id, dependent: :destroy
+  has_many :incoming_agent_messages, class_name: "AgentMessage", foreign_key: :to_note_id,   dependent: :destroy
 
   validates :title, presence: true
   validates :slug, presence: true, uniqueness: {case_sensitive: false}

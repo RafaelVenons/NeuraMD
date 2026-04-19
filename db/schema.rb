@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_04_11_034809) do
+ActiveRecord::Schema[8.1].define(version: 2026_04_19_230606) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
   enable_extension "pg_trgm"
@@ -47,6 +47,17 @@ ActiveRecord::Schema[8.1].define(version: 2026_04_11_034809) do
     t.uuid "blob_id", null: false
     t.string "variation_digest", null: false
     t.index ["blob_id", "variation_digest"], name: "index_active_storage_variant_records_uniqueness", unique: true
+  end
+
+  create_table "agent_messages", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.text "content", null: false
+    t.datetime "created_at", null: false
+    t.datetime "delivered_at"
+    t.uuid "from_note_id", null: false
+    t.uuid "to_note_id", null: false
+    t.datetime "updated_at", null: false
+    t.index ["from_note_id", "created_at"], name: "idx_agent_messages_outbox"
+    t.index ["to_note_id", "delivered_at", "created_at"], name: "idx_agent_messages_inbox"
   end
 
   create_table "ai_providers", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
@@ -362,6 +373,8 @@ ActiveRecord::Schema[8.1].define(version: 2026_04_11_034809) do
 
   add_foreign_key "active_storage_attachments", "active_storage_blobs", column: "blob_id"
   add_foreign_key "active_storage_variant_records", "active_storage_blobs", column: "blob_id"
+  add_foreign_key "agent_messages", "notes", column: "from_note_id", on_delete: :cascade
+  add_foreign_key "agent_messages", "notes", column: "to_note_id", on_delete: :cascade
   add_foreign_key "ai_requests", "note_revisions"
   add_foreign_key "canvas_edges", "canvas_documents", on_delete: :cascade
   add_foreign_key "canvas_edges", "canvas_nodes", column: "source_node_id", on_delete: :cascade
