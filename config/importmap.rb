@@ -195,3 +195,6 @@ pin "obliterator/foreach", to: "obliterator--foreach.js" # @2.0.5
 pin "obliterator/_/TukZPN2J", to: "_/TukZPN2J.js"
 pin "obliterator/iterator", to: "obliterator--iterator.js" # @2.0.5
 pin "pandemonium/shuffle-in-place", to: "pandemonium--shuffle-in-place.js" # @2.4.1
+pin "@xterm/addon-fit", to: "@xterm--addon-fit.js" # @0.11.0
+pin "@xterm/xterm", to: "@xterm--xterm.js" # @6.0.0
+pin "@rails/actioncable", to: "@rails--actioncable.js" # @8.1.300

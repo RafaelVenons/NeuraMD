@@ -95,6 +95,11 @@ Rails.application.routes.draw do
       get   :tts_audio,     to: "tts#audio"
       get   :tts_library,   to: "tts#library"
     end
+
+    resource :tentacle, only: [:show, :create, :destroy] do
+      get "todos", to: "tentacles/todos#show", as: :todos
+      patch "todos", to: "tentacles/todos#update"
+    end
   end
 
   if Rails.env.test?
