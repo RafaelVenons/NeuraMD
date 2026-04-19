@@ -27,16 +27,17 @@ RSpec.describe "MCP Server integration", type: :integration do
   end
 
   describe "tools/list" do
-    it "lists all 14 tools" do
+    it "lists all 17 tools" do
       response = send_request(server, method: "tools/list")
       tools = response[:result][:tools]
 
-      expect(tools.length).to eq(14)
+      expect(tools.length).to eq(17)
       names = tools.map { |t| t[:name] }
       expect(names).to contain_exactly(
         "search_notes", "read_note", "list_tags", "notes_by_tag", "note_graph",
         "recent_changes", "create_note", "update_note", "patch_note", "manage_property",
-        "import_markdown", "merge_notes", "find_anemic_notes", "bulk_remove_tag"
+        "import_markdown", "merge_notes", "find_anemic_notes", "bulk_remove_tag",
+        "send_agent_message", "read_agent_inbox", "spawn_child_tentacle"
       )
     end
 

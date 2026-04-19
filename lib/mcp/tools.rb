@@ -17,7 +17,10 @@ module Mcp
         ImportMarkdownTool,
         MergeNotesTool,
         FindAnemicNotesTool,
-        BulkRemoveTagTool
+        BulkRemoveTagTool,
+        SendAgentMessageTool,
+        ReadAgentInboxTool,
+        SpawnChildTentacleTool
       ]
     end
   end

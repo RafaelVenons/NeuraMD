@@ -60,6 +60,14 @@ Arquivo `.mcp.json` na raiz do projeto consumidor:
 | `find_anemic_notes` | Detecta notas com poucas linhas de conteúdo real, sugere targets de merge (prioriza outgoing `target_is_parent`, depois incoming `target_is_child`, por fim linked_from genérico) |
 | `bulk_remove_tag` | Remove uma tag de todas as notas em uma chamada. `delete_tag: true` também destrói o Tag. Não versiona (tag não entra em checkpoint). |
 
+#### Tentáculos / mensageria entre agentes
+
+| Tool | Descrição |
+|------|-----------|
+| `spawn_child_tentacle` | Cria nota-filha wikilinkada ao pai via `[[Parent\|f:uuid]]`, com tag `tentacle` (+ extras opcionais) e `## Todos` vazio. Retorna slug e `tentacle_url`. |
+| `send_agent_message` | Persiste mensagem de uma nota para outra. Cap 8KB por mensagem. Trunca com marcador no excedente. Rejeita auto-envio. |
+| `read_agent_inbox` | Lê inbox de uma nota (newest first). `only_pending: true` filtra entregues. `mark_delivered: true` marca pendentes como entregues após leitura. |
+
 ### Uso do MCP
 
 - Projetos externos devem acessar o acervo via MCP, não referenciando a pasta do NeuraMD.
