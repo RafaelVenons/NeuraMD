@@ -49,6 +49,7 @@ class TentacleRuntime
       "TERM" => "xterm-256color",
       "LANG" => ENV["LANG"] || "en_US.UTF-8"
     }.freeze
+    LIVE_TRANSCRIPT_CAP = 200_000
 
     attr_reader :tentacle_id, :pid, :started_at
 
@@ -60,6 +61,7 @@ class TentacleRuntime
       @on_exit = on_exit
       @transcript = +""
       @transcript_mutex = Mutex.new
+      @transcript_dropped_bytes = 0
       @on_exit_fired = false
       @on_exit_mutex = Mutex.new
       @started_at = Time.current
@@ -68,7 +70,12 @@ class TentacleRuntime
     end
 
     def transcript
-      @transcript_mutex.synchronize { @transcript.dup }
+      @transcript_mutex.synchronize do
+        next @transcript.dup if @transcript_dropped_bytes.zero?
+
+        marker = "[live-truncated — dropped #{@transcript_dropped_bytes} leading bytes]\n"
+        marker + @transcript
+      end
     end
 
     def write(data)
@@ -154,7 +161,16 @@ class TentacleRuntime
     public
 
     def append_to_transcript(chunk)
-      @transcript_mutex.synchronize { @transcript << chunk }
+      @transcript_mutex.synchronize do
+        @transcript << chunk
+        next if @transcript.bytesize <= LIVE_TRANSCRIPT_CAP
+
+        overflow = @transcript.bytesize - LIVE_TRANSCRIPT_CAP
+        tail = @transcript.byteslice(overflow, LIVE_TRANSCRIPT_CAP)
+        tail.force_encoding(Encoding::UTF_8).scrub!
+        @transcript_dropped_bytes += overflow
+        @transcript = +tail
+      end
     end
 
     def fire_on_exit(exit_status:)

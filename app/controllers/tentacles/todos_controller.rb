@@ -1,5 +1,6 @@
 module Tentacles
   class TodosController < ApplicationController
+    before_action :ensure_tentacles_enabled!
     before_action :set_note
 
     def show
@@ -14,6 +15,12 @@ module Tentacles
     end
 
     private
+
+    def ensure_tentacles_enabled!
+      return if Tentacles::Authorization.enabled?
+
+      render json: { error: "Tentacles disabled in this environment." }, status: :forbidden
+    end
 
     def set_note
       @note = Note.active.find_by!(slug: params[:note_slug])

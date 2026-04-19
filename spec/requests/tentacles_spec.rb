@@ -99,4 +99,33 @@ RSpec.describe "Tentacles", type: :request do
       expect(TentacleRuntime.get(note.id)).to be_nil
     end
   end
+
+  describe "when tentacles are disabled" do
+    before do
+      sign_in user
+      allow(Tentacles::Authorization).to receive(:enabled?).and_return(false)
+    end
+
+    it "blocks GET with a redirect" do
+      get note_tentacle_path(note.slug)
+      expect(response).to redirect_to(root_path)
+    end
+
+    it "blocks POST with 403 JSON and does not start a session" do
+      expect(TentacleRuntime).not_to receive(:start)
+
+      post note_tentacle_path(note.slug, format: :json),
+        params: { command: "bash" }.to_json,
+        headers: { "Content-Type" => "application/json" }
+
+      expect(response).to have_http_status(:forbidden)
+      body = JSON.parse(response.body)
+      expect(body["error"]).to match(/disabled/i)
+    end
+
+    it "blocks DELETE with 403 JSON" do
+      delete note_tentacle_path(note.slug, format: :json)
+      expect(response).to have_http_status(:forbidden)
+    end
+  end
 end

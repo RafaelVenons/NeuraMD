@@ -59,4 +59,24 @@ RSpec.describe "Tentacle todos", type: :request do
       expect(response).to have_http_status(:bad_request)
     end
   end
+
+  describe "when tentacles are disabled" do
+    before do
+      sign_in user
+      allow(Tentacles::Authorization).to receive(:enabled?).and_return(false)
+    end
+
+    it "blocks GET with 403" do
+      get todos_note_tentacle_path(note.slug, format: :json)
+      expect(response).to have_http_status(:forbidden)
+    end
+
+    it "blocks PATCH with 403" do
+      patch todos_note_tentacle_path(note.slug, format: :json),
+        params: { todos: [{ text: "x" }] }.to_json,
+        headers: { "Content-Type" => "application/json" }
+
+      expect(response).to have_http_status(:forbidden)
+    end
+  end
 end

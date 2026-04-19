@@ -1,5 +1,7 @@
 class TentacleChannel < ApplicationCable::Channel
   def subscribed
+    return reject unless Tentacles::Authorization.enabled?
+
     tentacle_id = params[:tentacle_id]
     return reject unless tentacle_id.present?
 

@@ -118,6 +118,31 @@ RSpec.describe TentacleRuntime do
     end
   end
 
+  describe "live transcript cap" do
+    it "keeps only the tail when the buffer exceeds LIVE_TRANSCRIPT_CAP" do
+      session = described_class.start(tentacle_id: tentacle_id, command: ["sleep", "5"])
+      cap = TentacleRuntime::Session::LIVE_TRANSCRIPT_CAP
+
+      session.append_to_transcript("A" * 1_000)
+      session.append_to_transcript("B" * (cap + 500))
+
+      transcript = session.transcript
+      expect(transcript).to start_with("[live-truncated")
+      expect(transcript).to include("1500 leading bytes")
+      expect(transcript.bytesize).to be <= cap + 128
+      expect(transcript).not_to include("A")
+      expect(transcript.count("B")).to eq(cap)
+    end
+
+    it "does not mark truncation when under the cap" do
+      session = described_class.start(tentacle_id: tentacle_id, command: ["sleep", "5"])
+
+      session.append_to_transcript("hello world")
+
+      expect(session.transcript).to eq("hello world")
+    end
+  end
+
   def wait_until(timeout: 3.0, interval: 0.05)
     deadline = Time.current + timeout
     loop do

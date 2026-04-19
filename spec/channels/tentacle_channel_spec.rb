@@ -11,6 +11,14 @@ RSpec.describe TentacleChannel, type: :channel do
     expect(subscription).to be_rejected
   end
 
+  it "rejects subscriptions when tentacles are disabled" do
+    allow(Tentacles::Authorization).to receive(:enabled?).and_return(false)
+
+    subscribe(tentacle_id: tentacle_id)
+
+    expect(subscription).to be_rejected
+  end
+
   it "streams for the requested tentacle_id" do
     subscribe(tentacle_id: tentacle_id)
 

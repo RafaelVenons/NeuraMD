@@ -1,4 +1,5 @@
 class TentaclesController < ApplicationController
+  before_action :ensure_tentacles_enabled!
   before_action :set_note
 
   KNOWN_COMMANDS = {
@@ -57,6 +58,15 @@ class TentaclesController < ApplicationController
   end
 
   private
+
+  def ensure_tentacles_enabled!
+    return if Tentacles::Authorization.enabled?
+
+    respond_to do |fmt|
+      fmt.json { render json: { error: "Tentacles disabled in this environment." }, status: :forbidden }
+      fmt.html { redirect_to root_path, alert: "Tentáculos desativados neste ambiente." }
+    end
+  end
 
   def set_note
     @note = Note.active.find_by!(slug: params[:note_slug])
