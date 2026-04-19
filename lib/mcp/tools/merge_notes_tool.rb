@@ -38,6 +38,10 @@ module Mcp
         MCP::Tool::Response.new([{type: "text", text: data.to_json}])
       rescue ArgumentError => e
         error_response(e.message)
+      rescue ActiveRecord::RecordInvalid => e
+        messages = e.record&.errors&.full_messages
+        detail = messages.presence&.join("; ") || e.message
+        error_response("Merge failed: #{detail}")
       end
 
       def self.error_response(message)

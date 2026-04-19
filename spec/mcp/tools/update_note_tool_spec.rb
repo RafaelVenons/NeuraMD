@@ -163,6 +163,24 @@ RSpec.describe Mcp::Tools::UpdateNoteTool do
     expect(note.note_aliases.reload.pluck(:name)).to contain_exactly("Cardio", "Heart")
   end
 
+  it "deactivates outgoing links when content_markdown replaces body without them" do
+    parent = create(:note, :with_head_revision, title: "Parent")
+    initial = "# Child\n\n[[Parent|f:#{parent.id}]]"
+    rev = create(:note_revision, note: note, content_markdown: initial)
+    note.update_columns(head_revision_id: rev.id)
+    Links::SyncService.call(src_note: note, revision: rev, content: initial)
+    expect(note.active_outgoing_links.where(dst_note_id: parent.id)).to exist
+
+    described_class.call(
+      slug: note.slug,
+      content_markdown: "# Child renovado\n\nSem links"
+    )
+
+    link = NoteLink.find_by(src_note_id: note.id, dst_note_id: parent.id)
+    expect(link).to be_present
+    expect(link.active).to be false
+  end
+
   it "finds note by alias for update" do
     create(:note_alias, note: note, name: "Original Alias")
     response = described_class.call(slug: "Original Alias", add_tags: "test-tag")

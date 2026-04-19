@@ -99,6 +99,39 @@ RSpec.describe Mcp::Tools::MergeNotesTool do
       expect(response.content.first[:text]).to include("Cannot merge a note into itself")
     end
 
+    it "succeeds when target body contains a wikilink to source" do
+      Notes::CheckpointService.call(
+        note: target,
+        content: "Ver [[Source|c:#{source.id}]]"
+      )
+
+      response = described_class.call(
+        source_slug: source.slug,
+        target_slug: target.slug
+      )
+      data = JSON.parse(response.content.first[:text])
+
+      expect(response.error?).to be false
+      expect(data["merged"]).to be true
+    end
+
+    it "returns a readable error when MergeService raises RecordInvalid" do
+      invalid_record = SlugRedirect.new
+      invalid_record.errors.add(:slug, "já existe no banco")
+      allow(Notes::MergeService).to receive(:call)
+        .and_raise(ActiveRecord::RecordInvalid.new(invalid_record))
+
+      response = described_class.call(
+        source_slug: source.slug,
+        target_slug: target.slug
+      )
+
+      expect(response.error?).to be true
+      text = response.content.first[:text]
+      expect(text).not_to include("Translation missing")
+      expect(text).to include("já existe")
+    end
+
     it "follows slug redirects for source" do
       old_slug = "old-source-slug"
       SlugRedirect.create!(slug: old_slug, note: source)

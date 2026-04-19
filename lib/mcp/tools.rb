@@ -16,7 +16,8 @@ module Mcp
         ManagePropertyTool,
         ImportMarkdownTool,
         MergeNotesTool,
-        FindAnemicNotesTool
+        FindAnemicNotesTool,
+        BulkRemoveTagTool
       ]
     end
   end

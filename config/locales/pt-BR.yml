@@ -1,0 +1,19 @@
+pt-BR:
+  errors:
+    format: "%{attribute} %{message}"
+    messages:
+      blank: "não pode ficar em branco"
+      invalid: "é inválido"
+      taken: "já foi cadastrado"
+      required: "é obrigatório"
+      inclusion: "não é válido"
+      exclusion: "é reservado"
+      confirmation: "não coincide"
+      record_invalid: "A validação falhou: %{errors}"
+  activerecord:
+    errors:
+      messages:
+        record_invalid: "A validação falhou: %{errors}"
+        restrict_dependent_destroy:
+          has_one: "Não pode apagar: existe um %{record} dependente"
+          has_many: "Não pode apagar: existem %{record} dependentes"

@@ -97,6 +97,39 @@ RSpec.describe Mcp::Tools::FindAnemicNotesTool do
       expect(anemic["merge_target"]["relation"]).to eq("parent")
     end
 
+    it "suggests parent via incoming target_is_child when parent owns the c: list" do
+      parent = create(:note, :with_head_revision, title: "Parent Owns List")
+      child = create(:note, title: "Child Anemic (no outgoing f:)")
+      rev = create(:note_revision, note: child, content_markdown: "Tiny")
+      child.update_columns(head_revision_id: rev.id)
+      create(:note_link, src_note: parent, dst_note: child, hier_role: "target_is_child")
+
+      response = described_class.call(max_lines: 10)
+      data = JSON.parse(response.content.first[:text])
+
+      anemic = data["anemic_notes"].find { |n| n["slug"] == child.slug }
+      expect(anemic["merge_target"]).to be_present
+      expect(anemic["merge_target"]["slug"]).to eq(parent.slug)
+      expect(anemic["merge_target"]["relation"]).to eq("parent")
+    end
+
+    it "prefers parent over generic linked_from when both exist" do
+      parent = create(:note, :with_head_revision, title: "Real Parent")
+      referrer = create(:note, :with_head_revision, title: "Unrelated Referrer")
+      child = create(:note, title: "Child With Both")
+      rev = create(:note_revision, note: child, content_markdown: "Tiny")
+      child.update_columns(head_revision_id: rev.id)
+      create(:note_link, src_note: parent, dst_note: child, hier_role: "target_is_child")
+      create(:note_link, src_note: referrer, dst_note: child)
+
+      response = described_class.call(max_lines: 10)
+      data = JSON.parse(response.content.first[:text])
+
+      anemic = data["anemic_notes"].find { |n| n["slug"] == child.slug }
+      expect(anemic["merge_target"]["slug"]).to eq(parent.slug)
+      expect(anemic["merge_target"]["relation"]).to eq("parent")
+    end
+
     it "suggests incoming link as merge target when no parent" do
       referrer = create(:note, :with_head_revision, title: "Referrer Note")
       orphan = create(:note, title: "Orphan Anemic")

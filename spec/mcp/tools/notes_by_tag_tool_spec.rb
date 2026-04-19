@@ -52,6 +52,37 @@ RSpec.describe Mcp::Tools::NotesByTagTool do
     expect(response.error?).to be true
   end
 
+  it "excludes notes with any tag listed in exclude_tags" do
+    estrutura = create(:tag, name: "queue-estrutura")
+    note1.tags << estrutura
+
+    response = described_class.call(tag: "queue", exclude_tags: "queue-estrutura")
+    content = JSON.parse(response.content.first[:text])
+
+    slugs = content["notes"].map { |n| n["slug"] }
+    expect(slugs).not_to include(note1.slug)
+    expect(slugs).to include(note2.slug)
+  end
+
+  it "supports multiple comma-separated exclude_tags" do
+    estrutura = create(:tag, name: "queue-estrutura")
+    merged = create(:tag, name: "queue-merged")
+    note1.tags << estrutura
+    note2.tags << merged
+
+    response = described_class.call(tag: "queue", exclude_tags: "queue-estrutura,queue-merged")
+    content = JSON.parse(response.content.first[:text])
+
+    expect(content["notes"]).to be_empty
+  end
+
+  it "ignores non-existent exclude_tags silently" do
+    response = described_class.call(tag: "queue", exclude_tags: "no-such-tag")
+    content = JSON.parse(response.content.first[:text])
+
+    expect(content["notes"].length).to eq(2)
+  end
+
   it "returns slug, title, and excerpt" do
     response = described_class.call(tag: "queue")
     note_data = JSON.parse(response.content.first[:text])["notes"].first

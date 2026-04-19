@@ -45,6 +45,11 @@ module Mcp
           return {slug: parent_link.dst_note.slug, title: parent_link.dst_note.title, relation: "parent"}
         end
 
+        reverse_parent = note.incoming_links.active.find_by(hier_role: "target_is_child")
+        if reverse_parent&.src_note
+          return {slug: reverse_parent.src_note.slug, title: reverse_parent.src_note.title, relation: "parent"}
+        end
+
         incoming = note.incoming_links.active.includes(:src_note).first
         if incoming&.src_note
           return {slug: incoming.src_note.slug, title: incoming.src_note.title, relation: "linked_from"}

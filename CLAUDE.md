@@ -43,7 +43,7 @@ Arquivo `.mcp.json` na raiz do projeto consumidor:
 | `search_notes` | Busca por texto em títulos e conteúdo. `regex: true` habilita POSIX regex (case-insensitive, timeout 150ms). `property_filters` aceita JSON. |
 | `read_note` | Lê nota completa por slug (com outgoing links e backlinks) |
 | `list_tags` | Lista todas as tags com contagem de notas |
-| `notes_by_tag` | Filtra notas por tag |
+| `notes_by_tag` | Filtra notas por tag. `exclude_tags` (CSV) remove notas que carreguem qualquer tag listada — útil para folhas (ex: `tag: catarata, exclude_tags: catarata-estrutura,catarata-merged`). |
 | `note_graph` | Vizinhos no grafo de uma nota |
 | `recent_changes` | Lista notas ordenadas por head revision desc. Filtros: `since` (ISO8601), `tag`, `limit` (≤100) |
 
@@ -56,8 +56,9 @@ Arquivo `.mcp.json` na raiz do projeto consumidor:
 | `patch_note` | Edita seção por heading: `append`, `prepend` ou `replace_section`. Cria checkpoint. Seção vai até o próximo heading de mesmo nível ou mais raso. |
 | `manage_property` | Get/set/delete de uma única propriedade tipada. Validações do `Properties::SetService`; set/delete criam checkpoint. Valor aceita JSON ou string bruta. |
 | `import_markdown` | Importa `.md` inteiro — cada heading vira nota |
-| `merge_notes` | Merge source→target: appenda conteúdo, retargeta links, cria redirect, soft-deleta source |
-| `find_anemic_notes` | Detecta notas com poucas linhas de conteúdo real, sugere targets de merge |
+| `merge_notes` | Merge source→target: appenda conteúdo (remove wikilinks auto-referenciais ao source no corpo do target), retargeta incoming links, cria redirect, soft-deleta source |
+| `find_anemic_notes` | Detecta notas com poucas linhas de conteúdo real, sugere targets de merge (prioriza outgoing `target_is_parent`, depois incoming `target_is_child`, por fim linked_from genérico) |
+| `bulk_remove_tag` | Remove uma tag de todas as notas em uma chamada. `delete_tag: true` também destrói o Tag. Não versiona (tag não entra em checkpoint). |
 
 ### Uso do MCP
 
@@ -275,121 +276,24 @@ Notas com menos de 10 linhas de conteúdo real são "anêmicas" e devem ser cons
 - O merge redireciona links automaticamente (slug redirect + link migration)
 - Ao importar specs, preferir notas densas (>15 linhas) a muitas notas finas
 
-## Workflow Codex — Claude orquestra, Codex executa
+## Workflow Codex — apenas review
 
-O plugin Codex está integrado para que **Claude planeje e orquestre** enquanto **Codex executa código**. O `codex-gate` controla o orçamento de tokens.
+**Claude implementa todo código diretamente** — features multi-arquivo, refactors, lotes de testes, EPICs completos. Não usar `/codex:rescue --write` nem `/codex:rescue --resume`.
 
-### Quando Claude faz sozinho vs delega ao Codex
+Motivo: Codex não sinaliza conclusão e trava a sessão esperando retorno. O custo de destravamento manual supera o ganho de paralelização.
 
-| Claude faz sozinho | Claude planeja + Codex executa |
-|--------------------|-------------------------------|
-| Mudanças < 3 arquivos | Features novas multi-arquivo |
-| Fixes pontuais e bugs simples | Refactors estruturais |
-| Configs, docs, specs, notas | Migrations + models + specs em lote |
-| Edições de UI/CSS isoladas | Implementação de EPICs completos |
-| Investigação e diagnóstico | Geração de test suites |
+### Uso permitido do Codex
 
-### Fluxo completo de delegação
-
-1. **Claude analisa**: lê specs/notas via MCP, examina codebase, identifica padrões
-2. **Claude planeja**: monta prompt detalhado seguindo o template abaixo
-3. **Claude delega**: `/codex:rescue --write "prompt"`
-4. **Claude valida**: revisa diff, roda testes, verifica padrões
-5. **Se precisa ajuste**: `/codex:rescue --resume "corrigir X"`
-6. **Review gate**: `codex-gate` → `/codex:review --wait` (se budget permitir)
-7. **Commit**: com findings resolvidos
-
-### Template de prompt para delegação
-
-Ao delegar ao Codex, Claude deve montar o prompt com esta estrutura:
-
-```
-Projeto: [nome e stack — ex: NeuraMD, Rails 8, Hotwire, PostgreSQL]
-Contexto: [o que existe hoje, arquivos relevantes, padrões em uso]
-Tarefa: [o que implementar, com critérios de aceite claros]
-Arquivos a criar/modificar: [lista explícita]
-Padrões a seguir: [convenções, naming, estrutura de testes]
-Testes esperados: [quais specs criar, cobertura mínima]
-Não fazer: [restrições — ex: não alterar migrations existentes, não adicionar gems]
-```
-
-Quanto mais preciso o prompt, melhor o resultado. Incluir trechos de código existente como referência quando relevante.
-
-### Exemplos de delegação
-
-**Feature nova:**
-```
-/codex:rescue --write "
-Projeto: NeuraMD, Rails 8, Hotwire, PostgreSQL
-Contexto: Notes::MergeService já existe em app/services/notes/merge_service.rb.
-  Ele recebe source e target, appenda conteúdo, cria redirect e retargeta links.
-Tarefa: Criar endpoint REST para merge de notas via API JSON.
-  POST /api/notes/:slug/merge com body { target_slug: 'xxx' }.
-  Retornar 200 com nota merged ou 422 com errors.
-Arquivos: app/controllers/api/notes_controller.rb (action merge),
-  config/routes.rb (adicionar rota), spec/requests/api/notes_merge_spec.rb
-Padrões: controllers API herdam de Api::BaseController, specs usam FactoryBot.
-Testes: spec cobrindo merge sucesso, source não encontrado, target não encontrado,
-  self-merge rejeitado.
-Não fazer: não alterar MergeService, não adicionar autenticação (já existe no BaseController).
-"
-```
-
-**Refactor multi-arquivo:**
-```
-/codex:rescue --write "
-Projeto: NeuraMD, Rails 8
-Contexto: StateStore em codextokens/state.py tem 586 linhas com session mgmt,
-  auth tokens, webhooks e review gate misturados.
-Tarefa: Extrair review gate para módulo separado review_gate_store.py.
-  Mover evaluate_review_gate, _planned_token_count, _normalize_gate_*.
-  StateStore deve delegar para ReviewGateStore.
-Arquivos: codextokens/review_gate_store.py (novo), codextokens/state.py (refactor)
-Padrões: mesma convenção de locks e _save() do StateStore.
-Testes: mover testes relevantes de test_state.py para test_review_gate_store.py.
-Não fazer: não mudar a API HTTP, não alterar server.py.
-"
-```
-
-**Lote de testes:**
-```
-/codex:rescue --write "
-Projeto: NeuraMD, Rails 8, RSpec
-Contexto: MCP tools em lib/mcp/tools/ seguem padrão MCP::Tool com .call().
-  Exemplo: search_notes_tool.rb retorna {notes: [...]} ou error_response('msg').
-Tarefa: criar specs para merge_notes_tool e find_anemic_notes_tool.
-Arquivos: spec/lib/mcp/tools/merge_notes_tool_spec.rb,
-  spec/lib/mcp/tools/find_anemic_notes_tool_spec.rb
-Padrões: usar FactoryBot, testar happy path + edge cases + error responses.
-  Verificar com response.error? (não response.error).
-Não fazer: não alterar os tools, apenas criar specs.
-"
-```
-
-### Continuação de thread
-
-Se o Codex entregou resultado parcial ou precisa de ajuste:
-
-```
-/codex:rescue --resume "Os testes de merge passaram mas falta o caso de self-merge.
-Adicionar spec que verifica ArgumentError quando source == target."
-```
+- `/codex:review --wait` — review padrão após implementação significativa, antes de merge/PR
+- `/codex:adversarial-review --wait` — review para mudanças estruturais (migrations, models), segurança (auth, sanitização) ou contratos que mudam
 
 ### Review gate
 
-Antes de qualquer review, verificar orçamento via `codex-gate` (lê o contexto da statusline):
+Antes de qualquer review, `codex-gate` verifica orçamento de contexto:
 
 ```bash
 codex-gate   # exit 0 = permitido, exit 2 = bloqueado (contexto >= 75%)
 ```
-
-### Quando usar cada tipo de review
-
-| `/codex:review --wait` | `/codex:adversarial-review --wait` |
-|------------------------|-----------------------------------|
-| Qualquer implementação significativa | Mudanças estruturais (migrations, models) |
-| Pós-delegação ao Codex | Mudanças de segurança (auth, sanitização) |
-| Antes de merge/PR | Refactors que mudam contratos |
 
 **Regra crítica**: após review, apresentar findings ao usuário — **nunca corrigir automaticamente**.
 

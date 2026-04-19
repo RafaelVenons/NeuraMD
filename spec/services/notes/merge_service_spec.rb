@@ -86,5 +86,33 @@ RSpec.describe Notes::MergeService, type: :service do
       expect(result.target).to eq(target)
       expect(result.revision).to be_a(NoteRevision)
     end
+
+    context "when target body references source (would self-link on retarget)" do
+      before do
+        Notes::CheckpointService.call(
+          note: target,
+          content: "Filhos:\n\n[[Source|c:#{source.id}]]",
+          author: user
+        )
+      end
+
+      it "completes without raising (does not leave a self-link)" do
+        expect {
+          described_class.call(source: source, target: target, author: user)
+        }.not_to raise_error
+      end
+
+      it "rewrites source UUID references in target body to avoid self-refs" do
+        described_class.call(source: source, target: target, author: user)
+        body = target.reload.head_revision.content_markdown
+        expect(body).not_to include(source.id)
+      end
+
+      it "does not leave an active self-link in note_links" do
+        described_class.call(source: source, target: target, author: user)
+        self_link = NoteLink.where(src_note_id: target.id, dst_note_id: target.id).first
+        expect(self_link).to be_nil
+      end
+    end
   end
 end

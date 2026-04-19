@@ -33,7 +33,7 @@ module Notes
     end
 
     def append_content
-      target_content = @target.head_revision&.content_markdown.to_s
+      target_content = strip_source_wikilinks(@target.head_revision&.content_markdown.to_s)
       source_content = @source.head_revision&.content_markdown.to_s
 
       merged = "#{target_content}\n\n---\n\n<!-- Merged from: #{@source.title} -->\n\n#{source_content}"
@@ -46,8 +46,20 @@ module Notes
       result.revision
     end
 
+    def strip_source_wikilinks(content)
+      content.gsub(
+        /\[\[([^\]|]+)\|(?:[a-z]+:)?#{Regexp.escape(@source.id)}(?:\#[a-z0-9_-]+|\^[a-zA-Z0-9-]+)?\]\]/i,
+        '\1'
+      )
+    end
+
     def move_incoming_links
       @source.incoming_links.find_each do |link|
+        if link.src_note_id == @target.id
+          link.destroy
+          next
+        end
+
         existing = NoteLink.find_by(src_note_id: link.src_note_id, dst_note_id: @target.id)
         if existing
           link.destroy
