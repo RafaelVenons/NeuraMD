@@ -147,7 +147,35 @@ module Api
       render_error(status: :unprocessable_entity, code: "restore_failed", message: e.message)
     end
 
+    def links
+      note = resolve_note(params[:slug])
+      return render_not_found unless note
+
+      authorize note, :show?
+      outgoing = note.active_outgoing_links
+        .includes(:dst_note)
+        .to_a
+        .select { |l| l.dst_note && !l.dst_note.deleted? }
+        .map { |l| serialize_link(l.dst_note, l.hier_role) }
+      incoming = note.active_incoming_links
+        .includes(:src_note)
+        .to_a
+        .select { |l| l.src_note && !l.src_note.deleted? }
+        .map { |l| serialize_link(l.src_note, l.hier_role) }
+
+      render json: {outgoing: outgoing, incoming: incoming}
+    end
+
     private
+
+    def serialize_link(note, hier_role)
+      {
+        id: note.id,
+        slug: note.slug,
+        title: note.title,
+        hier_role: hier_role
+      }
+    end
 
     def tag_list(note)
       note.tags.where(tag_scope: %w[note both]).order(:name).map { |t|

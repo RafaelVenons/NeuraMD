@@ -4,6 +4,9 @@ import { FitAddon } from "@xterm/addon-fit"
 import { Terminal } from "@xterm/xterm"
 import "@xterm/xterm/css/xterm.css"
 
+import { ContextLinks } from "~/components/tentacles/ContextLinks"
+import { InboxPanel } from "~/components/tentacles/InboxPanel"
+import { SpawnChildForm } from "~/components/tentacles/SpawnChildForm"
 import type { TentacleCableMessage, TentacleSession } from "~/components/tentacles/types"
 import { getCableConsumer } from "~/runtime/cable"
 import { fetchJson } from "~/runtime/fetchJson"
@@ -236,7 +239,18 @@ export function TentaclePage() {
       {state.kind === "error" ? (
         <p className="nm-tentacle-page__error">{state.message}</p>
       ) : null}
-      <div className="nm-tentacle-page__terminal" ref={terminalHost} />
+      <div className="nm-tentacle-page__body">
+        <div className="nm-tentacle-page__terminal" ref={terminalHost} />
+        <aside className="nm-tentacle-page__side">
+          {slug ? (
+            <>
+              <InboxPanel slug={slug} />
+              <SpawnChildForm parentSlug={slug} />
+              <ContextLinks slug={slug} />
+            </>
+          ) : null}
+        </aside>
+      </div>
     </section>
   )
 }

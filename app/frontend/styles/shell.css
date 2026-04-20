@@ -871,14 +871,240 @@
   font-size: 13px;
 }
 
-.nm-tentacle-page__terminal {
+.nm-tentacle-page__body {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 320px;
+  gap: 16px;
   flex: 1;
+  min-height: 0;
+}
+
+@media (max-width: 1024px) {
+  .nm-tentacle-page__body {
+    grid-template-columns: 1fr;
+  }
+}
+
+.nm-tentacle-page__side {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  overflow-y: auto;
+  max-height: calc(100vh - 200px);
+  padding-right: 4px;
+}
+
+.nm-tentacle-page__terminal {
   min-height: 360px;
   background: #0b0b0b;
   border-radius: 10px;
   overflow: hidden;
   padding: 8px;
   border: 1px solid var(--nm-shell-border);
+}
+
+.nm-tentacle-inbox,
+.nm-tentacle-spawn,
+.nm-tentacle-links {
+  background: var(--nm-shell-surface);
+  border: 1px solid var(--nm-shell-border);
+  border-radius: 10px;
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.nm-tentacle-inbox header,
+.nm-tentacle-spawn header,
+.nm-tentacle-links header {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.nm-tentacle-inbox h3,
+.nm-tentacle-spawn h3,
+.nm-tentacle-links h3 {
+  margin: 0;
+  font-size: 14px;
+  color: var(--nm-shell-text);
+}
+
+.nm-tentacle-inbox__meta {
+  margin: 0;
+  font-size: 12px;
+  color: var(--nm-shell-muted);
+}
+
+.nm-tentacle-inbox__actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.nm-tentacle-inbox__actions .nm-button {
+  padding: 4px 10px;
+  font-size: 12px;
+  background: var(--nm-shell-surface);
+  color: var(--nm-shell-text);
+  border-color: var(--nm-shell-border);
+}
+
+.nm-tentacle-inbox__actions .nm-button:hover:not(:disabled) {
+  background: #1f2937;
+  border-color: #1f6feb;
+}
+
+.nm-tentacle-inbox__list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.nm-tentacle-inbox__list li {
+  border-left: 3px solid #1f6feb;
+  padding: 6px 10px;
+  background: rgba(31, 111, 235, 0.05);
+  border-radius: 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.nm-tentacle-inbox__list li.is-delivered {
+  border-left-color: #6b7280;
+  opacity: 0.7;
+}
+
+.nm-tentacle-inbox__list li header {
+  font-size: 11px;
+  color: var(--nm-shell-muted);
+  display: flex;
+  justify-content: space-between;
+}
+
+.nm-tentacle-inbox__from {
+  font-weight: 500;
+  color: var(--nm-shell-text);
+}
+
+.nm-tentacle-inbox__body {
+  margin: 0;
+  padding: 0;
+  font-family: inherit;
+  font-size: 12px;
+  white-space: pre-wrap;
+  color: var(--nm-shell-text);
+  word-break: break-word;
+}
+
+.nm-tentacle-inbox__chip {
+  align-self: flex-start;
+  font-size: 10px;
+  padding: 2px 6px;
+  border-radius: 999px;
+  background: rgba(107, 114, 128, 0.2);
+  color: var(--nm-shell-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.nm-tentacle-inbox__chip--pending {
+  background: rgba(31, 111, 235, 0.2);
+  color: #5cc8ff;
+}
+
+.nm-tentacle-inbox__empty {
+  font-size: 12px;
+  color: var(--nm-shell-muted);
+  padding: 8px 0;
+}
+
+.nm-tentacle-inbox__error,
+.nm-tentacle-spawn__error,
+.nm-tentacle-links__error {
+  margin: 0;
+  padding: 6px 10px;
+  background: rgba(255, 97, 97, 0.1);
+  color: #ff9b9b;
+  border-radius: 6px;
+  font-size: 12px;
+}
+
+.nm-tentacle-spawn__form {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.nm-tentacle-spawn__form label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 11px;
+  color: var(--nm-shell-muted);
+}
+
+.nm-tentacle-spawn__form input,
+.nm-tentacle-spawn__form textarea {
+  background: var(--nm-shell-bg);
+  color: var(--nm-shell-text);
+  border: 1px solid var(--nm-shell-border);
+  border-radius: 6px;
+  padding: 6px 8px;
+  font-family: inherit;
+  font-size: 13px;
+}
+
+.nm-tentacle-spawn__last {
+  margin: 0;
+  font-size: 12px;
+  color: var(--nm-shell-muted);
+}
+
+.nm-tentacle-links__group {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.nm-tentacle-links__group h4 {
+  margin: 0;
+  font-size: 11px;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--nm-shell-muted);
+}
+
+.nm-tentacle-links__group ul {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.nm-tentacle-links__group a {
+  color: #5cc8ff;
+  text-decoration: none;
+  font-size: 13px;
+}
+
+.nm-tentacle-links__group a:hover {
+  text-decoration: underline;
+}
+
+.nm-tentacle-links__role,
+.nm-tentacle-links__muted {
+  font-size: 11px;
+  color: var(--nm-shell-muted);
 }
 
 .nm-button {

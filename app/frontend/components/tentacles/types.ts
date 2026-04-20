@@ -9,3 +9,42 @@ export type TentacleSession = {
 export type TentacleCableMessage =
   | { type: "output"; data: string }
   | { type: "exit"; status: number | null }
+
+export type InboxMessage = {
+  id: string
+  from_slug: string
+  from_title: string
+  content: string
+  delivered: boolean
+  delivered_at: string | null
+  created_at: string
+}
+
+export type InboxResponse = {
+  slug: string
+  count: number
+  pending_count: number
+  messages: InboxMessage[]
+}
+
+export type SpawnChildResponse = {
+  spawned: boolean
+  id: string
+  slug: string
+  title: string
+  parent_slug: string
+  tags: string[]
+  tentacle_url: string
+}
+
+export type NoteLinkRef = {
+  id: string
+  slug: string
+  title: string
+  hier_role: string | null
+}
+
+export type NoteLinksResponse = {
+  outgoing: NoteLinkRef[]
+  incoming: NoteLinkRef[]
+}
