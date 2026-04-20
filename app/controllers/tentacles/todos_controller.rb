@@ -4,10 +4,12 @@ module Tentacles
     before_action :set_note
 
     def show
+      authorize @note, :show?
       render json: { todos: TodosService.read(@note) }
     end
 
     def update
+      authorize @note, :update?
       todos_param = params.require(:todos)
       array = todos_param.respond_to?(:to_unsafe_h) ? todos_param.map(&:to_unsafe_h) : Array(todos_param)
       updated = TodosService.write(note: @note, todos: array, author: current_user)

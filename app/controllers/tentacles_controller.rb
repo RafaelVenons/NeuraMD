@@ -8,6 +8,7 @@ class TentaclesController < ApplicationController
   }.freeze
 
   def show
+    authorize @note, :show?
     @tentacle_id = @note.id
     @session = TentacleRuntime.get(@tentacle_id)
     @worktree = WorktreeService.path_for(tentacle_id: @note.id)
@@ -16,6 +17,7 @@ class TentaclesController < ApplicationController
   end
 
   def create
+    authorize @note, :update?
     command = resolve_command(params[:command])
     cwd = WorktreeService.ensure(tentacle_id: @note.id)
     note = @note
@@ -51,6 +53,7 @@ class TentaclesController < ApplicationController
   end
 
   def destroy
+    authorize @note, :update?
     TentacleRuntime.stop(tentacle_id: @note.id)
 
     respond_to do |fmt|

@@ -4,6 +4,7 @@ module Tentacles
     before_action :set_note
 
     def index
+      authorize @note, :show?
       only_pending = ActiveModel::Type::Boolean.new.cast(params[:only_pending])
       limit = params[:limit].presence&.to_i
       limit = AgentMessages::Inbox::DEFAULT_LIMIT if limit.blank? || limit <= 0
@@ -20,6 +21,7 @@ module Tentacles
     end
 
     def deliver
+      authorize @note, :update?
       raw_ids = params[:ids]
       raw_ids = raw_ids.values if raw_ids.is_a?(ActionController::Parameters)
       ids = Array(raw_ids).map(&:to_s).reject(&:blank?)

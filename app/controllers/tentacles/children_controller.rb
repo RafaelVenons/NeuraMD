@@ -4,6 +4,7 @@ module Tentacles
     before_action :set_parent
 
     def create
+      authorize @parent, :update?
       title = params[:title].to_s
       description = params[:description]
       extra_tags  = params[:extra_tags]

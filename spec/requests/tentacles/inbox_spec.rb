@@ -90,6 +90,25 @@ RSpec.describe "Tentacle inbox", type: :request do
     end
   end
 
+  describe "note-level authorization" do
+    before { sign_in user }
+
+    it "runs the NotePolicy on inbox reads" do
+      expect_any_instance_of(Tentacles::InboxController)
+        .to receive(:authorize).with(an_instance_of(Note), :show?).and_call_original
+      get inbox_note_tentacle_path(owner.slug, format: :json)
+      expect(response).to have_http_status(:ok)
+    end
+
+    it "runs the NotePolicy on inbox delivery" do
+      send_msg
+      expect_any_instance_of(Tentacles::InboxController)
+        .to receive(:authorize).with(an_instance_of(Note), :update?).and_call_original
+      post inbox_deliver_note_tentacle_path(owner.slug, format: :json), params: {ids: []}
+      expect(response).to have_http_status(:ok)
+    end
+  end
+
   describe "when tentacles are disabled" do
     before do
       sign_in user
