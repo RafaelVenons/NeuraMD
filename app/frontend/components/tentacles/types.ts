@@ -1,9 +1,15 @@
 export type TentacleSession = {
   tentacle_id: string
+  slug?: string
+  title?: string
   alive: boolean
   pid: number | null
   started_at: string | null
   command: string[] | null
+}
+
+export type TentacleSessionsIndex = {
+  sessions: TentacleSession[]
 }
 
 export type TentacleCableMessage =

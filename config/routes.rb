@@ -23,6 +23,7 @@ Rails.application.routes.draw do
   get "/app/*path", to: "app#shell", format: false
   get "api/graph", to: "api/graphs#show", as: :api_graph
   get "api/tentacles/runtime", to: "api/tentacles/runtime#index", as: :api_tentacles_runtime
+  get "api/tentacles/sessions", to: "api/tentacles/sessions#index", as: :api_tentacles_sessions
   get "api/notes/:slug", to: "api/notes#show", as: :api_note, constraints: {slug: /[^\/]+/}
   post "api/notes/:slug/draft", to: "api/notes#draft", as: :api_note_draft, constraints: {slug: /[^\/]+/}
   patch "api/notes/:slug/properties", to: "api/notes#update_properties", as: :api_note_properties, constraints: {slug: /[^\/]+/}
