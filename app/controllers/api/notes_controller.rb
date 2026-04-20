@@ -48,7 +48,48 @@ module Api
       render_error(status: :unprocessable_entity, code: "properties_failed", message: e.message)
     end
 
+    def attach_tag
+      note = resolve_note(params[:slug])
+      return render_not_found unless note
+
+      authorize note, :update?
+      name = params[:name].to_s.strip
+      return render_error(status: :unprocessable_entity, code: "invalid_params", message: "Tag name is required.") if name.blank?
+
+      color = params[:color_hex].presence
+      tag = Tag.find_by("lower(name) = ?", name.downcase)
+      tag ||= Tag.new(name: name, tag_scope: "note", color_hex: color)
+      tag.color_hex = color if color && tag.new_record?
+
+      unless tag.persisted?
+        unless tag.save
+          return render_error(status: :unprocessable_entity, code: "invalid_params", message: tag.errors.full_messages.to_sentence)
+        end
+      end
+
+      NoteTag.find_or_create_by!(note: note, tag: tag)
+      render json: {tags: tag_list(note)}
+    end
+
+    def detach_tag
+      note = resolve_note(params[:slug])
+      return render_not_found unless note
+
+      authorize note, :update?
+      tag = Tag.find_by(id: params[:tag_id])
+      return render_not_found unless tag
+
+      NoteTag.where(note: note, tag: tag).delete_all
+      render json: {tags: tag_list(note)}
+    end
+
     private
+
+    def tag_list(note)
+      note.tags.where(tag_scope: %w[note both]).order(:name).map { |t|
+        {id: t.id, name: t.name, color_hex: t.color_hex}
+      }
+    end
 
     def show_payload(note, revision)
       {

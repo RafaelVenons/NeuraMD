@@ -4,6 +4,7 @@ import { useParams } from "react-router-dom"
 import { EditorPane } from "~/components/editor/EditorPane"
 import { PreviewPane } from "~/components/editor/PreviewPane"
 import { PropertiesEditor } from "~/components/editor/PropertiesEditor"
+import { TagSidebar } from "~/components/editor/TagSidebar"
 import type { NotePayload } from "~/components/editor/types"
 import { useDraftAutosave, type DraftStatus } from "~/components/editor/useDraftAutosave"
 import { useNotePayload } from "~/components/editor/useNotePayload"
@@ -46,19 +47,7 @@ function EditorLoaded({
   return (
     <div className="nm-editor-page">
       <aside className="nm-editor-page__tags">
-        <header>
-          <h2>Tags</h2>
-          <p className="nm-editor-page__muted">
-            {payload.tags.length === 0 ? "Sem tags" : `${payload.tags.length} tag(s)`}
-          </p>
-        </header>
-        <ul className="nm-editor-page__tag-list">
-          {payload.tags.map((tag) => (
-            <li key={tag.id} style={{ borderLeftColor: tag.color_hex ?? "#5cc8ff" }}>
-              {tag.name}
-            </li>
-          ))}
-        </ul>
+        <TagSidebar slug={slug} initialTags={payload.tags} />
       </aside>
 
       <section className="nm-editor-page__editor">

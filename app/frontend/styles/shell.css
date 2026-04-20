@@ -361,20 +361,112 @@
   margin: 0 0 4px;
 }
 
-.nm-editor-page__tag-list {
+.nm-tag-sidebar {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.nm-tag-sidebar__list {
   list-style: none;
   padding: 0;
-  margin: 12px 0 0;
+  margin: 0;
   display: flex;
   flex-direction: column;
   gap: 4px;
 }
 
-.nm-editor-page__tag-list li {
+.nm-tag-sidebar__list li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
   padding: 6px 10px;
   border-left: 3px solid var(--nm-shell-accent);
   background: rgba(255, 255, 255, 0.03);
   font-size: 13px;
+}
+
+.nm-tag-sidebar__name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.nm-tag-sidebar__remove {
+  background: transparent;
+  border: none;
+  color: var(--nm-shell-muted);
+  font-size: 16px;
+  line-height: 1;
+  padding: 0 4px;
+  cursor: pointer;
+  border-radius: 4px;
+}
+
+.nm-tag-sidebar__remove:hover {
+  background: rgba(255, 119, 119, 0.15);
+  color: #ff7777;
+}
+
+.nm-tag-sidebar__form {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.nm-tag-sidebar__form label {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.nm-tag-sidebar__row {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.nm-tag-sidebar__row input[type="text"] {
+  flex: 1;
+  min-width: 0;
+  padding: 6px 8px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 4px;
+  color: var(--nm-shell-text);
+  font: inherit;
+}
+
+.nm-tag-sidebar__row input[type="color"] {
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 4px;
+  background: transparent;
+  cursor: pointer;
+}
+
+.nm-tag-sidebar__row button {
+  padding: 6px 10px;
+  background: var(--nm-shell-accent);
+  color: #0b0d10;
+  border: none;
+  border-radius: 4px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.nm-tag-sidebar__row button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.nm-tag-sidebar__error {
+  color: #ff7777;
+  font-size: 12px;
+  margin: 0;
 }
 
 .nm-editor-page__toolbar {

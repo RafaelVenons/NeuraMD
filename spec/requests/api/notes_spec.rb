@@ -171,4 +171,138 @@ RSpec.describe "API notes", type: :request do
       expect(response).to have_http_status(:not_found)
     end
   end
+
+  describe "POST /api/notes/:slug/tags" do
+    it "returns 401 envelope when signed out" do
+      note = build_note(title: "Anon Tag")
+
+      post "/api/notes/#{note.slug}/tags",
+        params: {name: "plan"}.to_json,
+        headers: {"CONTENT_TYPE" => "application/json", "ACCEPT" => "application/json"}
+
+      expect(response).to have_http_status(:unauthorized)
+      expect(response.parsed_body["error"]).to include("code" => "unauthorized")
+    end
+
+    it "attaches an existing tag and returns the updated tag list" do
+      sign_in user
+      note = build_note(title: "Attach Target")
+      Tag.create!(name: "plan", tag_scope: "note", color_hex: "#ff0000")
+
+      post "/api/notes/#{note.slug}/tags",
+        params: {name: "plan"}.to_json,
+        headers: {"CONTENT_TYPE" => "application/json", "ACCEPT" => "application/json"}
+
+      expect(response).to have_http_status(:ok)
+      names = response.parsed_body["tags"].map { |t| t["name"] }
+      expect(names).to include("plan")
+      expect(note.reload.tags.map(&:name)).to include("plan")
+    end
+
+    it "creates the tag on demand when it does not exist" do
+      sign_in user
+      note = build_note(title: "Create On Demand")
+
+      post "/api/notes/#{note.slug}/tags",
+        params: {name: "Brand New", color_hex: "#112233"}.to_json,
+        headers: {"CONTENT_TYPE" => "application/json", "ACCEPT" => "application/json"}
+
+      expect(response).to have_http_status(:ok)
+      tag = Tag.find_by(name: "brand new")
+      expect(tag).to be_present
+      expect(tag.color_hex).to eq("#112233")
+      expect(note.reload.tags).to include(tag)
+    end
+
+    it "is idempotent when the tag is already attached" do
+      sign_in user
+      note = build_note(title: "Idempotent", tags: ["plan"])
+
+      expect {
+        post "/api/notes/#{note.slug}/tags",
+          params: {name: "plan"}.to_json,
+          headers: {"CONTENT_TYPE" => "application/json", "ACCEPT" => "application/json"}
+      }.not_to change { note.tags.count }
+
+      expect(response).to have_http_status(:ok)
+    end
+
+    it "rejects blank tag names with invalid_params" do
+      sign_in user
+      note = build_note(title: "Blank Tag")
+
+      post "/api/notes/#{note.slug}/tags",
+        params: {name: "   "}.to_json,
+        headers: {"CONTENT_TYPE" => "application/json", "ACCEPT" => "application/json"}
+
+      expect(response).to have_http_status(:unprocessable_entity)
+      expect(response.parsed_body["error"]).to include("code" => "invalid_params")
+    end
+
+    it "returns 404 envelope for unknown notes" do
+      sign_in user
+
+      post "/api/notes/missing/tags",
+        params: {name: "plan"}.to_json,
+        headers: {"CONTENT_TYPE" => "application/json", "ACCEPT" => "application/json"}
+
+      expect(response).to have_http_status(:not_found)
+    end
+  end
+
+  describe "DELETE /api/notes/:slug/tags/:tag_id" do
+    it "detaches the tag and returns the remaining list" do
+      sign_in user
+      note = build_note(title: "Detach", tags: ["plan", "spec"])
+      plan = Tag.find_by!(name: "plan")
+
+      delete "/api/notes/#{note.slug}/tags/#{plan.id}",
+        headers: {"ACCEPT" => "application/json"}
+
+      expect(response).to have_http_status(:ok)
+      names = response.parsed_body["tags"].map { |t| t["name"] }
+      expect(names).to contain_exactly("spec")
+      expect(note.reload.tags.map(&:name)).not_to include("plan")
+    end
+
+    it "returns 404 envelope when the tag id does not exist" do
+      sign_in user
+      note = build_note(title: "Missing Tag")
+
+      delete "/api/notes/#{note.slug}/tags/999999",
+        headers: {"ACCEPT" => "application/json"}
+
+      expect(response).to have_http_status(:not_found)
+    end
+
+    it "returns 401 envelope when signed out" do
+      note = build_note(title: "Anon Detach", tags: ["plan"])
+      plan = Tag.find_by!(name: "plan")
+
+      delete "/api/notes/#{note.slug}/tags/#{plan.id}",
+        headers: {"ACCEPT" => "application/json"}
+
+      expect(response).to have_http_status(:unauthorized)
+    end
+  end
+
+  describe "GET /api/tags" do
+    it "lists note-scope tags ordered by name" do
+      sign_in user
+      Tag.create!(name: "gamma", tag_scope: "note", color_hex: "#111111")
+      Tag.create!(name: "alpha", tag_scope: "both", color_hex: "#222222")
+      Tag.create!(name: "link-only", tag_scope: "link")
+
+      get "/api/tags"
+
+      expect(response).to have_http_status(:ok)
+      names = response.parsed_body["tags"].map { |t| t["name"] }
+      expect(names).to eq(%w[alpha gamma])
+    end
+
+    it "returns 401 envelope when signed out" do
+      get "/api/tags", headers: {"ACCEPT" => "application/json"}
+      expect(response).to have_http_status(:unauthorized)
+    end
+  end
 end
