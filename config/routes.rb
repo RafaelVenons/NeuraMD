@@ -109,7 +109,6 @@ Rails.application.routes.draw do
       post "revisions/:revision_id/restore", to: "notes#restore_revision", as: :restore_revision
       # Returns { link_id, tags } for a given dst_uuid — used by tag sidebar
       get  :link_info
-      get  :embed
       # TTS endpoints
       get   :tts_status,   to: "tts#status"
       post  :tts_generate,  to: "tts#create"

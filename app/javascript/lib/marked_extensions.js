@@ -173,32 +173,3 @@ export const mathInlineExtension = {
   }
 }
 
-export const embedExtension = {
-  name: "embed",
-  level: "block",
-  start(src) { return src.indexOf("![[") },
-  tokenizer(src) {
-    const match = /^!\[\[([^\]|]+)\|(?:([a-z]+):)?([^\]#^]+)(?:#([a-z0-9_-]+)|\^([a-zA-Z0-9-]+))?\]\]\n?/i.exec(src)
-    if (!match) return
-    const uuidPart = match[3].trim()
-    if (!UUID_RE.test(uuidPart)) return
-    return {
-      type: "embed",
-      raw: match[0],
-      display: match[1].trim(),
-      role: match[2] || null,
-      uuid: uuidPart.toLowerCase(),
-      headingSlug: match[4] || null,
-      blockId: match[5] || null
-    }
-  },
-  renderer(token) {
-    const display = token.display.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
-    const dataHeading = token.headingSlug ? ` data-embed-heading="${token.headingSlug}"` : ""
-    const dataBlock = token.blockId ? ` data-embed-block="${token.blockId}"` : ""
-    return `<div class="embed-container embed-loading" data-embed-uuid="${token.uuid}"${dataHeading}${dataBlock}>`
-      + `<div class="embed-header">${display}</div>`
-      + `<div class="embed-content"><span class="embed-spinner">Carregando...</span></div>`
-      + `</div>\n`
-  }
-}

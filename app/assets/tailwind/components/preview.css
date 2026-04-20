@@ -262,52 +262,6 @@
     padding: 0 2px;
   }
 
-  /* ── Embed transclusion containers ── */
-  .embed-container {
-    margin: 12px 0;
-    border-left: 3px solid var(--theme-accent);
-    border-radius: 4px;
-    background: color-mix(in srgb, var(--theme-bg-tertiary) 60%, transparent);
-    overflow: hidden;
-  }
-  .embed-header {
-    padding: 6px 12px;
-    font-size: 12px;
-    color: var(--theme-text-muted);
-    background: color-mix(in srgb, var(--theme-bg-tertiary) 80%, transparent);
-    border-bottom: 1px solid var(--theme-border);
-  }
-  .embed-header a.embed-source-link {
-    color: var(--theme-accent);
-    text-decoration: none;
-  }
-  .embed-header a.embed-source-link:hover {
-    text-decoration: underline;
-  }
-  .embed-content {
-    padding: 8px 12px;
-  }
-  .embed-content > :first-child {
-    margin-top: 0;
-  }
-  .embed-content > :last-child {
-    margin-bottom: 0;
-  }
-  .embed-loading .embed-content {
-    color: var(--theme-text-faint);
-    font-style: italic;
-  }
-  .embed-broken {
-    border-left-color: var(--theme-error);
-  }
-  .embed-broken .embed-header {
-    color: var(--theme-error);
-  }
-  .embed-error {
-    color: var(--theme-error);
-    font-size: 13px;
-  }
-
   @keyframes broken-wikilink-pulse {
     0%, 100% {
       background: color-mix(in srgb, #ef4444 18%, transparent);
