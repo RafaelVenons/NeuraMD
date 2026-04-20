@@ -22,6 +22,7 @@ Rails.application.routes.draw do
   get "/app", to: "app#shell", as: :app_shell
   get "/app/*path", to: "app#shell", format: false
   get "api/graph", to: "api/graphs#show", as: :api_graph
+  get "api/notes/search", to: "api/notes/search#index", as: :api_notes_search
   get "api/tentacles/runtime", to: "api/tentacles/runtime#index", as: :api_tentacles_runtime
   get "api/tentacles/sessions", to: "api/tentacles/sessions#index", as: :api_tentacles_sessions
   get "api/notes/:slug", to: "api/notes#show", as: :api_note, constraints: {slug: /[^\/]+/}
