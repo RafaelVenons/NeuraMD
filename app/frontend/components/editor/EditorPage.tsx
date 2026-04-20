@@ -2,6 +2,7 @@ import { useEffect, useState } from "react"
 import { useParams } from "react-router-dom"
 
 import { EditorPane } from "~/components/editor/EditorPane"
+import { PreviewPane } from "~/components/editor/PreviewPane"
 import type { NotePayload } from "~/components/editor/types"
 import { useDraftAutosave, type DraftStatus } from "~/components/editor/useDraftAutosave"
 import { useNotePayload } from "~/components/editor/useNotePayload"
@@ -76,8 +77,9 @@ function EditorLoaded({
       <section className="nm-editor-page__preview">
         <header>
           <h2>Preview</h2>
-          <p className="nm-editor-page__muted">Renderização marked.js chega na próxima slice.</p>
+          <p className="nm-editor-page__muted">Renderização marked.js · wikilinks, KaTeX, highlight.js.</p>
         </header>
+        <PreviewPane content={content} />
       </section>
 
       <aside className="nm-editor-page__properties">

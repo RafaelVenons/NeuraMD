@@ -3,6 +3,8 @@ import { createRoot } from "react-dom/client"
 import { BrowserRouter } from "react-router-dom"
 
 import { Shell } from "~/shell/Shell"
+import "katex/dist/katex.min.css"
+import "highlight.js/styles/github-dark.css"
 import "~/styles/shell.css"
 
 const mount = document.getElementById("app-root")
