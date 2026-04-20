@@ -4,10 +4,12 @@ import { useParams } from "react-router-dom"
 import { EditorPane } from "~/components/editor/EditorPane"
 import { PreviewPane } from "~/components/editor/PreviewPane"
 import { PropertiesEditor } from "~/components/editor/PropertiesEditor"
+import { RevisionsPanel } from "~/components/editor/RevisionsPanel"
 import { TagSidebar } from "~/components/editor/TagSidebar"
 import type { NotePayload } from "~/components/editor/types"
 import { useDraftAutosave, type DraftStatus } from "~/components/editor/useDraftAutosave"
 import { useNotePayload } from "~/components/editor/useNotePayload"
+import { fetchJson } from "~/runtime/fetchJson"
 
 export function EditorPage() {
   const { slug = "" } = useParams()
@@ -25,24 +27,60 @@ export function EditorPage() {
     )
   }
 
-  return <EditorLoaded key={slug} slug={slug} initialContent={state.payload.revision.content_markdown} payload={state.payload} />
+  return (
+    <EditorLoaded
+      key={slug}
+      slug={slug}
+      initialContent={state.payload.revision.content_markdown}
+      payload={state.payload}
+      reload={state.reload}
+    />
+  )
 }
+
+type CheckpointStatus = "idle" | "saving" | "saved" | "error"
 
 function EditorLoaded({
   slug,
   initialContent,
   payload,
+  reload,
 }: {
   slug: string
   initialContent: string
   payload: NotePayload
+  reload: () => void
 }) {
   const [content, setContent] = useState(initialContent)
   const { status, savedAt, flushNow } = useDraftAutosave({ slug, content })
+  const [checkpointStatus, setCheckpointStatus] = useState<CheckpointStatus>("idle")
+  const [checkpointError, setCheckpointError] = useState<string | null>(null)
+  const [revisionsToken, setRevisionsToken] = useState(0)
 
   useEffect(() => {
     setContent(initialContent)
   }, [initialContent])
+
+  const runCheckpoint = async () => {
+    setCheckpointStatus("saving")
+    setCheckpointError(null)
+    try {
+      await fetchJson(`/api/notes/${encodeURIComponent(slug)}/checkpoint`, {
+        method: "POST",
+        body: { content_markdown: content },
+      })
+      setCheckpointStatus("saved")
+      setRevisionsToken((t) => t + 1)
+    } catch (error) {
+      setCheckpointStatus("error")
+      setCheckpointError(error instanceof Error ? error.message : "Erro ao criar checkpoint")
+    }
+  }
+
+  const handleRestored = () => {
+    reload()
+    setRevisionsToken((t) => t + 1)
+  }
 
   return (
     <div className="nm-editor-page">
@@ -59,6 +97,11 @@ function EditorLoaded({
               {payload.revision.updated_at ? ` · atualizado em ${payload.revision.updated_at}` : ""}
             </p>
             <DraftStatusBadge status={status} savedAt={savedAt} onFlushNow={flushNow} />
+            <CheckpointButton
+              status={checkpointStatus}
+              error={checkpointError}
+              onClick={runCheckpoint}
+            />
           </div>
         </header>
         <EditorPane value={content} onChange={setContent} />
@@ -97,6 +140,7 @@ function EditorLoaded({
             </ul>
           </section>
         ) : null}
+        <RevisionsPanel slug={slug} onRestored={handleRestored} refreshToken={revisionsToken} />
       </aside>
     </div>
   )
@@ -120,6 +164,36 @@ function DraftStatusBadge({
       onClick={isDirty ? onFlushNow : undefined}
       disabled={!isDirty}
       title={isDirty ? "Clique para salvar rascunho agora" : undefined}
+    >
+      {label}
+    </button>
+  )
+}
+
+function CheckpointButton({
+  status,
+  error,
+  onClick,
+}: {
+  status: CheckpointStatus
+  error: string | null
+  onClick: () => void
+}) {
+  const label =
+    status === "saving"
+      ? "Criando…"
+      : status === "saved"
+        ? "Checkpoint criado"
+        : status === "error"
+          ? "Tentar novamente"
+          : "Criar checkpoint"
+  return (
+    <button
+      type="button"
+      className={`nm-editor-page__checkpoint-btn nm-editor-page__checkpoint-btn--${status}`}
+      onClick={onClick}
+      disabled={status === "saving"}
+      title={status === "error" && error ? error : "Cria revisão permanente com o conteúdo atual"}
     >
       {label}
     </button>

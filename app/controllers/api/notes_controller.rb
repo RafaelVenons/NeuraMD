@@ -83,6 +83,70 @@ module Api
       render json: {tags: tag_list(note)}
     end
 
+    def checkpoint
+      note = resolve_note(params[:slug])
+      return render_not_found unless note
+
+      authorize note, :update?
+      result = ::Notes::CheckpointService.call(
+        note: note,
+        content: params[:content_markdown].to_s,
+        author: current_user
+      )
+      revision = result.revision
+      render json: {
+        saved: true,
+        kind: "checkpoint",
+        revision_id: revision.id,
+        created_at: revision.created_at.iso8601,
+        graph_changed: result.graph_changed
+      }
+    rescue => e
+      render_error(status: :unprocessable_entity, code: "checkpoint_failed", message: e.message)
+    end
+
+    def revisions
+      note = resolve_note(params[:slug])
+      return render_not_found unless note
+
+      authorize note, :show?
+      entries = note.note_revisions
+        .where(revision_kind: :checkpoint)
+        .order(created_at: :desc)
+        .map { |r|
+          {
+            id: r.id,
+            created_at: r.created_at.iso8601,
+            ai_generated: r.ai_generated,
+            is_head: r.id == note.head_revision_id
+          }
+        }
+      render json: {revisions: entries}
+    end
+
+    def restore_revision
+      note = resolve_note(params[:slug])
+      return render_not_found unless note
+
+      authorize note, :update?
+      source = note.note_revisions.where(revision_kind: :checkpoint).find_by(id: params[:revision_id])
+      return render_not_found unless source
+
+      result = ::Notes::CheckpointService.call(
+        note: note,
+        content: source.content_markdown,
+        author: current_user,
+        properties_data: source.properties_data
+      )
+      render json: {
+        saved: true,
+        revision_id: result.revision.id,
+        graph_changed: result.graph_changed
+      }
+    rescue => e
+      render_error(status: :unprocessable_entity, code: "restore_failed", message: e.message)
+    end
+
     private
 
     def tag_list(note)

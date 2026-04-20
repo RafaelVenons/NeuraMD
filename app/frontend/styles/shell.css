@@ -469,6 +469,122 @@
   margin: 0;
 }
 
+.nm-editor-page__checkpoint-btn {
+  background: var(--nm-shell-accent);
+  color: #0b0d10;
+  border: none;
+  border-radius: 4px;
+  padding: 6px 10px;
+  font-weight: 600;
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.nm-editor-page__checkpoint-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.nm-editor-page__checkpoint-btn--saved {
+  background: #a6e3a1;
+}
+
+.nm-editor-page__checkpoint-btn--error {
+  background: #ff7777;
+  color: #0b0d10;
+}
+
+.nm-revisions-panel {
+  margin-top: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.nm-revisions-panel header {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.nm-revisions-panel__list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 280px;
+  overflow-y: auto;
+}
+
+.nm-revisions-panel__list li {
+  padding: 6px 8px;
+  background: rgba(255, 255, 255, 0.03);
+  border-radius: 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.nm-revisions-panel__list li.is-head {
+  border-left: 3px solid var(--nm-shell-accent);
+}
+
+.nm-revisions-panel__meta {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+}
+
+.nm-revisions-panel__date {
+  color: var(--nm-shell-text);
+}
+
+.nm-revisions-panel__tags {
+  display: flex;
+  gap: 4px;
+}
+
+.nm-revisions-panel__chip {
+  font-size: 10px;
+  padding: 1px 6px;
+  border-radius: 10px;
+  background: rgba(92, 200, 255, 0.15);
+  color: var(--nm-shell-accent);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.nm-revisions-panel__restore {
+  align-self: flex-end;
+  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  color: var(--nm-shell-text);
+  padding: 3px 8px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 11px;
+}
+
+.nm-revisions-panel__restore:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.nm-revisions-panel__restore:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.nm-revisions-panel__error {
+  color: #ff7777;
+  font-size: 12px;
+  margin: 0;
+}
+
 .nm-editor-page__toolbar {
   display: flex;
   align-items: center;

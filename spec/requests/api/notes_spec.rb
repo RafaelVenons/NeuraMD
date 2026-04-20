@@ -305,4 +305,112 @@ RSpec.describe "API notes", type: :request do
       expect(response).to have_http_status(:unauthorized)
     end
   end
+
+  describe "POST /api/notes/:slug/checkpoint" do
+    it "persists a checkpoint revision and returns metadata" do
+      sign_in user
+      note = build_note(title: "Checkpoint", body: "original body")
+
+      post "/api/notes/#{note.slug}/checkpoint",
+        params: {content_markdown: "brand new body"}.to_json,
+        headers: {"CONTENT_TYPE" => "application/json", "ACCEPT" => "application/json"}
+
+      expect(response).to have_http_status(:ok)
+      body = response.parsed_body
+      expect(body["saved"]).to eq(true)
+      expect(body["kind"]).to eq("checkpoint")
+      expect(body["revision_id"]).to be_present
+      checkpoint = note.note_revisions.where(revision_kind: "checkpoint").order(created_at: :desc).first
+      expect(checkpoint.content_markdown).to eq("brand new body")
+    end
+
+    it "returns 401 envelope when signed out" do
+      note = build_note(title: "Anon Checkpoint")
+
+      post "/api/notes/#{note.slug}/checkpoint",
+        params: {content_markdown: "hi"}.to_json,
+        headers: {"CONTENT_TYPE" => "application/json", "ACCEPT" => "application/json"}
+
+      expect(response).to have_http_status(:unauthorized)
+    end
+
+    it "returns 404 envelope for unknown notes" do
+      sign_in user
+
+      post "/api/notes/missing/checkpoint",
+        params: {content_markdown: "hi"}.to_json,
+        headers: {"CONTENT_TYPE" => "application/json", "ACCEPT" => "application/json"}
+
+      expect(response).to have_http_status(:not_found)
+    end
+  end
+
+  describe "GET /api/notes/:slug/revisions" do
+    it "lists checkpoints newest first with is_head flag" do
+      sign_in user
+      note = build_note(title: "History")
+      rev1 = create(:note_revision, note: note, content_markdown: "v1", revision_kind: :checkpoint, created_at: 2.hours.ago)
+      rev2 = create(:note_revision, note: note, content_markdown: "v2", revision_kind: :checkpoint, created_at: 1.hour.ago)
+      create(:note_revision, note: note, content_markdown: "draft body", revision_kind: :draft)
+      note.update_columns(head_revision_id: rev2.id)
+
+      get "/api/notes/#{note.slug}/revisions"
+
+      expect(response).to have_http_status(:ok)
+      revisions = response.parsed_body["revisions"]
+      ids = revisions.map { |r| r["id"] }
+      expect(ids.index(rev2.id)).to be < ids.index(rev1.id)
+      expect(revisions.find { |r| r["id"] == rev2.id }["is_head"]).to be true
+      expect(revisions.find { |r| r["id"] == rev1.id }["is_head"]).to be false
+      kinds = note.note_revisions.where(id: ids).pluck(:revision_kind).uniq
+      expect(kinds).to eq(["checkpoint"])
+    end
+
+    it "returns 401 envelope when signed out" do
+      note = build_note(title: "Anon History")
+
+      get "/api/notes/#{note.slug}/revisions", headers: {"ACCEPT" => "application/json"}
+
+      expect(response).to have_http_status(:unauthorized)
+    end
+  end
+
+  describe "POST /api/notes/:slug/revisions/:revision_id/restore" do
+    it "restores a checkpoint and returns the new revision id" do
+      sign_in user
+      note = build_note(title: "Restore")
+      rev_old = create(:note_revision, note: note, content_markdown: "old body", revision_kind: :checkpoint, created_at: 2.hours.ago)
+      rev_head = create(:note_revision, note: note, content_markdown: "current body", revision_kind: :checkpoint, created_at: 1.hour.ago)
+      note.update_columns(head_revision_id: rev_head.id)
+
+      post "/api/notes/#{note.slug}/revisions/#{rev_old.id}/restore",
+        headers: {"ACCEPT" => "application/json"}
+
+      expect(response).to have_http_status(:ok)
+      body = response.parsed_body
+      expect(body["saved"]).to eq(true)
+      new_rev = note.note_revisions.find(body["revision_id"])
+      expect(new_rev.content_markdown).to eq("old body")
+    end
+
+    it "returns 404 envelope for unknown revisions" do
+      sign_in user
+      note = build_note(title: "No Such Revision")
+
+      post "/api/notes/#{note.slug}/revisions/00000000-0000-0000-0000-000000000000/restore",
+        headers: {"ACCEPT" => "application/json"}
+
+      expect(response).to have_http_status(:not_found)
+    end
+
+    it "returns 401 envelope when signed out" do
+      note = build_note(title: "Anon Restore")
+      rev = create(:note_revision, note: note, content_markdown: "x", revision_kind: :checkpoint)
+
+      post "/api/notes/#{note.slug}/revisions/#{rev.id}/restore",
+        headers: {"ACCEPT" => "application/json"}
+
+      expect(response).to have_http_status(:unauthorized)
+    end
+  end
 end

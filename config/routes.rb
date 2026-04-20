@@ -29,6 +29,9 @@ Rails.application.routes.draw do
   post "api/notes/:slug/tags", to: "api/notes#attach_tag", as: :api_note_tags, constraints: {slug: /[^\/]+/}
   delete "api/notes/:slug/tags/:tag_id", to: "api/notes#detach_tag", as: :api_note_tag, constraints: {slug: /[^\/]+/}
   get "api/tags", to: "api/tags#index", as: :api_tags
+  post "api/notes/:slug/checkpoint", to: "api/notes#checkpoint", as: :api_note_checkpoint, constraints: {slug: /[^\/]+/}
+  get "api/notes/:slug/revisions", to: "api/notes#revisions", as: :api_note_revisions, constraints: {slug: /[^\/]+/}
+  post "api/notes/:slug/revisions/:revision_id/restore", to: "api/notes#restore_revision", as: :api_note_revision_restore, constraints: {slug: /[^\/]+/}
 
   resources :canvas_documents, path: "canvas", except: [:edit, :new] do
     resources :canvas_nodes, only: [:create, :update, :destroy] do
