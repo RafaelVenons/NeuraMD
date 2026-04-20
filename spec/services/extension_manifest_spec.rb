@@ -5,7 +5,7 @@ RSpec.describe ExtensionManifest do
     it "returns all extension points" do
       expect(described_class.all.keys).to contain_exactly(
         :search_operators, :renderers, :property_types,
-        :domain_events, :display_types, :canvas_node_types
+        :domain_events, :display_types
       )
     end
   end
@@ -31,8 +31,8 @@ RSpec.describe ExtensionManifest do
       end
     end
 
-    it "includes property_types, display_types, canvas_node_types" do
-      expect(described_class.sealed.keys).to include(:property_types, :display_types, :canvas_node_types)
+    it "includes property_types, display_types" do
+      expect(described_class.sealed.keys).to include(:property_types, :display_types)
     end
   end
 
@@ -65,10 +65,6 @@ RSpec.describe ExtensionManifest do
 
     it "NoteView::DISPLAY_TYPES is defined" do
       expect(defined?(NoteView::DISPLAY_TYPES)).to be_truthy
-    end
-
-    it "CanvasNode::NODE_TYPES is defined" do
-      expect(defined?(CanvasNode::NODE_TYPES)).to be_truthy
     end
   end
 

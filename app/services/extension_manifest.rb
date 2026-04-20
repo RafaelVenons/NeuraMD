@@ -30,12 +30,6 @@ class ExtensionManifest
       contract: [],
       sealed: true,
       description: "Tipos de visualização de NoteView (table, card, list)"
-    },
-    canvas_node_types: {
-      registry: "CanvasNode::NODE_TYPES",
-      contract: [],
-      sealed: true,
-      description: "Tipos de nó de canvas (note, text, image, link, group)"
     }
   }.freeze
 

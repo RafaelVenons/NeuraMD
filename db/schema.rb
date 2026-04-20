@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_04_19_230606) do
+ActiveRecord::Schema[8.1].define(version: 2026_04_20_145803) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
   enable_extension "pg_trgm"
@@ -105,46 +105,6 @@ ActiveRecord::Schema[8.1].define(version: 2026_04_19_230606) do
     t.index ["requested_provider"], name: "index_ai_requests_on_requested_provider"
     t.index ["status", "queue_position", "created_at"], name: "index_ai_requests_on_status_and_queue_position_and_created_at"
     t.index ["status"], name: "index_ai_requests_on_status"
-  end
-
-  create_table "canvas_documents", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
-    t.datetime "created_at", null: false
-    t.string "name", null: false
-    t.integer "position", default: 0, null: false
-    t.datetime "updated_at", null: false
-    t.jsonb "viewport", default: {"x"=>0, "y"=>0, "zoom"=>1.0}, null: false
-    t.index ["position"], name: "index_canvas_documents_on_position"
-  end
-
-  create_table "canvas_edges", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
-    t.uuid "canvas_document_id", null: false
-    t.datetime "created_at", null: false
-    t.string "edge_type", default: "arrow", null: false
-    t.string "label"
-    t.uuid "source_node_id", null: false
-    t.jsonb "style", default: {}, null: false
-    t.uuid "target_node_id", null: false
-    t.datetime "updated_at", null: false
-    t.index ["canvas_document_id"], name: "index_canvas_edges_on_canvas_document_id"
-    t.index ["source_node_id", "target_node_id"], name: "index_canvas_edges_on_source_node_id_and_target_node_id", unique: true
-    t.index ["source_node_id"], name: "index_canvas_edges_on_source_node_id"
-    t.index ["target_node_id"], name: "index_canvas_edges_on_target_node_id"
-  end
-
-  create_table "canvas_nodes", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
-    t.uuid "canvas_document_id", null: false
-    t.datetime "created_at", null: false
-    t.jsonb "data", default: {}, null: false
-    t.float "height", default: 120.0, null: false
-    t.string "node_type", default: "note", null: false
-    t.uuid "note_id"
-    t.datetime "updated_at", null: false
-    t.float "width", default: 240.0, null: false
-    t.float "x", default: 0.0, null: false
-    t.float "y", default: 0.0, null: false
-    t.integer "z_index", default: 0, null: false
-    t.index ["canvas_document_id"], name: "index_canvas_nodes_on_canvas_document_id"
-    t.index ["note_id"], name: "index_canvas_nodes_on_note_id"
   end
 
   create_table "file_imports", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
@@ -376,11 +336,6 @@ ActiveRecord::Schema[8.1].define(version: 2026_04_19_230606) do
   add_foreign_key "agent_messages", "notes", column: "from_note_id", on_delete: :cascade
   add_foreign_key "agent_messages", "notes", column: "to_note_id", on_delete: :cascade
   add_foreign_key "ai_requests", "note_revisions"
-  add_foreign_key "canvas_edges", "canvas_documents", on_delete: :cascade
-  add_foreign_key "canvas_edges", "canvas_nodes", column: "source_node_id", on_delete: :cascade
-  add_foreign_key "canvas_edges", "canvas_nodes", column: "target_node_id", on_delete: :cascade
-  add_foreign_key "canvas_nodes", "canvas_documents", on_delete: :cascade
-  add_foreign_key "canvas_nodes", "notes", on_delete: :nullify
   add_foreign_key "file_imports", "users"
   add_foreign_key "link_tags", "note_links"
   add_foreign_key "link_tags", "tags"

@@ -50,13 +50,6 @@ Rails.application.routes.draw do
   get    "api/notes/:slug/ai_requests", to: "api/notes#ai_requests", as: :api_note_ai_requests, constraints: {slug: /[^\/]+/}
   get    "api/notes/:slug/tts", to: "api/notes#tts", as: :api_note_tts, constraints: {slug: /[^\/]+/}
 
-  resources :canvas_documents, path: "canvas", except: [:edit, :new] do
-    resources :canvas_nodes, only: [:create, :update, :destroy] do
-      collection { patch :bulk_update }
-    end
-    resources :canvas_edges, only: [:create, :update, :destroy]
-  end
-
   resources :note_views, path: "views", except: [:edit, :new] do
     member do
       get :results
