@@ -26,6 +26,8 @@ Rails.application.routes.draw do
   namespace :api do
     patch "property_definitions/reorder", to: "property_definitions#reorder", as: :reorder_property_definitions
     resources :property_definitions, only: [:index, :create, :update, :destroy]
+    resources :file_imports, only: [:index]
+    resources :ai_requests, only: [:index]
   end
   get "api/tentacles/runtime", to: "api/tentacles/runtime#index", as: :api_tentacles_runtime
   get "api/tentacles/sessions", to: "api/tentacles/sessions#index", as: :api_tentacles_sessions

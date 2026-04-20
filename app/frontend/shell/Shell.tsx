@@ -7,9 +7,12 @@ import { useCommandHotkey } from "~/components/command/useCommandHotkey"
 import { EditorPage } from "~/components/editor/EditorPage"
 import { GraphPage } from "~/components/graph/GraphPage"
 import { PrimaryNav } from "~/components/primary-nav/PrimaryNav"
+import { AiOpsTab } from "~/components/settings/AiOpsTab"
+import { FileImportsTab } from "~/components/settings/FileImportsTab"
 import { PlaceholderTab } from "~/components/settings/PlaceholderTab"
 import { PropertyDefinitionsTab } from "~/components/settings/PropertyDefinitionsTab"
 import { SettingsLayout } from "~/components/settings/SettingsLayout"
+import { TagsTab } from "~/components/settings/TagsTab"
 import { TentaclePage } from "~/components/tentacles/TentaclePage"
 import { TentaclesDashboard } from "~/components/tentacles/TentaclesDashboard"
 import { PlaceholderSurface } from "~/shell/PlaceholderSurface"
@@ -35,10 +38,10 @@ export function Shell() {
           <Route path="/settings" element={<SettingsLayout />}>
             <Route index element={<Navigate to="properties" replace />} />
             <Route path="properties" element={<PropertyDefinitionsTab />} />
-            <Route path="imports" element={<PlaceholderTab title="Imports" note="Slice 6.3 traz a listagem." />} />
-            <Route path="ai" element={<PlaceholderTab title="IA ops" note="Slice 6.3 traz o dashboard." />} />
-            <Route path="tts" element={<PlaceholderTab title="TTS" note="Slice 6.3 traz as preferências." />} />
-            <Route path="tags" element={<PlaceholderTab title="Tags" note="Slice 6.3 traz o admin." />} />
+            <Route path="imports" element={<FileImportsTab />} />
+            <Route path="ai" element={<AiOpsTab />} />
+            <Route path="tts" element={<PlaceholderTab title="TTS" note="O player fixed-bottom chega no slice 6.4." />} />
+            <Route path="tags" element={<TagsTab />} />
           </Route>
           <Route path="*" element={<PlaceholderSurface title="Não encontrado" note="Rota não reconhecida pelo shell." />} />
         </Routes>

@@ -1605,3 +1605,143 @@
   font-size: 13px;
   font-family: inherit;
 }
+
+.nm-settings-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.nm-settings-list__hint {
+  margin: 0;
+  font-size: 12px;
+  color: var(--nm-shell-muted);
+}
+
+.nm-settings-list__hint code {
+  background: rgba(255, 255, 255, 0.06);
+  padding: 1px 5px;
+  border-radius: 3px;
+  font-size: 11px;
+}
+
+.nm-settings-list__empty {
+  margin: 0;
+  color: var(--nm-shell-muted);
+  font-size: 13px;
+}
+
+.nm-settings-list__rows {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.nm-settings-list__row {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px 12px;
+  border: 1px solid var(--nm-shell-border);
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.nm-settings-list__row > div {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.nm-settings-list__row strong {
+  font-size: 13px;
+  color: #fff;
+}
+
+.nm-settings-list__row a {
+  color: #5cc8ff;
+  text-decoration: none;
+}
+
+.nm-settings-list__row a:hover {
+  text-decoration: underline;
+}
+
+.nm-settings-list__meta {
+  font-size: 11px;
+  color: var(--nm-shell-muted);
+  margin: 0;
+}
+
+.nm-settings-list__meta code {
+  background: rgba(255, 255, 255, 0.06);
+  padding: 1px 4px;
+  border-radius: 3px;
+}
+
+.nm-settings-list__error {
+  font-size: 12px;
+  color: #ff8080;
+  margin: 0;
+}
+
+.nm-settings-list__chip {
+  font-size: 10px;
+  padding: 1px 6px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.08);
+  color: #e6e6e6;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.nm-settings-list__chip.is-completed,
+.nm-settings-list__chip.is-succeeded {
+  background: rgba(63, 185, 80, 0.2);
+  color: #b4f0bc;
+}
+
+.nm-settings-list__chip.is-failed,
+.nm-settings-list__chip.is-canceled {
+  background: rgba(181, 40, 58, 0.3);
+  color: #ff9ba8;
+}
+
+.nm-settings-list__chip.is-running,
+.nm-settings-list__chip.is-retrying,
+.nm-settings-list__chip.is-preview {
+  background: rgba(92, 200, 255, 0.18);
+  color: #9bdcff;
+}
+
+.nm-settings-tags {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.nm-settings-tags th,
+.nm-settings-tags td {
+  padding: 6px 8px;
+  text-align: left;
+  border-bottom: 1px solid var(--nm-shell-border);
+  font-size: 13px;
+}
+
+.nm-settings-tags th {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--nm-shell-muted);
+  font-weight: 500;
+}
+
+.nm-settings-tags__swatch {
+  display: inline-block;
+  width: 20px;
+  height: 14px;
+  border-radius: 3px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+}
