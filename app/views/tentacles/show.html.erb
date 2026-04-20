@@ -129,7 +129,7 @@
     <aside class="nm-tentacle__inbox"
            data-controller="tentacle-inbox"
            data-tentacle-inbox-url-value="<%= inbox_note_tentacle_path(@note.slug, format: :json) %>"
-           data-tentacle-inbox-deliver-url-value="<%= inbox_deliver_all_note_tentacle_path(@note.slug, format: :json) %>"
+           data-tentacle-inbox-deliver-url-value="<%= inbox_deliver_note_tentacle_path(@note.slug, format: :json) %>"
            data-tentacle-inbox-csrf-value="<%= form_authenticity_token %>">
       <header class="nm-tentacle__inbox-header">
         <h2>Inbox</h2>
@@ -141,8 +141,8 @@
       </p>
       <button type="button"
               class="nm-tentacle__btn"
-              data-action="tentacle-inbox#deliverAll">
-        Marcar todas entregues
+              data-action="tentacle-inbox#deliverDisplayed">
+        Marcar exibidas como entregues
       </button>
     </aside>
   </div>

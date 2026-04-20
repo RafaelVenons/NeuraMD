@@ -101,7 +101,7 @@ Rails.application.routes.draw do
       patch "todos", to: "tentacles/todos#update"
       post "children", to: "tentacles/children#create", as: :children
       get   "inbox",       to: "tentacles/inbox#index",        as: :inbox
-      post  "inbox/deliver_all", to: "tentacles/inbox#deliver_all", as: :inbox_deliver_all
+      post  "inbox/deliver",     to: "tentacles/inbox#deliver",     as: :inbox_deliver
     end
   end
 

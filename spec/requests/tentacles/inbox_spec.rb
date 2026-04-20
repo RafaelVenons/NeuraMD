@@ -53,20 +53,39 @@ RSpec.describe "Tentacle inbox", type: :request do
     end
   end
 
-  describe "POST /notes/:slug/tentacle/inbox/deliver_all" do
+  describe "POST /notes/:slug/tentacle/inbox/deliver" do
     context "when signed in" do
       before { sign_in user }
 
-      it "flips pending messages and reports the count" do
-        pending = send_msg
+      it "flips only the listed ids and reports the count" do
+        flip = send_msg
+        keep = send_msg
         already = send_msg(delivered: true)
 
-        post inbox_deliver_all_note_tentacle_path(owner.slug, format: :json)
+        post inbox_deliver_note_tentacle_path(owner.slug, format: :json), params: {ids: [flip.id]}
 
         expect(response).to have_http_status(:ok)
         expect(JSON.parse(response.body)["marked_delivered"]).to eq(1)
-        expect(pending.reload).to be_delivered
+        expect(flip.reload).to be_delivered
+        expect(keep.reload).not_to be_delivered
         expect(already.reload.delivered_at).to be_present
+      end
+
+      it "does not touch pending messages outside the rendered page" do
+        displayed = Array.new(3) { send_msg }
+        hidden    = Array.new(5) { send_msg }
+
+        post inbox_deliver_note_tentacle_path(owner.slug, format: :json), params: {ids: displayed.map(&:id)}
+
+        expect(JSON.parse(response.body)["marked_delivered"]).to eq(3)
+        displayed.each { |m| expect(m.reload).to be_delivered }
+        hidden.each    { |m| expect(m.reload).not_to be_delivered }
+      end
+
+      it "returns 0 when ids is blank" do
+        send_msg
+        post inbox_deliver_note_tentacle_path(owner.slug, format: :json), params: {ids: []}
+        expect(JSON.parse(response.body)["marked_delivered"]).to eq(0)
       end
     end
   end
@@ -82,8 +101,8 @@ RSpec.describe "Tentacle inbox", type: :request do
       expect(response).to have_http_status(:forbidden)
     end
 
-    it "blocks POST deliver_all with 403" do
-      post inbox_deliver_all_note_tentacle_path(owner.slug, format: :json)
+    it "blocks POST deliver with 403" do
+      post inbox_deliver_note_tentacle_path(owner.slug, format: :json), params: {ids: [1]}
       expect(response).to have_http_status(:forbidden)
     end
   end

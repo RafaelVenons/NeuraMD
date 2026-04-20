@@ -35,16 +35,20 @@ export default class extends Controller {
     }
   }
 
-  async deliverAll(event) {
+  async deliverDisplayed(event) {
     event?.preventDefault()
+    const ids = this.messages.filter((m) => !m.delivered).map((m) => m.id)
+    if (ids.length === 0) return
     try {
       const res = await fetch(this.deliverUrlValue, {
         method: "POST",
         credentials: "same-origin",
         headers: {
           "Accept": "application/json",
+          "Content-Type": "application/json",
           "X-CSRF-Token": this.csrfValue
-        }
+        },
+        body: JSON.stringify({ ids })
       })
       if (!res.ok) throw new Error(`deliver failed (${res.status})`)
       await this.load()

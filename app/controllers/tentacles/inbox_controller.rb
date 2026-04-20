@@ -19,8 +19,11 @@ module Tentacles
       }
     end
 
-    def deliver_all
-      flipped = AgentMessages::Inbox.mark_all_delivered!(@note)
+    def deliver
+      raw_ids = params[:ids]
+      raw_ids = raw_ids.values if raw_ids.is_a?(ActionController::Parameters)
+      ids = Array(raw_ids).map(&:to_s).reject(&:blank?)
+      flipped = AgentMessages::Inbox.mark_delivered!(@note, ids: ids)
       render json: {slug: @note.slug, marked_delivered: flipped}
     end
 
