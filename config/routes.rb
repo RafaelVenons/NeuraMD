@@ -116,4 +116,6 @@ Rails.application.routes.draw do
       post "ai_requests/:id/transition", to: "ai_requests#transition"
     end
   end
+
+  match "/api/*path", to: "api/base#not_found", via: :all, format: false
 end

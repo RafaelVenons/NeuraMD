@@ -1,5 +1,5 @@
 module Api
-  class GraphsController < ApplicationController
+  class GraphsController < BaseController
     def show
       authorize Note.new, :index?
 
