@@ -1,0 +1,102 @@
+:root {
+  --nm-shell-bg: #0b0d10;
+  --nm-shell-panel: #11141a;
+  --nm-shell-text: #e6e8eb;
+  --nm-shell-muted: #8a8f97;
+  --nm-shell-accent: #5cc8ff;
+  --nm-shell-border: rgba(255, 255, 255, 0.08);
+}
+
+.nm-shell {
+  display: grid;
+  grid-template-columns: 64px 1fr;
+  min-height: 100vh;
+  background: var(--nm-shell-bg);
+  color: var(--nm-shell-text);
+  font-family: inherit;
+}
+
+.nm-primary-nav {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 0;
+  background: var(--nm-shell-panel);
+  border-right: 1px solid var(--nm-shell-border);
+}
+
+.nm-primary-nav__brand {
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: var(--nm-shell-accent);
+  margin-bottom: 12px;
+}
+
+.nm-primary-nav__list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  width: 100%;
+}
+
+.nm-primary-nav__link {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  padding: 8px 4px;
+  color: var(--nm-shell-muted);
+  text-decoration: none;
+  border-left: 2px solid transparent;
+}
+
+.nm-primary-nav__link:hover {
+  color: var(--nm-shell-text);
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.nm-primary-nav__link--active {
+  color: var(--nm-shell-text);
+  border-left-color: var(--nm-shell-accent);
+  background: rgba(92, 200, 255, 0.08);
+}
+
+.nm-primary-nav__short {
+  font-weight: 600;
+  font-size: 11px;
+  letter-spacing: 0.04em;
+}
+
+.nm-primary-nav__label {
+  font-size: 10px;
+  line-height: 1.1;
+  text-align: center;
+}
+
+.nm-shell__main {
+  padding: 24px 32px;
+}
+
+.nm-shell__placeholder {
+  border: 1px dashed var(--nm-shell-border);
+  border-radius: 12px;
+  padding: 48px;
+  text-align: center;
+  color: var(--nm-shell-muted);
+}
+
+.nm-shell__placeholder h1 {
+  margin: 0 0 8px;
+  color: var(--nm-shell-text);
+  font-size: 24px;
+}
+
+.nm-shell__placeholder p {
+  margin: 0;
+  font-size: 14px;
+}

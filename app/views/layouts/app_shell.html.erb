@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="<%= I18n.locale %>">
+  <head>
+    <title>NeuraMD</title>
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <meta charset="UTF-8">
+    <meta name="application-name" content="NeuraMD">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="csrf-param" content="<%= request_forgery_protection_token %>">
+    <meta name="csrf-token" content="<%= form_authenticity_token %>">
+    <%= csp_meta_tag %>
+    <%= action_cable_meta_tag %>
+
+    <%= yield :head %>
+
+    <script>
+      (function () {
+        var t = localStorage.getItem('neuramd-theme') || 'dark';
+        document.documentElement.setAttribute('data-theme', t);
+        if (t !== 'light') document.documentElement.classList.add('dark');
+      })();
+    </script>
+
+    <link rel="icon" href="<%= image_path("logo/favicon.png") %>" type="image/png">
+    <link rel="apple-touch-icon" href="<%= image_path("logo/favicon.png") %>">
+
+    <%= vite_client_tag %>
+    <%= vite_javascript_tag "app.tsx" %>
+    <%= vite_stylesheet_tag "app.tsx" %>
+  </head>
+
+  <body class="nm-app nm-app-shell font-sans">
+    <%= yield %>
+  </body>
+</html>

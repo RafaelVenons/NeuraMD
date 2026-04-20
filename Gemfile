@@ -9,6 +9,7 @@ gem "turbo-rails"
 gem "stimulus-rails"
 gem "tailwindcss-rails"
 gem "jbuilder"
+gem "vite_rails"
 
 gem "tzinfo-data", platforms: %i[windows jruby]
 

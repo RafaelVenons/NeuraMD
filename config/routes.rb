@@ -18,6 +18,9 @@ Rails.application.routes.draw do
 
   root "graphs#show"
   get "graph", to: "graphs#show", as: :graph
+
+  get "/app", to: "app#shell", as: :app_shell
+  get "/app/*path", to: "app#shell", format: false
   get "api/graph", to: "api/graphs#show", as: :api_graph
 
   resources :canvas_documents, path: "canvas", except: [:edit, :new] do

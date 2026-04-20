@@ -1,0 +1,23 @@
+import { Route, Routes } from "react-router-dom"
+
+import { PrimaryNav } from "~/components/primary-nav/PrimaryNav"
+import { PlaceholderSurface } from "~/shell/PlaceholderSurface"
+
+export function Shell() {
+  return (
+    <div className="nm-shell">
+      <PrimaryNav />
+      <main className="nm-shell__main">
+        <Routes>
+          <Route path="/" element={<PlaceholderSurface title="Grafo" note="Fase 3 substitui este placeholder." />} />
+          <Route path="/graph" element={<PlaceholderSurface title="Grafo" note="Fase 3 substitui este placeholder." />} />
+          <Route path="/notes/:slug" element={<PlaceholderSurface title="Editor" note="Fase 4 porta o layout Overleaf." />} />
+          <Route path="/tentacles" element={<PlaceholderSurface title="Tentáculos" note="Fase 5 traz o dashboard multi." />} />
+          <Route path="/search" element={<PlaceholderSurface title="Busca" note="Fase 6 habilita o Cmd+K." />} />
+          <Route path="/settings/*" element={<PlaceholderSurface title="Configurações" note="Fase 6 traz as sub-tabs." />} />
+          <Route path="*" element={<PlaceholderSurface title="Não encontrado" note="Rota não reconhecida pelo shell." />} />
+        </Routes>
+      </main>
+    </div>
+  )
+}
