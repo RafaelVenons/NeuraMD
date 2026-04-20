@@ -49,6 +49,33 @@ RSpec.describe "Tentacles", type: :request do
       expect(response.body).to include("data-tentacle-inbox-deliver-url-value")
       expect(response.body).to include("nm-tentacle__spawn-form")
     end
+
+    it "lists outgoing wikilinks and backlinks in the context panel" do
+      parent = create(:note, :with_head_revision, title: "Parent Spec")
+      child  = create(:note, :with_head_revision, title: "Child Spec")
+      create(:note_link,
+        src_note: note, dst_note: parent,
+        hier_role: "target_is_parent",
+        created_in_revision: note.head_revision)
+      create(:note_link,
+        src_note: child, dst_note: note,
+        hier_role: "target_is_parent",
+        created_in_revision: child.head_revision)
+
+      sign_in user
+      get note_tentacle_path(note.slug)
+
+      expect(response.body).to include("nm-tentacle__context")
+      expect(response.body).to include("Parent Spec")
+      expect(response.body).to include("Child Spec")
+    end
+
+    it "shows an empty state when the tentacle has no wikilinks" do
+      sign_in user
+      get note_tentacle_path(note.slug)
+
+      expect(response.body).to include("Nenhum wikilink ainda.")
+    end
   end
 
   describe "POST /notes/:slug/tentacle" do

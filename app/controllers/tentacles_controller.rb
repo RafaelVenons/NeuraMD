@@ -11,6 +11,8 @@ class TentaclesController < ApplicationController
     @tentacle_id = @note.id
     @session = TentacleRuntime.get(@tentacle_id)
     @worktree = WorktreeService.path_for(tentacle_id: @note.id)
+    @outgoing_links = @note.active_outgoing_links.includes(:dst_note).to_a.select { |l| l.dst_note && !l.dst_note.deleted? }
+    @incoming_links = @note.active_incoming_links.includes(:src_note).to_a.select { |l| l.src_note && !l.src_note.deleted? }
   end
 
   def create

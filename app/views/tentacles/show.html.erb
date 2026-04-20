@@ -63,6 +63,52 @@
         <button type="submit" class="nm-tentacle__btn">Adicionar</button>
       </form>
 
+      <details class="nm-tentacle__context">
+        <summary>
+          Contexto
+          <span class="nm-tentacle__context-count">
+            <%= @outgoing_links.size + @incoming_links.size %>
+          </span>
+        </summary>
+        <% if @outgoing_links.any? %>
+          <h3 class="nm-tentacle__context-heading">Outgoing</h3>
+          <ul class="nm-tentacle__context-list">
+            <% @outgoing_links.each do |link| %>
+              <li>
+                <span class="nm-tentacle__context-role">
+                  <%= link.hier_role == "target_is_parent" ? "f:" :
+                      link.hier_role == "target_is_child"  ? "c:" :
+                      link.hier_role == "same_level"       ? "b:" : "—" %>
+                </span>
+                <%= link_to link.dst_note.title,
+                            note_path(link.dst_note.slug),
+                            class: "nm-tentacle__context-link",
+                            target: "_blank",
+                            rel: "noopener" %>
+              </li>
+            <% end %>
+          </ul>
+        <% end %>
+        <% if @incoming_links.any? %>
+          <h3 class="nm-tentacle__context-heading">Backlinks</h3>
+          <ul class="nm-tentacle__context-list">
+            <% @incoming_links.each do |link| %>
+              <li>
+                <span class="nm-tentacle__context-role">←</span>
+                <%= link_to link.src_note.title,
+                            note_path(link.src_note.slug),
+                            class: "nm-tentacle__context-link",
+                            target: "_blank",
+                            rel: "noopener" %>
+              </li>
+            <% end %>
+          </ul>
+        <% end %>
+        <% if @outgoing_links.empty? && @incoming_links.empty? %>
+          <p class="nm-tentacle__context-empty">Nenhum wikilink ainda.</p>
+        <% end %>
+      </details>
+
       <details class="nm-tentacle__spawn">
         <summary>↳ Spawn child</summary>
         <%= form_with url: children_note_tentacle_path(@note.slug),
@@ -261,6 +307,68 @@
   .nm-tentacle__todos-form input:focus {
     outline: none;
     border-color: #4f46e5;
+  }
+  .nm-tentacle__context {
+    border-top: 1px solid rgba(255, 255, 255, 0.08);
+    padding-top: 0.5rem;
+    margin-top: 0.25rem;
+  }
+  .nm-tentacle__context summary {
+    cursor: pointer;
+    font-size: 0.75rem;
+    color: rgba(255, 255, 255, 0.6);
+    letter-spacing: 0.04em;
+    padding: 0.15rem 0;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .nm-tentacle__context summary:hover { color: #a5b4fc; }
+  .nm-tentacle__context-count {
+    font-size: 0.65rem;
+    padding: 0.05rem 0.35rem;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.08);
+    color: rgba(255, 255, 255, 0.55);
+  }
+  .nm-tentacle__context-heading {
+    font-size: 0.65rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: rgba(255, 255, 255, 0.4);
+    margin: 0.6rem 0 0.25rem;
+  }
+  .nm-tentacle__context-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.2rem;
+  }
+  .nm-tentacle__context-list li {
+    display: flex;
+    gap: 0.35rem;
+    font-size: 0.75rem;
+    align-items: baseline;
+  }
+  .nm-tentacle__context-role {
+    color: rgba(255, 255, 255, 0.35);
+    font-size: 0.65rem;
+    min-width: 1.2em;
+    font-family: ui-monospace, monospace;
+  }
+  .nm-tentacle__context-link {
+    color: #a5b4fc;
+    text-decoration: none;
+    word-break: break-word;
+  }
+  .nm-tentacle__context-link:hover { text-decoration: underline; }
+  .nm-tentacle__context-empty {
+    font-size: 0.7rem;
+    color: rgba(255, 255, 255, 0.4);
+    margin: 0.4rem 0 0;
   }
   .nm-tentacle__spawn {
     border-top: 1px solid rgba(255, 255, 255, 0.08);
