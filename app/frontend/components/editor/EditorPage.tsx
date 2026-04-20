@@ -1,5 +1,9 @@
+import { useEffect, useState } from "react"
 import { useParams } from "react-router-dom"
 
+import { EditorPane } from "~/components/editor/EditorPane"
+import type { NotePayload } from "~/components/editor/types"
+import { useDraftAutosave, type DraftStatus } from "~/components/editor/useDraftAutosave"
 import { useNotePayload } from "~/components/editor/useNotePayload"
 
 export function EditorPage() {
@@ -18,7 +22,24 @@ export function EditorPage() {
     )
   }
 
-  const { payload } = state
+  return <EditorLoaded key={slug} slug={slug} initialContent={state.payload.revision.content_markdown} payload={state.payload} />
+}
+
+function EditorLoaded({
+  slug,
+  initialContent,
+  payload,
+}: {
+  slug: string
+  initialContent: string
+  payload: NotePayload
+}) {
+  const [content, setContent] = useState(initialContent)
+  const { status, savedAt, flushNow } = useDraftAutosave({ slug, content })
+
+  useEffect(() => {
+    setContent(initialContent)
+  }, [initialContent])
 
   return (
     <div className="nm-editor-page">
@@ -41,12 +62,15 @@ export function EditorPage() {
       <section className="nm-editor-page__editor">
         <header className="nm-editor-page__header">
           <h1>{payload.note.title}</h1>
-          <p className="nm-editor-page__muted">
-            {payload.note.slug}
-            {payload.revision.updated_at ? ` · atualizado em ${payload.revision.updated_at}` : ""}
-          </p>
+          <div className="nm-editor-page__toolbar">
+            <p className="nm-editor-page__muted">
+              {payload.note.slug}
+              {payload.revision.updated_at ? ` · atualizado em ${payload.revision.updated_at}` : ""}
+            </p>
+            <DraftStatusBadge status={status} savedAt={savedAt} onFlushNow={flushNow} />
+          </div>
         </header>
-        <pre className="nm-editor-page__markdown">{payload.revision.content_markdown}</pre>
+        <EditorPane value={content} onChange={setContent} />
       </section>
 
       <section className="nm-editor-page__preview">
@@ -86,4 +110,43 @@ export function EditorPage() {
       </aside>
     </div>
   )
+}
+
+function DraftStatusBadge({
+  status,
+  savedAt,
+  onFlushNow,
+}: {
+  status: DraftStatus
+  savedAt: Date | null
+  onFlushNow: () => void
+}) {
+  const label = labelFor(status, savedAt)
+  const isDirty = status === "dirty" || status === "error"
+  return (
+    <button
+      type="button"
+      className={`nm-editor-page__draft-badge nm-editor-page__draft-badge--${status}`}
+      onClick={isDirty ? onFlushNow : undefined}
+      disabled={!isDirty}
+      title={isDirty ? "Clique para salvar rascunho agora" : undefined}
+    >
+      {label}
+    </button>
+  )
+}
+
+function labelFor(status: DraftStatus, savedAt: Date | null): string {
+  switch (status) {
+    case "idle":
+      return "Sincronizado"
+    case "dirty":
+      return "Rascunho pendente"
+    case "saving":
+      return "Salvando…"
+    case "saved":
+      return savedAt ? `Rascunho salvo ${savedAt.toLocaleTimeString()}` : "Rascunho salvo"
+    case "error":
+      return "Falha ao salvar — clique para tentar"
+  }
 }

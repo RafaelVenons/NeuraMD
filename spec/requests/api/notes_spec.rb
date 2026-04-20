@@ -63,4 +63,43 @@ RSpec.describe "API notes", type: :request do
       expect(body["note"]["slug"]).to eq(note.slug)
     end
   end
+
+  describe "POST /api/notes/:slug/draft" do
+    it "returns 401 envelope when signed out" do
+      note = build_note(title: "Anon")
+
+      post "/api/notes/#{note.slug}/draft",
+        params: {content_markdown: "hi"}.to_json,
+        headers: {"CONTENT_TYPE" => "application/json", "ACCEPT" => "application/json"}
+
+      expect(response).to have_http_status(:unauthorized)
+      expect(response.parsed_body["error"]).to include("code" => "unauthorized")
+    end
+
+    it "persists a draft revision and returns saved=true" do
+      sign_in user
+      note = build_note(title: "Draft Target", body: "original")
+
+      post "/api/notes/#{note.slug}/draft",
+        params: {content_markdown: "updated body"}.to_json,
+        headers: {"CONTENT_TYPE" => "application/json", "ACCEPT" => "application/json"}
+
+      expect(response).to have_http_status(:ok)
+      body = response.parsed_body
+      expect(body["saved"]).to eq(true)
+      expect(body["kind"]).to eq("draft")
+      expect(note.note_revisions.where(revision_kind: "draft").first.content_markdown).to eq("updated body")
+    end
+
+    it "returns a standardized 404 envelope for unknown slugs" do
+      sign_in user
+
+      post "/api/notes/missing/draft",
+        params: {content_markdown: "hi"}.to_json,
+        headers: {"CONTENT_TYPE" => "application/json", "ACCEPT" => "application/json"}
+
+      expect(response).to have_http_status(:not_found)
+      expect(response.parsed_body["error"]).to include("code" => "not_found")
+    end
+  end
 end

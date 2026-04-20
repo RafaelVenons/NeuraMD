@@ -6,8 +6,28 @@ module Api
 
       authorize note, :show?
       revision = readable_current_revision(note)
+      render json: show_payload(note, revision)
+    end
 
-      render json: {
+    def draft
+      note = resolve_note(params[:slug])
+      return render_not_found unless note
+
+      authorize note, :update?
+      result = ::Notes::DraftService.call(
+        note: note,
+        content: params[:content_markdown].to_s,
+        author: current_user
+      )
+      render json: {saved: true, kind: "draft", graph_changed: result.graph_changed}
+    rescue => e
+      render_error(status: :unprocessable_entity, code: "draft_failed", message: e.message)
+    end
+
+    private
+
+    def show_payload(note, revision)
+      {
         note: {
           id: note.id,
           slug: note.slug,
@@ -29,8 +49,6 @@ module Api
         properties_errors: (revision&.properties_data || {}).dig("_errors") || {}
       }
     end
-
-    private
 
     def resolve_note(slug)
       note = Note.active.find_by(slug: slug) || Note.active.find_by(id: slug)
