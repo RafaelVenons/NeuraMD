@@ -23,6 +23,10 @@ Rails.application.routes.draw do
   get "/app/*path", to: "app#shell", format: false
   get "api/graph", to: "api/graphs#show", as: :api_graph
   get "api/notes/search", to: "api/notes/search#index", as: :api_notes_search
+  namespace :api do
+    patch "property_definitions/reorder", to: "property_definitions#reorder", as: :reorder_property_definitions
+    resources :property_definitions, only: [:index, :create, :update, :destroy]
+  end
   get "api/tentacles/runtime", to: "api/tentacles/runtime#index", as: :api_tentacles_runtime
   get "api/tentacles/sessions", to: "api/tentacles/sessions#index", as: :api_tentacles_sessions
   get "api/notes/:slug", to: "api/notes#show", as: :api_note, constraints: {slug: /[^\/]+/}
