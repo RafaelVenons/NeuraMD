@@ -166,7 +166,61 @@ module Api
       render json: {outgoing: outgoing, incoming: incoming}
     end
 
+    def ai_requests
+      note = resolve_note(params[:slug])
+      return render_not_found unless note
+
+      authorize note, :show?
+      requests = ::AiRequest
+        .joins(:note_revision)
+        .where(note_revisions: {note_id: note.id})
+        .recent_first
+        .limit(20)
+      render json: {requests: requests.map { |r| serialize_ai_request(r) }}
+    end
+
+    def tts
+      note = resolve_note(params[:slug])
+      return render_not_found unless note
+
+      authorize note, :show?
+      active = ::NoteTtsAsset.for_note(note).ready.order(created_at: :desc).first
+      library_count = ::NoteTtsAsset.for_note(note).count
+      render json: {
+        active_asset: active ? serialize_tts_asset(active) : nil,
+        library_count: library_count
+      }
+    end
+
     private
+
+    def serialize_ai_request(request)
+      {
+        id: request.id,
+        capability: request.capability,
+        provider: request.provider,
+        status: request.status,
+        attempts_count: request.attempts_count,
+        max_attempts: request.max_attempts,
+        last_error_kind: request.last_error_kind,
+        error_message: request.error_message,
+        created_at: request.created_at.iso8601
+      }
+    end
+
+    def serialize_tts_asset(asset)
+      {
+        id: asset.id,
+        revision_id: asset.note_revision_id,
+        language: asset.language,
+        voice: asset.voice,
+        provider: asset.provider,
+        format: asset.format,
+        duration_ms: asset.duration_ms,
+        audio_url: asset.audio.attached? ? rails_blob_url(asset.audio, disposition: :inline) : nil,
+        created_at: asset.created_at&.iso8601
+      }
+    end
 
     def serialize_link(note, hier_role)
       {
@@ -232,7 +286,9 @@ module Api
     def readable_current_revision(note)
       candidates = []
       draft = note.note_revisions.find_by(revision_kind: :draft)
-      candidates << draft if draft.present?
+      if draft.present? && draft_fresh?(draft, note)
+        candidates << draft
+      end
       candidates << note.head_revision if note.head_revision.present?
 
       remaining_checkpoints = note.note_revisions
@@ -250,6 +306,14 @@ module Api
     rescue ActiveRecord::Encryption::Errors::Decryption => e
       Rails.logger.warn("[Api::NotesController] unreadable revision #{revision.id} for note #{revision.note_id}: #{e.class}")
       false
+    end
+
+    # A draft is "fresh" only when it was stamped against the note's current
+    # head revision. A stale draft (base_revision_id != head_revision_id) was
+    # created before a newer checkpoint landed — it must not shadow the head.
+    def draft_fresh?(draft, note)
+      return true if note.head_revision_id.blank?
+      draft.base_revision_id == note.head_revision_id
     end
   end
 end

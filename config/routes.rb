@@ -47,6 +47,8 @@ Rails.application.routes.draw do
   post   "api/notes/:slug/tentacle/inbox/deliver", to: "api/tentacles/inbox#deliver",  as: :api_note_tentacle_inbox_deliver, constraints: {slug: /[^\/]+/}
   post   "api/notes/:slug/tentacle/children",      to: "api/tentacles/children#create", as: :api_note_tentacle_children,     constraints: {slug: /[^\/]+/}
   get    "api/notes/:slug/links", to: "api/notes#links", as: :api_note_links, constraints: {slug: /[^\/]+/}
+  get    "api/notes/:slug/ai_requests", to: "api/notes#ai_requests", as: :api_note_ai_requests, constraints: {slug: /[^\/]+/}
+  get    "api/notes/:slug/tts", to: "api/notes#tts", as: :api_note_tts, constraints: {slug: /[^\/]+/}
 
   resources :canvas_documents, path: "canvas", except: [:edit, :new] do
     resources :canvas_nodes, only: [:create, :update, :destroy] do

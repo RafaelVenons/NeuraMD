@@ -18,6 +18,7 @@ export function useDraftAutosave({ slug, content, debounceMs = 60_000 }: Options
   const lastSavedRef = useRef<string | null>(null)
   const latestContentRef = useRef<string>(content)
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const inflightRef = useRef<Promise<void> | null>(null)
 
   useEffect(() => {
     latestContentRef.current = content
@@ -48,22 +49,42 @@ export function useDraftAutosave({ slug, content, debounceMs = 60_000 }: Options
     }
   }, [content, debounceMs, slug])
 
-  const flush = async () => {
+  const flush = async (): Promise<void> => {
+    if (inflightRef.current) return inflightRef.current
     const snapshot = latestContentRef.current
     if (snapshot === lastSavedRef.current) return
     setStatus("saving")
-    try {
-      await fetchJson<DraftResponse>(`/api/notes/${encodeURIComponent(slug)}/draft`, {
-        method: "POST",
-        body: { content_markdown: snapshot },
-      })
-      lastSavedRef.current = snapshot
-      setStatus("saved")
-      setSavedAt(new Date())
-    } catch {
-      setStatus("error")
+    const promise = (async () => {
+      try {
+        await fetchJson<DraftResponse>(`/api/notes/${encodeURIComponent(slug)}/draft`, {
+          method: "POST",
+          body: { content_markdown: snapshot },
+        })
+        lastSavedRef.current = snapshot
+        setStatus("saved")
+        setSavedAt(new Date())
+      } catch {
+        setStatus("error")
+      } finally {
+        inflightRef.current = null
+      }
+    })()
+    inflightRef.current = promise
+    return promise
+  }
+
+  const cancelPending = () => {
+    if (timerRef.current) {
+      clearTimeout(timerRef.current)
+      timerRef.current = null
     }
   }
 
-  return { status, savedAt, flushNow: flush }
+  const markSynced = (syncedContent: string) => {
+    cancelPending()
+    lastSavedRef.current = syncedContent
+    setStatus("idle")
+  }
+
+  return { status, savedAt, flushNow: flush, cancelPending, markSynced }
 }

@@ -221,7 +221,9 @@ class NotesController < ApplicationController
   def readable_current_revision(note)
     candidates = []
     draft = note.note_revisions.find_by(revision_kind: :draft)
-    candidates << draft if draft.present?
+    if draft.present? && draft_fresh?(draft, note)
+      candidates << draft
+    end
     candidates << note.head_revision if note.head_revision.present?
 
     remaining_checkpoints = note.note_revisions
@@ -244,5 +246,10 @@ class NotesController < ApplicationController
   rescue ActiveRecord::Encryption::Errors::Decryption => e
     Rails.logger.warn("[NotesController] unreadable revision #{revision.id} for note #{revision.note_id}: #{e.class}")
     false
+  end
+
+  def draft_fresh?(draft, note)
+    return true if note.head_revision_id.blank?
+    draft.base_revision_id == note.head_revision_id
   end
 end

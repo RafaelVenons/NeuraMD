@@ -53,6 +53,15 @@ RSpec.describe Notes::DraftService do
       expect(result.graph_changed).to be(true)
     end
 
+    it "stamps base_revision_id with the current head_revision_id so stale drafts can be detected" do
+      head = create(:note_revision, note: note, revision_kind: :checkpoint)
+      note.update_columns(head_revision_id: head.id)
+
+      result = described_class.call(note: note, content: "draft body")
+
+      expect(result.revision.base_revision_id).to eq(head.id)
+    end
+
     it "preserves ai requests attached to the previous draft when autosave replaces it" do
       first_draft = described_class.call(note: note, content: "first draft").revision
       request_record = create(:ai_request, note_revision: first_draft, capability: "seed_note", status: "queued")

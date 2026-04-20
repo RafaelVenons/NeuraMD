@@ -1,11 +1,13 @@
 import { useEffect, useState } from "react"
 import { useParams } from "react-router-dom"
 
+import { AiReviewPanel } from "~/components/editor/AiReviewPanel"
 import { EditorPane } from "~/components/editor/EditorPane"
 import { PreviewPane } from "~/components/editor/PreviewPane"
 import { PropertiesEditor } from "~/components/editor/PropertiesEditor"
 import { RevisionsPanel } from "~/components/editor/RevisionsPanel"
 import { TagSidebar } from "~/components/editor/TagSidebar"
+import { TtsPlayer } from "~/components/editor/TtsPlayer"
 import type { NotePayload } from "~/components/editor/types"
 import { useDraftAutosave, type DraftStatus } from "~/components/editor/useDraftAutosave"
 import { useNotePayload } from "~/components/editor/useNotePayload"
@@ -52,7 +54,7 @@ function EditorLoaded({
   reload: () => void
 }) {
   const [content, setContent] = useState(initialContent)
-  const { status, savedAt, flushNow } = useDraftAutosave({ slug, content })
+  const { status, savedAt, flushNow, cancelPending, markSynced } = useDraftAutosave({ slug, content })
   const [checkpointStatus, setCheckpointStatus] = useState<CheckpointStatus>("idle")
   const [checkpointError, setCheckpointError] = useState<string | null>(null)
   const [revisionsToken, setRevisionsToken] = useState(0)
@@ -65,10 +67,16 @@ function EditorLoaded({
     setCheckpointStatus("saving")
     setCheckpointError(null)
     try {
+      // Cancel the pending debounce and let any in-flight draft settle first,
+      // so we can't race a stale draft POST with the checkpoint.
+      cancelPending()
+      await flushNow()
+      const snapshot = content
       await fetchJson(`/api/notes/${encodeURIComponent(slug)}/checkpoint`, {
         method: "POST",
-        body: { content_markdown: content },
+        body: { content_markdown: snapshot },
       })
+      markSynced(snapshot)
       setCheckpointStatus("saved")
       setRevisionsToken((t) => t + 1)
     } catch (error) {
@@ -142,7 +150,9 @@ function EditorLoaded({
           </section>
         ) : null}
         <RevisionsPanel slug={slug} onRestored={handleRestored} refreshToken={revisionsToken} />
+        <AiReviewPanel slug={slug} />
       </aside>
+      <TtsPlayer slug={slug} noteTitle={payload.note.title} />
     </div>
   )
 }
