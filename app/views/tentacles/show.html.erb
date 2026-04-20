@@ -62,6 +62,20 @@
                autocomplete="off">
         <button type="submit" class="nm-tentacle__btn">Adicionar</button>
       </form>
+
+      <details class="nm-tentacle__spawn">
+        <summary>↳ Spawn child</summary>
+        <%= form_with url: children_note_tentacle_path(@note.slug),
+                      method: :post,
+                      local: true,
+                      class: "nm-tentacle__spawn-form",
+                      html: {autocomplete: "off"} do |f| %>
+          <%= f.text_field :title, placeholder: "Título do filho", required: true %>
+          <%= f.text_area :description, placeholder: "Escopo (opcional)", rows: 2 %>
+          <%= f.text_field :extra_tags, placeholder: "Tags extras (CSV)" %>
+          <%= f.submit "Criar filho", class: "nm-tentacle__btn nm-tentacle__btn--primary" %>
+        <% end %>
+      </details>
     </aside>
 
     <div class="nm-tentacle__terminal" data-tentacle-target="terminal"></div>
@@ -225,6 +239,41 @@
     font-size: 0.8rem;
   }
   .nm-tentacle__todos-form input:focus {
+    outline: none;
+    border-color: #4f46e5;
+  }
+  .nm-tentacle__spawn {
+    border-top: 1px solid rgba(255, 255, 255, 0.08);
+    padding-top: 0.5rem;
+    margin-top: 0.25rem;
+  }
+  .nm-tentacle__spawn summary {
+    cursor: pointer;
+    font-size: 0.75rem;
+    color: rgba(255, 255, 255, 0.6);
+    letter-spacing: 0.04em;
+    padding: 0.15rem 0;
+  }
+  .nm-tentacle__spawn summary:hover { color: #a5b4fc; }
+  .nm-tentacle__spawn-form {
+    display: flex;
+    flex-direction: column;
+    gap: 0.3rem;
+    margin-top: 0.4rem;
+  }
+  .nm-tentacle__spawn-form input[type="text"],
+  .nm-tentacle__spawn-form textarea {
+    background: #141414;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    color: #e5e5e5;
+    border-radius: 0.25rem;
+    padding: 0.3rem 0.5rem;
+    font-size: 0.75rem;
+    font-family: inherit;
+    resize: vertical;
+  }
+  .nm-tentacle__spawn-form input:focus,
+  .nm-tentacle__spawn-form textarea:focus {
     outline: none;
     border-color: #4f46e5;
   }

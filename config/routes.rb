@@ -99,6 +99,7 @@ Rails.application.routes.draw do
     resource :tentacle, only: [:show, :create, :destroy] do
       get "todos", to: "tentacles/todos#show", as: :todos
       patch "todos", to: "tentacles/todos#update"
+      post "children", to: "tentacles/children#create", as: :children
     end
   end
 

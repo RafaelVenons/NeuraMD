@@ -1,0 +1,48 @@
+require "rails_helper"
+
+RSpec.describe Tentacles::ChildSpawner do
+  let!(:parent) { create(:note, :with_head_revision, title: "Parent Hub") }
+
+  describe ".call" do
+    it "creates a child note with a checkpoint and the tentacle tag" do
+      result = described_class.call(parent: parent, title: "First Child")
+
+      expect(result.child).to be_persisted
+      expect(result.child.title).to eq("First Child")
+      expect(result.child.head_revision_id).to eq(result.revision.id)
+      expect(result.child.head_revision.content_markdown).to include("[[Parent Hub|f:#{parent.id}]]")
+      expect(result.child.head_revision.content_markdown).to include("## Todos")
+      expect(result.child.tags.pluck(:name)).to include("tentacle")
+    end
+
+    it "creates a target_is_parent link back to the parent" do
+      result = described_class.call(parent: parent, title: "Linked")
+      link = result.child.outgoing_links.first
+
+      expect(link).to be_present
+      expect(link.dst_note_id).to eq(parent.id)
+      expect(link.hier_role).to eq("target_is_parent")
+    end
+
+    it "inserts the description between the link and the Todos heading" do
+      result = described_class.call(
+        parent: parent,
+        title: "With Desc",
+        description: "Investigate export pipeline."
+      )
+
+      expect(result.body).to match(/\[\[Parent Hub\|f:.*\]\]\s+Investigate export pipeline\.\s+## Todos/m)
+    end
+
+    it "accepts extra comma-separated tags" do
+      result = described_class.call(parent: parent, title: "Tagged", extra_tags: "research, urgent")
+      expect(result.child.tags.pluck(:name)).to include("tentacle", "research", "urgent")
+    end
+
+    it "raises BlankTitle when title is empty" do
+      expect {
+        described_class.call(parent: parent, title: "   ")
+      }.to raise_error(described_class::BlankTitle)
+    end
+  end
+end
