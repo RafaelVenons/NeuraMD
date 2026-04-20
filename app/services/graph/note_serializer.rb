@@ -32,6 +32,7 @@ module Graph
         promise_titles: promise_titles,
         promise_count: promise_titles.size,
         has_promises: promise_titles.any?,
+        node_type: node_type,
         properties: properties
       }
     end
@@ -46,6 +47,19 @@ module Graph
 
     def has_links?
       incoming_link_count.positive? || outgoing_link_count.positive?
+    end
+
+    def node_type
+      names = tag_names
+      return "tentacle" if names.include?("tentacle")
+      return "root" if names.any? { |n| n.end_with?("-raiz") }
+      return "structure" if names.any? { |n| n.end_with?("-estrutura") }
+
+      "leaf"
+    end
+
+    def tag_names
+      note.tags.map(&:name)
     end
 
     def properties

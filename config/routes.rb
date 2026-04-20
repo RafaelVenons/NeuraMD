@@ -22,6 +22,7 @@ Rails.application.routes.draw do
   get "/app", to: "app#shell", as: :app_shell
   get "/app/*path", to: "app#shell", format: false
   get "api/graph", to: "api/graphs#show", as: :api_graph
+  get "api/tentacles/runtime", to: "api/tentacles/runtime#index", as: :api_tentacles_runtime
 
   resources :canvas_documents, path: "canvas", except: [:edit, :new] do
     resources :canvas_nodes, only: [:create, :update, :destroy] do

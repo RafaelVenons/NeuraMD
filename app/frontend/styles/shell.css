@@ -79,7 +79,116 @@
 }
 
 .nm-shell__main {
-  padding: 24px 32px;
+  padding: 0;
+  overflow: hidden;
+}
+
+.nm-graph-page {
+  display: grid;
+  grid-template-columns: 260px 1fr;
+  height: 100vh;
+  background: var(--nm-shell-bg);
+}
+
+.nm-graph-page__rail {
+  border-right: 1px solid var(--nm-shell-border);
+  padding: 16px;
+  background: var(--nm-shell-panel);
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.nm-graph-page__rail header h2 {
+  font-size: 14px;
+  margin: 0 0 4px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--nm-shell-muted);
+}
+
+.nm-graph-page__muted {
+  color: var(--nm-shell-muted);
+  font-size: 12px;
+  margin: 0;
+}
+
+.nm-graph-page__legend {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 8px;
+  margin: 0;
+}
+
+.nm-graph-page__legend > div {
+  padding: 8px 10px;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--nm-shell-border);
+}
+
+.nm-graph-page__legend dt {
+  font-size: 11px;
+  color: var(--nm-shell-muted);
+  margin: 0;
+}
+
+.nm-graph-page__legend dd {
+  margin: 2px 0 0;
+  font-weight: 600;
+  font-size: 18px;
+}
+
+.nm-graph-page__legend > [data-type="root"] dd {
+  color: #ffb347;
+}
+.nm-graph-page__legend > [data-type="structure"] dd {
+  color: #5cc8ff;
+}
+.nm-graph-page__legend > [data-type="leaf"] dd {
+  color: #c1c5cc;
+}
+.nm-graph-page__legend > [data-type="tentacle"] dd {
+  color: #a6e3a1;
+}
+
+.nm-graph-page__canvas {
+  position: relative;
+  overflow: hidden;
+}
+
+.nm-graph-canvas {
+  width: 100%;
+  height: 100%;
+}
+
+.nm-graph-canvas svg {
+  display: block;
+  cursor: grab;
+}
+
+.nm-graph-canvas__node {
+  cursor: pointer;
+}
+
+.nm-graph-canvas__pulse {
+  transform-origin: center;
+  animation: nm-graph-pulse 1.6s ease-out infinite;
+}
+
+@keyframes nm-graph-pulse {
+  0% { transform: scale(0.85); opacity: 0.8; }
+  70% { transform: scale(1.25); opacity: 0; }
+  100% { transform: scale(0.85); opacity: 0; }
+}
+
+.nm-graph-page__status {
+  padding: 48px;
+  color: var(--nm-shell-muted);
+}
+
+.nm-graph-page__status--error {
+  color: #ff7777;
 }
 
 .nm-shell__placeholder {
