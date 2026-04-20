@@ -1,17 +1,12 @@
 {
-  "name": "neuramd-e2e",
+  "name": "neuramd",
   "private": true,
   "packageManager": "npm@11.9.0",
   "scripts": {
-    "e2e": "playwright test",
-    "e2e:local": "./bin/e2e-local",
-    "e2e:headed": "playwright test --headed",
-    "e2e:debug": "playwright test --debug",
     "test": "vitest run",
     "test:watch": "vitest"
   },
   "devDependencies": {
-    "@playwright/test": "^1.54.2",
     "@types/d3-force": "^3.0.10",
     "@types/dompurify": "^3.0.5",
     "@types/rails__actioncable": "^8.0.3",

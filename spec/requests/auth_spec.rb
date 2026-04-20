@@ -29,12 +29,12 @@ RSpec.describe "Authentication", type: :request do
 
   describe "unauthenticated redirect" do
     it "redirects to login when accessing notes without session" do
-      get notes_path
+      get app_shell_path
       expect(response).to redirect_to(new_user_session_path)
     end
 
     it "sets a flash alert with Portuguese message after redirect" do
-      get notes_path
+      get app_shell_path
       follow_redirect!
       expect(response.body).to include("entrar")
     end
@@ -47,7 +47,7 @@ RSpec.describe "Authentication", type: :request do
       post user_session_path, params: {
         user: { email: user.email, password: "password123" }
       }
-      expect(response).to redirect_to(graph_path)
+      expect(response).to redirect_to(app_shell_path)
     end
 
     it "rejects invalid credentials and shows Portuguese error" do

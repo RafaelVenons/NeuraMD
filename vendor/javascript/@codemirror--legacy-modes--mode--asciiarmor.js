@@ -1,4 +1,0 @@
-// @codemirror/legacy-modes/mode/asciiarmor@6.5.2 downloaded from https://ga.jspm.io/npm:@codemirror/legacy-modes@6.5.2/mode/asciiarmor.js
-
-function t(t){var e=t.match(/^\s*\S/);t.skipToEnd();return e?"error":null}const e={name:"asciiarmor",token:function(e,r){var a;if(r.state=="top"){if(e.sol()&&(a=e.match(/^-----BEGIN (.*)?-----\s*$/))){r.state="headers";r.type=a[1];return"tag"}return t(e)}if(r.state=="headers"){if(e.sol()&&e.match(/^\w+:/)){r.state="header";return"atom"}var n=t(e);n&&(r.state="body");return n}if(r.state=="header"){e.skipToEnd();r.state="headers";return"string"}if(r.state=="body"){if(e.sol()&&(a=e.match(/^-----END (.*)?-----\s*$/))){if(a[1]!=r.type)return"error";r.state="end";return"tag"}if(e.eatWhile(/[A-Za-z0-9+\/=]/))return null;e.next();return"error"}if(r.state=="end")return t(e)},blankLine:function(t){t.state=="headers"&&(t.state="body")},startState:function(){return{state:"top",type:null}}};export{e as asciiArmor};
-

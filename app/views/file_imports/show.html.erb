@@ -86,7 +86,7 @@
   <div class="fi-show__actions">
     <%= link_to "Voltar", file_imports_path, class: "fi-show__link" %>
     <% if @import.completed? %>
-      <%= link_to "Ver notas no grafo", graph_path(tag: @import.import_tag), class: "fi-show__link fi-show__link--primary" %>
+      <%= link_to "Ver notas no grafo", "/app?tag=#{@import.import_tag}", class: "fi-show__link fi-show__link--primary" %>
     <% end %>
     <% if @import.failed? %>
       <%= button_to "Tentar novamente", retry_file_import_path(@import), method: :post, class: "fi-show__link fi-show__link--primary" %>

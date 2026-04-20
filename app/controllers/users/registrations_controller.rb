@@ -4,6 +4,6 @@ class Users::RegistrationsController < Devise::RegistrationsController
   protected
 
   def after_sign_up_path_for(resource)
-    graph_path
+    app_shell_path
   end
 end

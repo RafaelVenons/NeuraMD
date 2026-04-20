@@ -1,7 +1,7 @@
 <% main_note_slug = file_import.completed? && file_import.created_notes_data.present? ? file_import.created_notes_data.first["slug"] : nil %>
 <%= tag.send(main_note_slug ? :a : :div,
       class: "fi-status fi-status--#{file_import.status}",
-      href: main_note_slug ? note_path(main_note_slug) : nil,
+      href: main_note_slug ? "/app/notes/#{main_note_slug}" : nil,
       **( file_import.processing? ? {
         data: {
           controller: "file-import-poll",

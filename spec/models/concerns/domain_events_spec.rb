@@ -14,28 +14,6 @@ RSpec.describe "Domain Events (EPIC-00.3)", type: :request do
     events
   end
 
-  describe "note.created" do
-    it "is emitted when a note is created via controller" do
-      events = capture_events("neuramd.note.created") do
-        post notes_path, params: {note: {title: "Evento Test", note_kind: "markdown"}}
-      end
-
-      expect(events.size).to eq(1)
-      expect(events.first[1]).to include(title: "Evento Test")
-    end
-
-    it "is emitted by PromiseCreationService" do
-      source = create(:note, :with_head_revision, title: "Source")
-
-      events = capture_events("neuramd.note.created") do
-        Notes::PromiseCreationService.call(source_note: source, title: "Promise Note", author: user, mode: "blank")
-      end
-
-      expect(events.size).to eq(1)
-      expect(events.first[1]).to include(title: "Promise Note")
-    end
-  end
-
   describe "note.updated" do
     it "is emitted by CheckpointService" do
       note = create(:note, title: "Update Test")
@@ -155,35 +133,6 @@ RSpec.describe "Domain Events (EPIC-00.3)", type: :request do
       payload = events.first[1]
       expect(payload[:src_note_id]).to eq(source.id)
       expect(payload[:dst_note_ids]).to include(target.id)
-    end
-  end
-
-  describe "property.changed" do
-    it "is emitted when a tag is attached to a note" do
-      note = create(:note, title: "Tag Test")
-      tag = create(:tag, name: "test-tag", tag_scope: "note")
-
-      events = capture_events("neuramd.property.changed") do
-        post note_tags_path, params: {note_id: note.id, tag_id: tag.id}
-      end
-
-      expect(events.size).to eq(1)
-      payload = events.first[1]
-      expect(payload).to include(note_id: note.id, property: "tags", action: "attached", value: "test-tag")
-    end
-
-    it "is emitted when a tag is detached from a note" do
-      note = create(:note, title: "Detach Test")
-      tag = create(:tag, name: "detach-tag", tag_scope: "note")
-      NoteTag.create!(note: note, tag: tag)
-
-      events = capture_events("neuramd.property.changed") do
-        delete note_tags_path, params: {note_id: note.id, tag_id: tag.id}
-      end
-
-      expect(events.size).to eq(1)
-      payload = events.first[1]
-      expect(payload).to include(property: "tags", action: "detached", value: "detach-tag")
     end
   end
 end

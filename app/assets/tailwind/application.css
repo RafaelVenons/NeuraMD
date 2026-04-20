@@ -1,12 +1,5 @@
 @import "tailwindcss";
 @import "./themes.css";
-@import "./components/graph.css";
-@import "./components/editor.css";
-@import "./components/preview.css";
-@import "./components/sidebar.css";
-@import "./components/revision.css";
-@import "./components/note_views.css";
-@import "./components/canvas.css";
 @import "./components/file_imports.css";
 
 @theme {
