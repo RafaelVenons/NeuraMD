@@ -28,7 +28,12 @@ module Mcp
         effective_limit = limit.nil? ? AgentMessages::Inbox::DEFAULT_LIMIT : limit
         messages = AgentMessages::Inbox.for(note, limit: effective_limit, only_pending: only_pending).to_a
 
-        flipped = mark_delivered ? AgentMessages::Inbox.mark_all_delivered!(note) : 0
+        flipped = 0
+        if mark_delivered
+          pending_ids = messages.reject(&:delivered?).map(&:id)
+          flipped = AgentMessages::Inbox.mark_delivered!(note, ids: pending_ids)
+          messages.each { |m| m.delivered_at ||= Time.current if pending_ids.include?(m.id) }
+        end
 
         data = {
           slug: note.slug,

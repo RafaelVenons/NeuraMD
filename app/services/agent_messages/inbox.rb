@@ -24,5 +24,14 @@ module AgentMessages
         .where(delivered_at: nil)
         .update_all(delivered_at: now, updated_at: now)
     end
+
+    def self.mark_delivered!(note, ids:, now: Time.current)
+      return 0 if ids.blank?
+
+      AgentMessage
+        .inbox(note)
+        .where(id: ids, delivered_at: nil)
+        .update_all(delivered_at: now, updated_at: now)
+    end
   end
 end

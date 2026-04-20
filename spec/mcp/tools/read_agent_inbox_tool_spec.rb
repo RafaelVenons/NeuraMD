@@ -65,5 +65,24 @@ RSpec.describe Mcp::Tools::ReadAgentInboxTool do
 
       expect(data["count"]).to eq(2)
     end
+
+    it "marks delivered only the messages in the returned page, not all pending" do
+      messages = Array.new(5) { send_msg }
+
+      response = described_class.call(slug: owner.slug, limit: 2, mark_delivered: true)
+      data = JSON.parse(response.content.first[:text])
+
+      expect(data["count"]).to eq(2)
+      expect(data["marked_delivered"]).to eq(2)
+
+      returned_ids = data["messages"].map { |m| m["id"] }
+      messages.each do |m|
+        if returned_ids.include?(m.id)
+          expect(m.reload).to be_delivered
+        else
+          expect(m.reload).not_to be_delivered
+        end
+      end
+    end
   end
 end

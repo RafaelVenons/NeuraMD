@@ -51,4 +51,27 @@ RSpec.describe AgentMessages::Inbox do
       expect(delivered_for_child.reload).to be_delivered
     end
   end
+
+  describe ".mark_delivered!" do
+    it "flips only the listed message ids scoped to the note" do
+      keep    = msg(to: child)
+      flip    = msg(to: child)
+      sibling = msg(to: parent, from: child)
+
+      count = described_class.mark_delivered!(child, ids: [flip.id, sibling.id])
+
+      expect(count).to eq(1)
+      expect(flip.reload).to be_delivered
+      expect(keep.reload).not_to be_delivered
+      expect(sibling.reload).not_to be_delivered
+    end
+
+    it "returns 0 and no-ops when ids are blank" do
+      pending = msg(to: child)
+
+      expect(described_class.mark_delivered!(child, ids: [])).to eq(0)
+      expect(described_class.mark_delivered!(child, ids: nil)).to eq(0)
+      expect(pending.reload).not_to be_delivered
+    end
+  end
 end
