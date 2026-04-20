@@ -32,6 +32,9 @@ Rails.application.routes.draw do
   post "api/notes/:slug/checkpoint", to: "api/notes#checkpoint", as: :api_note_checkpoint, constraints: {slug: /[^\/]+/}
   get "api/notes/:slug/revisions", to: "api/notes#revisions", as: :api_note_revisions, constraints: {slug: /[^\/]+/}
   post "api/notes/:slug/revisions/:revision_id/restore", to: "api/notes#restore_revision", as: :api_note_revision_restore, constraints: {slug: /[^\/]+/}
+  get    "api/notes/:slug/tentacle", to: "api/tentacles/sessions#show",    as: :api_note_tentacle,         constraints: {slug: /[^\/]+/}
+  post   "api/notes/:slug/tentacle", to: "api/tentacles/sessions#create",  as: :api_note_tentacle_create,  constraints: {slug: /[^\/]+/}
+  delete "api/notes/:slug/tentacle", to: "api/tentacles/sessions#destroy", as: :api_note_tentacle_destroy, constraints: {slug: /[^\/]+/}
 
   resources :canvas_documents, path: "canvas", except: [:edit, :new] do
     resources :canvas_nodes, only: [:create, :update, :destroy] do
