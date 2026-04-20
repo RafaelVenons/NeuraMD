@@ -1,3 +1,4 @@
+import DOMPurify, { type Config as DOMPurifyConfig } from "dompurify"
 import { Marked, type MarkedExtension, type Tokens } from "marked"
 import { markedHighlight } from "marked-highlight"
 import hljs from "highlight.js/lib/common"
@@ -133,8 +134,15 @@ const marked = new Marked(
   { gfm: true, breaks: false }
 )
 
+const PURIFY_CONFIG: DOMPurifyConfig = {
+  USE_PROFILES: { html: true, mathMl: true, svg: true },
+  ADD_ATTR: ["data-role"],
+  FORBID_TAGS: ["style", "form"],
+}
+
 export function renderMarkdown(markdown: string): string {
-  return marked.parse(markdown || "", { async: false }) as string
+  const html = marked.parse(markdown || "", { async: false }) as string
+  return DOMPurify.sanitize(html, PURIFY_CONFIG)
 }
 
 function escapeHtml(input: string): string {
