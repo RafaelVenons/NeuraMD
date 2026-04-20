@@ -39,6 +39,16 @@ RSpec.describe "Tentacles", type: :request do
       expect(response.body).to include("data-controller=\"tentacle\"")
       expect(response.body).to include(note.title)
     end
+
+    it "wires the inbox and spawn-child panels" do
+      sign_in user
+      get note_tentacle_path(note.slug)
+
+      expect(response.body).to include("data-controller=\"tentacle-inbox\"")
+      expect(response.body).to include("data-tentacle-inbox-url-value")
+      expect(response.body).to include("data-tentacle-inbox-deliver-url-value")
+      expect(response.body).to include("nm-tentacle__spawn-form")
+    end
   end
 
   describe "POST /notes/:slug/tentacle" do
