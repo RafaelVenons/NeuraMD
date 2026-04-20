@@ -125,6 +125,7 @@ function EditorLoaded({
           </p>
         </header>
         <PropertiesEditor
+          key={payload.revision.id ?? "no-revision"}
           slug={slug}
           definitions={payload.property_definitions}
           initialValues={payload.properties}

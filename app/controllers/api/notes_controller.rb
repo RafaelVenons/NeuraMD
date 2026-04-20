@@ -58,13 +58,13 @@ module Api
 
       color = params[:color_hex].presence
       tag = Tag.find_by("lower(name) = ?", name.downcase)
-      tag ||= Tag.new(name: name, tag_scope: "note", color_hex: color)
-      tag.color_hex = color if color && tag.new_record?
-
-      unless tag.persisted?
+      if tag.nil?
+        tag = Tag.new(name: name, tag_scope: "note", color_hex: color)
         unless tag.save
           return render_error(status: :unprocessable_entity, code: "invalid_params", message: tag.errors.full_messages.to_sentence)
         end
+      elsif tag.tag_scope == "link"
+        tag.update!(tag_scope: "both")
       end
 
       NoteTag.find_or_create_by!(note: note, tag: tag)

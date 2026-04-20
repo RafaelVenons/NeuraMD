@@ -239,6 +239,22 @@ RSpec.describe "API notes", type: :request do
       expect(response.parsed_body["error"]).to include("code" => "invalid_params")
     end
 
+    it "promotes a link-only tag to both when attaching it to a note" do
+      sign_in user
+      note = build_note(title: "Promote Link Tag")
+      link_tag = Tag.create!(name: "legacy", tag_scope: "link", color_hex: "#aa0000")
+
+      post "/api/notes/#{note.slug}/tags",
+        params: {name: "legacy"}.to_json,
+        headers: {"CONTENT_TYPE" => "application/json", "ACCEPT" => "application/json"}
+
+      expect(response).to have_http_status(:ok)
+      names = response.parsed_body["tags"].map { |t| t["name"] }
+      expect(names).to include("legacy")
+      expect(link_tag.reload.tag_scope).to eq("both")
+      expect(note.reload.tags.map(&:name)).to include("legacy")
+    end
+
     it "returns 404 envelope for unknown notes" do
       sign_in user
 
