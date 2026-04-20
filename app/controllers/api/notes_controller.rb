@@ -24,6 +24,30 @@ module Api
       render_error(status: :unprocessable_entity, code: "draft_failed", message: e.message)
     end
 
+    def update_properties
+      note = resolve_note(params[:slug])
+      return render_not_found unless note
+
+      authorize note, :update?
+      raw = params[:changes]
+      changes = raw.is_a?(ActionController::Parameters) ? raw.permit!.to_h : raw.to_h
+      revision = ::Properties::SetService.call(
+        note: note,
+        changes: changes,
+        author: current_user,
+        strict: false
+      )
+      note.reload
+      render json: {
+        properties: (revision.properties_data || {}).except("_errors"),
+        properties_errors: (revision.properties_data || {}).dig("_errors") || {}
+      }
+    rescue ::Properties::SetService::UnknownKeyError => e
+      render_error(status: :unprocessable_entity, code: "unknown_property_key", message: e.message)
+    rescue => e
+      render_error(status: :unprocessable_entity, code: "properties_failed", message: e.message)
+    end
+
     private
 
     def show_payload(note, revision)
@@ -46,7 +70,16 @@ module Api
         },
         aliases: note.note_aliases.order(:name).pluck(:name),
         properties: (revision&.properties_data || {}).except("_errors"),
-        properties_errors: (revision&.properties_data || {}).dig("_errors") || {}
+        properties_errors: (revision&.properties_data || {}).dig("_errors") || {},
+        property_definitions: PropertyDefinition.active.order(:position, :key).map { |d|
+          {
+            key: d.key,
+            value_type: d.value_type,
+            label: d.label,
+            description: d.description,
+            config: d.config
+          }
+        }
       }
     end
 

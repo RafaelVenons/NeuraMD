@@ -43,6 +43,21 @@ RSpec.describe "API notes", type: :request do
       expect(body["properties"]).to eq({})
     end
 
+    it "includes active property definitions in the payload" do
+      sign_in user
+      note = build_note(title: "With Props")
+      PropertyDefinition.create!(key: "priority", value_type: "enum",
+        label: "Prioridade", config: {"options" => ["low", "med", "high"]}, position: 1)
+      PropertyDefinition.create!(key: "due_on", value_type: "date", label: "Prazo", position: 2)
+      PropertyDefinition.create!(key: "archived_key", value_type: "text", archived: true, position: 3)
+
+      get "/api/notes/#{note.slug}"
+
+      expect(response).to have_http_status(:ok)
+      keys = response.parsed_body["property_definitions"].map { |d| d["key"] }
+      expect(keys).to contain_exactly("priority", "due_on")
+    end
+
     it "returns a standardized 404 envelope for unknown slugs" do
       sign_in user
       get "/api/notes/does-not-exist"
@@ -100,6 +115,60 @@ RSpec.describe "API notes", type: :request do
 
       expect(response).to have_http_status(:not_found)
       expect(response.parsed_body["error"]).to include("code" => "not_found")
+    end
+  end
+
+  describe "PATCH /api/notes/:slug/properties" do
+    let!(:priority_def) do
+      PropertyDefinition.create!(key: "priority", value_type: "enum",
+        label: "Prioridade", config: {"options" => ["low", "med", "high"]}, position: 1)
+    end
+
+    it "returns 401 envelope when signed out" do
+      note = build_note(title: "Anon Props")
+
+      patch "/api/notes/#{note.slug}/properties",
+        params: {changes: {priority: "high"}}.to_json,
+        headers: {"CONTENT_TYPE" => "application/json", "ACCEPT" => "application/json"}
+
+      expect(response).to have_http_status(:unauthorized)
+      expect(response.parsed_body["error"]).to include("code" => "unauthorized")
+    end
+
+    it "applies property changes and returns the new map" do
+      sign_in user
+      note = build_note(title: "With Props")
+
+      patch "/api/notes/#{note.slug}/properties",
+        params: {changes: {priority: "high"}}.to_json,
+        headers: {"CONTENT_TYPE" => "application/json", "ACCEPT" => "application/json"}
+
+      expect(response).to have_http_status(:ok)
+      body = response.parsed_body
+      expect(body["properties"]).to eq({"priority" => "high"})
+      expect(body["properties_errors"]).to eq({})
+    end
+
+    it "returns invalid_params envelope for unknown keys" do
+      sign_in user
+      note = build_note(title: "With Props")
+
+      patch "/api/notes/#{note.slug}/properties",
+        params: {changes: {bogus: "x"}}.to_json,
+        headers: {"CONTENT_TYPE" => "application/json", "ACCEPT" => "application/json"}
+
+      expect(response).to have_http_status(:unprocessable_entity)
+      expect(response.parsed_body["error"]).to include("code" => "unknown_property_key")
+    end
+
+    it "returns 404 envelope for unknown notes" do
+      sign_in user
+
+      patch "/api/notes/missing/properties",
+        params: {changes: {priority: "high"}}.to_json,
+        headers: {"CONTENT_TYPE" => "application/json", "ACCEPT" => "application/json"}
+
+      expect(response).to have_http_status(:not_found)
     end
   end
 end

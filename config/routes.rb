@@ -25,6 +25,7 @@ Rails.application.routes.draw do
   get "api/tentacles/runtime", to: "api/tentacles/runtime#index", as: :api_tentacles_runtime
   get "api/notes/:slug", to: "api/notes#show", as: :api_note, constraints: {slug: /[^\/]+/}
   post "api/notes/:slug/draft", to: "api/notes#draft", as: :api_note_draft, constraints: {slug: /[^\/]+/}
+  patch "api/notes/:slug/properties", to: "api/notes#update_properties", as: :api_note_properties, constraints: {slug: /[^\/]+/}
 
   resources :canvas_documents, path: "canvas", except: [:edit, :new] do
     resources :canvas_nodes, only: [:create, :update, :destroy] do

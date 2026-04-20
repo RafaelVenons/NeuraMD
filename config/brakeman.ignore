@@ -15,8 +15,12 @@
     {
       "fingerprint": "cf74f65ea2ddd8b0319156a88dbfd4494700438c52be056a3b55fe40c87c0bed",
       "note": "PropertiesController: permit! is intentional — property keys are dynamic and validated by Properties::SetService"
+    },
+    {
+      "fingerprint": "29ac645dda753da5cfda38ec7b040275c1b214b5e4db81aa2b264f3e72310099",
+      "note": "Api::NotesController: permit! is intentional — property keys are dynamic and validated by Properties::SetService"
     }
   ],
-  "updated": "2026-04-05",
+  "updated": "2026-04-20",
   "brakeman_version": "8.0.4"
 }

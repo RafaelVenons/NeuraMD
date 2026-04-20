@@ -19,6 +19,27 @@ export type NoteRevision = {
   updated_at: string | null
 }
 
+export type PropertyValueType =
+  | "text"
+  | "long_text"
+  | "number"
+  | "boolean"
+  | "date"
+  | "datetime"
+  | "enum"
+  | "multi_enum"
+  | "url"
+  | "note_reference"
+  | "list"
+
+export type PropertyDefinition = {
+  key: string
+  value_type: PropertyValueType
+  label: string | null
+  description: string | null
+  config: Record<string, unknown> | null
+}
+
 export type NotePayload = {
   note: NoteSummary
   revision: NoteRevision
@@ -26,4 +47,5 @@ export type NotePayload = {
   aliases: string[]
   properties: Record<string, unknown>
   properties_errors: Record<string, unknown>
+  property_definitions: PropertyDefinition[]
 }

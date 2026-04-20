@@ -3,6 +3,7 @@ import { useParams } from "react-router-dom"
 
 import { EditorPane } from "~/components/editor/EditorPane"
 import { PreviewPane } from "~/components/editor/PreviewPane"
+import { PropertiesEditor } from "~/components/editor/PropertiesEditor"
 import type { NotePayload } from "~/components/editor/types"
 import { useDraftAutosave, type DraftStatus } from "~/components/editor/useDraftAutosave"
 import { useNotePayload } from "~/components/editor/useNotePayload"
@@ -86,19 +87,17 @@ function EditorLoaded({
         <header>
           <h2>Propriedades</h2>
           <p className="nm-editor-page__muted">
-            {Object.keys(payload.properties).length === 0
-              ? "Sem propriedades"
-              : `${Object.keys(payload.properties).length} chave(s)`}
+            {payload.property_definitions.length === 0
+              ? "Sem definições ativas"
+              : `${payload.property_definitions.length} definição(ões)`}
           </p>
         </header>
-        <dl>
-          {Object.entries(payload.properties).map(([key, value]) => (
-            <div key={key} className="nm-editor-page__property">
-              <dt>{key}</dt>
-              <dd>{JSON.stringify(value)}</dd>
-            </div>
-          ))}
-        </dl>
+        <PropertiesEditor
+          slug={slug}
+          definitions={payload.property_definitions}
+          initialValues={payload.properties}
+          initialErrors={payload.properties_errors}
+        />
         {payload.aliases.length > 0 ? (
           <section className="nm-editor-page__aliases">
             <h3>Aliases</h3>
