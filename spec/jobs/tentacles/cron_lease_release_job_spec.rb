@@ -93,6 +93,28 @@ RSpec.describe Tentacles::CronLeaseReleaseJob, type: :job do
     end
   end
 
+  describe "#perform — failed child AND transcript persist fails" do
+    it "logs exit_status + persist error + transcript excerpt so debug info survives" do
+      allow(Tentacles::TranscriptService).to receive(:persist).and_raise("disk full")
+      expect(Rails.logger).to receive(:error).with(/transcript persist failed/)
+      expect(Rails.logger).to receive(:error)
+        .with(a_string_matching(/exit_status=2/)
+          .and(a_string_matching(/disk full/))
+          .and(a_string_matching(/Transcript excerpt/))
+          .and(a_string_matching(/ERROR: config invalid/)))
+
+      described_class.perform_now(**default_args(
+        exit_status: 2,
+        transcript: "ERROR: config invalid\nbacktrace line 1\nbacktrace line 2\n"
+      ))
+
+      state = TentacleCronState.find_by(note_id: note.id)
+      expect(state.last_attempted_at).to be_nil
+      expect(state.lease_token).to be_nil
+      expect(state.last_fired_at).to be_nil
+    end
+  end
+
   describe "#perform — identity-scoped cleanup" do
     it "is a no-op and logs a stale-release warning when the row has been re-claimed with a different lease_token" do
       other_token = SecureRandom.uuid

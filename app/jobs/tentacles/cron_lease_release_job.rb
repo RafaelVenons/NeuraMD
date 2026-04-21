@@ -44,10 +44,20 @@ module Tentacles
       end
 
       return if success
-      Rails.logger.warn(
-        "Tentacles::CronLeaseReleaseJob run for note #{note_id} not successful " \
-        "(exit_status=#{exit_status.inspect}); lease cleared, retry on next tick"
-      )
+
+      if transcript_error
+        Rails.logger.error(
+          "Tentacles::CronLeaseReleaseJob run for note #{note_id} not successful " \
+          "(exit_status=#{exit_status.inspect}) AND transcript persist failed " \
+          "(#{transcript_error.class}: #{transcript_error.message}); lease cleared, retry on next tick. " \
+          "Transcript excerpt (first 512 bytes): #{transcript.to_s.byteslice(0, 512).inspect}"
+        )
+      else
+        Rails.logger.warn(
+          "Tentacles::CronLeaseReleaseJob run for note #{note_id} not successful " \
+          "(exit_status=#{exit_status.inspect}); lease cleared, retry on next tick"
+        )
+      end
     end
 
     private
