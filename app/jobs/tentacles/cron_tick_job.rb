@@ -78,10 +78,10 @@ module Tentacles
           command: %w[claude],
           cwd: worktree,
           initial_prompt: prompt,
-          on_exit: build_on_exit(note, lease_pid: state.lease_pid, lease_host: state.lease_host)
+          on_exit: build_on_exit(note, lease_token: state.lease_token)
         )
       rescue StandardError
-        state.update_columns(last_attempted_at: nil, lease_pid: nil, lease_host: nil)
+        state.update_columns(last_attempted_at: nil, lease_pid: nil, lease_host: nil, lease_token: nil)
         raise
       end
     end
@@ -112,7 +112,8 @@ module Tentacles
       rows = query.update_all(
         last_attempted_at: Time.current,
         lease_pid: Process.pid,
-        lease_host: Socket.gethostname
+        lease_host: Socket.gethostname,
+        lease_token: SecureRandom.uuid
       )
       return nil if rows.zero?
 
@@ -125,7 +126,7 @@ module Tentacles
       nil
     end
 
-    def build_on_exit(note, lease_pid:, lease_host:)
+    def build_on_exit(note, lease_token:)
       ->(transcript:, command:, started_at:, ended_at:, exit_status: nil, **) do
         persisted = false
         begin
@@ -143,8 +144,7 @@ module Tentacles
         ensure
           release_cron_lease(
             note_id: note.id,
-            lease_pid: lease_pid,
-            lease_host: lease_host,
+            lease_token: lease_token,
             persisted: persisted,
             exit_status: exit_status
           )
@@ -152,13 +152,13 @@ module Tentacles
       end
     end
 
-    def release_cron_lease(note_id:, lease_pid:, lease_host:, persisted:, exit_status:)
+    def release_cron_lease(note_id:, lease_token:, persisted:, exit_status:)
       success = persisted && exit_status == 0
-      updates = { last_attempted_at: nil, lease_pid: nil, lease_host: nil }
+      updates = { last_attempted_at: nil, lease_pid: nil, lease_host: nil, lease_token: nil }
       updates[:last_fired_at] = Time.current if success
 
       TentacleCronState
-        .where(note_id: note_id, lease_pid: lease_pid, lease_host: lease_host)
+        .where(note_id: note_id, lease_token: lease_token)
         .update_all(updates)
 
       return if success
