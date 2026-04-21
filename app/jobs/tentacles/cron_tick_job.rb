@@ -135,8 +135,8 @@ module Tentacles
           lease_token: lease_token,
           transcript: transcript.to_s,
           command: Array(command),
-          started_at: started_at.iso8601(6),
-          ended_at: ended_at.iso8601(6),
+          started_at: tick_job.send(:normalize_timestamp, started_at),
+          ended_at: tick_job.send(:normalize_timestamp, ended_at),
           exit_status: exit_status
         )
       rescue StandardError => e
@@ -144,6 +144,11 @@ module Tentacles
           note_id: note_id, lease_token: lease_token, error: e
         )
       end
+    end
+
+    def normalize_timestamp(value)
+      return value.iso8601(6) if value.respond_to?(:iso8601)
+      Time.current.iso8601(6)
     end
 
     public

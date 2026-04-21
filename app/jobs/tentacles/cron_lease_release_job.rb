@@ -11,6 +11,7 @@ module Tentacles
     def perform(note_id:, lease_token:, transcript:, command:, started_at:, ended_at:, exit_status:)
       note = Note.find(note_id)
       success = false
+      rows_updated = 0
 
       ActiveRecord::Base.transaction do
         persisted = persist_transcript(
@@ -21,7 +22,16 @@ module Tentacles
           ended_at: parse_time(ended_at)
         )
         success = persisted && exit_status == 0
-        apply_cleanup(note_id: note_id, lease_token: lease_token, success: success)
+        rows_updated = apply_cleanup(note_id: note_id, lease_token: lease_token, success: success)
+      end
+
+      if success && rows_updated.zero?
+        Rails.logger.warn(
+          "Tentacles::CronLeaseReleaseJob stale release for note #{note_id} " \
+          "(lease_token no longer matches — row reclaimed by newer tick); " \
+          "transcript persisted, last_fired_at not advanced"
+        )
+        return
       end
 
       return if success

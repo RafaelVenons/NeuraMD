@@ -78,7 +78,7 @@ RSpec.describe Tentacles::CronLeaseReleaseJob, type: :job do
   end
 
   describe "#perform — identity-scoped cleanup" do
-    it "is a no-op when the row has been re-claimed with a different lease_token" do
+    it "is a no-op and logs a stale-release warning when the row has been re-claimed with a different lease_token" do
       other_token = SecureRandom.uuid
       TentacleCronState.where(note_id: note.id).update_all(
         lease_token: other_token,
@@ -87,6 +87,7 @@ RSpec.describe Tentacles::CronLeaseReleaseJob, type: :job do
         lease_host: "newer-host"
       )
       allow(Tentacles::TranscriptService).to receive(:persist)
+      expect(Rails.logger).to receive(:warn).with(/stale release/)
 
       described_class.perform_now(**default_args)
 

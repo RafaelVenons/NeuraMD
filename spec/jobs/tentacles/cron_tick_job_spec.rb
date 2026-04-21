@@ -172,6 +172,41 @@ RSpec.describe Tentacles::CronTickJob, type: :job do
       )
     end
 
+    it "normalizes nil timestamps so the enqueue succeeds instead of triggering emergency clear" do
+      note = make_cron_note(expr: "* * * * *")
+      fake = instance_double(TentacleRuntime::Session, alive?: true, pid: 1, started_at: Time.current)
+      captured_on_exit = nil
+      allow(TentacleRuntime).to receive(:start) do |**kwargs|
+        captured_on_exit = kwargs[:on_exit]
+        fake
+      end
+
+      described_class.perform_now
+
+      claimed_token = TentacleCronState.find_by(note_id: note.id).lease_token
+
+      expect_any_instance_of(described_class)
+        .not_to receive(:emergency_release_on_enqueue_failure)
+
+      expect do
+        captured_on_exit.call(
+          transcript: "hello\n",
+          command: %w[claude],
+          started_at: nil,
+          ended_at: nil,
+          exit_status: 0
+        )
+      end.to have_enqueued_job(Tentacles::CronLeaseReleaseJob).with(
+        hash_including(
+          note_id: note.id,
+          lease_token: claimed_token,
+          started_at: a_string_matching(/\A\d{4}-\d{2}-\d{2}T/),
+          ended_at: a_string_matching(/\A\d{4}-\d{2}-\d{2}T/),
+          exit_status: 0
+        )
+      )
+    end
+
     it "clears the lease inline when release-job enqueue raises so next tick can re-claim immediately" do
       note = make_cron_note(expr: "* * * * *")
       fake = instance_double(TentacleRuntime::Session, alive?: true, pid: 1, started_at: Time.current)
