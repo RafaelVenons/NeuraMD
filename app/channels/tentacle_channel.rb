@@ -45,4 +45,14 @@ class TentacleChannel < ApplicationCable::Channel
       estimated_tokens: estimated_tokens
     )
   end
+
+  def self.broadcast_route_suggestion(tentacle_id:, target_slug:, target_title:, suggested_prompt:, rationale: nil)
+    broadcast_to(
+      tentacle_id,
+      type: "route-suggestion",
+      target: {slug: target_slug, title: target_title},
+      suggested_prompt: suggested_prompt,
+      rationale: rationale
+    )
+  end
 end

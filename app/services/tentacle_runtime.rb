@@ -81,7 +81,7 @@ class TentacleRuntime
       @tentacle_id = tentacle_id
       @command = command
       @cwd = cwd
-      @env = DEFAULT_ENV.merge(env)
+      @env = DEFAULT_ENV.merge(env).merge("NEURAMD_TENTACLE_ID" => tentacle_id.to_s)
       @on_exit = on_exit
       @transcript = +""
       @transcript_mutex = Mutex.new

@@ -29,13 +29,23 @@ module Api
         authorize @note, :update?
         command = resolve_command(params[:command])
 
-        existing = ::TentacleRuntime.get(@note.id)
-        if existing&.alive?
-          render json: serialize_session(@note, existing, reused: true, boot_config_applied: false), status: :ok
+        routed_prompt, routed_err = ::Tentacles::BootConfig.validate_initial_prompt(params[:initial_prompt])
+        if routed_err
+          render json: {error: routed_err}, status: :unprocessable_entity
           return
         end
 
-        repo_root, initial_prompt = sanitized_boot_config(@note)
+        existing = ::TentacleRuntime.get(@note.id)
+        if existing&.alive?
+          if routed_prompt.present?
+            ::TentacleRuntime.write(tentacle_id: @note.id, data: "#{routed_prompt}\n")
+          end
+          render json: serialize_session(@note, existing, reused: true, boot_config_applied: false, routed_prompt_delivered: routed_prompt.present?), status: :ok
+          return
+        end
+
+        repo_root, boot_prompt = sanitized_boot_config(@note)
+        initial_prompt = merge_prompts(boot_prompt, routed_prompt)
         cwd = WorktreeService.ensure(tentacle_id: @note.id, repo_root: repo_root)
         note = @note
         author = current_user
@@ -77,6 +87,12 @@ module Api
         render_not_found unless @note
       end
 
+      def merge_prompts(boot, routed)
+        return boot if routed.nil? || routed.empty?
+        return routed if boot.nil? || boot.empty?
+        "#{boot}\n\n#{routed}"
+      end
+
       def sanitized_boot_config(note)
         props = note.current_properties
         canonical_cwd, cwd_err = ::Tentacles::BootConfig.canonicalize_cwd(props["tentacle_cwd"])
@@ -97,7 +113,7 @@ module Api
         KNOWN_COMMANDS.fetch(key, KNOWN_COMMANDS.fetch("bash"))
       end
 
-      def serialize_session(note, session, command_override: nil, reused: nil, boot_config_applied: nil)
+      def serialize_session(note, session, command_override: nil, reused: nil, boot_config_applied: nil, routed_prompt_delivered: nil)
         payload =
           if session&.alive?
             {
@@ -123,6 +139,7 @@ module Api
 
         payload[:reused] = reused unless reused.nil?
         payload[:boot_config_applied] = boot_config_applied unless boot_config_applied.nil?
+        payload[:routed_prompt_delivered] = routed_prompt_delivered unless routed_prompt_delivered.nil?
         payload
       end
     end

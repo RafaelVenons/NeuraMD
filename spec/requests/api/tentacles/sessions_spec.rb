@@ -280,6 +280,84 @@ RSpec.describe "API tentacle sessions", type: :request do
         expect(body["pid"]).to eq(4242)
       end
 
+      it "passes the routed initial_prompt to TentacleRuntime.start when starting fresh" do
+        sign_in user
+        note = make_note("Routed")
+
+        fake = instance_double(TentacleRuntime::Session, alive?: true, pid: 1, started_at: Time.current)
+        allow(WorktreeService).to receive(:ensure).and_return("/stub/worktree")
+        expect(TentacleRuntime).to receive(:start) do |**kwargs|
+          expect(kwargs[:initial_prompt]).to eq("Implement OAuth Discord.")
+          fake
+        end
+
+        post "/api/notes/#{note.slug}/tentacle",
+          params: {command: "claude", initial_prompt: "Implement OAuth Discord."}.to_json,
+          headers: {"CONTENT_TYPE" => "application/json"}
+
+        expect(response).to have_http_status(:created)
+      end
+
+      it "merges boot config prompt with routed initial_prompt on fresh start" do
+        sign_in user
+        note = make_note("Merged")
+        Properties::SetService.call(
+          note: note,
+          changes: {"tentacle_initial_prompt" => "You are the Especialista."}
+        )
+
+        fake = instance_double(TentacleRuntime::Session, alive?: true, pid: 1, started_at: Time.current)
+        allow(WorktreeService).to receive(:ensure).and_return("/stub/worktree")
+        expect(TentacleRuntime).to receive(:start) do |**kwargs|
+          expect(kwargs[:initial_prompt]).to eq("You are the Especialista.\n\nImplement OAuth Discord.")
+          fake
+        end
+
+        post "/api/notes/#{note.reload.slug}/tentacle",
+          params: {command: "claude", initial_prompt: "Implement OAuth Discord."}.to_json,
+          headers: {"CONTENT_TYPE" => "application/json"}
+
+        expect(response).to have_http_status(:created)
+      end
+
+      it "writes routed initial_prompt to the PTY when reusing an alive session" do
+        sign_in user
+        note = make_note("AliveRoute")
+        existing = instance_double(
+          TentacleRuntime::Session,
+          alive?: true, pid: 5555, started_at: Time.utc(2026, 4, 20, 11)
+        )
+        allow(existing).to receive(:instance_variable_get).with(:@command).and_return(%w[claude])
+        TentacleRuntime::SESSIONS[note.id] = existing
+
+        expect(TentacleRuntime).to receive(:write).with(tentacle_id: note.id, data: "Implement OAuth Discord.\n")
+        expect(TentacleRuntime).not_to receive(:start)
+
+        post "/api/notes/#{note.slug}/tentacle",
+          params: {command: "claude", initial_prompt: "Implement OAuth Discord."}.to_json,
+          headers: {"CONTENT_TYPE" => "application/json"}
+
+        expect(response).to have_http_status(:ok)
+        body = response.parsed_body
+        expect(body["reused"]).to eq(true)
+        expect(body["routed_prompt_delivered"]).to eq(true)
+      end
+
+      it "returns 422 when routed initial_prompt exceeds 2KB" do
+        sign_in user
+        note = make_note("Oversize")
+
+        expect(TentacleRuntime).not_to receive(:start)
+        expect(TentacleRuntime).not_to receive(:write)
+
+        post "/api/notes/#{note.slug}/tentacle",
+          params: {command: "claude", initial_prompt: "x" * 2049}.to_json,
+          headers: {"CONTENT_TYPE" => "application/json"}
+
+        expect(response).to have_http_status(:unprocessable_entity)
+        expect(response.parsed_body["error"]).to include("initial_prompt")
+      end
+
       it "omits initial_prompt when stored value exceeds the 2KB cap" do
         sign_in user
         note = make_note("OversizePrompt")

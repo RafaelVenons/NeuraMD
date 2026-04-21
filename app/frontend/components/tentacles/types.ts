@@ -15,6 +15,24 @@ export type TentacleSessionsIndex = {
 export type TentacleCableMessage =
   | { type: "output"; data: string }
   | { type: "exit"; status: number | null }
+  | {
+      type: "context-warning"
+      ratio: number
+      estimated_tokens: number
+    }
+  | {
+      type: "route-suggestion"
+      target: { slug: string; title: string }
+      suggested_prompt: string
+      rationale: string | null
+    }
+
+export type RouteSuggestion = {
+  id: string
+  target: { slug: string; title: string }
+  suggested_prompt: string
+  rationale: string | null
+}
 
 export type InboxMessage = {
   id: string

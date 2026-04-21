@@ -20,7 +20,8 @@ module Mcp
         BulkRemoveTagTool,
         SendAgentMessageTool,
         ReadAgentInboxTool,
-        SpawnChildTentacleTool
+        SpawnChildTentacleTool,
+        RouteHumanToTool
       ]
     end
   end

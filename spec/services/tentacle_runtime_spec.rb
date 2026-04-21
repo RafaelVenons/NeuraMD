@@ -65,6 +65,18 @@ RSpec.describe TentacleRuntime do
         described_class.start(tentacle_id: tentacle_id, command: ["sleep", "5"], initial_prompt: nil)
       }.not_to raise_error
     end
+
+    it "exports NEURAMD_TENTACLE_ID in the child process env" do
+      received = []
+      allow(TentacleChannel).to receive(:broadcast_output) { |data:, **| received << data }
+
+      described_class.start(
+        tentacle_id: tentacle_id,
+        command: ["sh", "-c", "printf %s \"$NEURAMD_TENTACLE_ID\""]
+      )
+
+      expect(wait_until { received.join.include?(tentacle_id) }).to be_truthy
+    end
   end
 
   describe ".write" do

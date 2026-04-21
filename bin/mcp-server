@@ -21,7 +21,8 @@ require "mcp"
 server = MCP::Server.new(
   name: "neuramd",
   version: "1.0.0",
-  tools: Mcp::Tools.all
+  tools: Mcp::Tools.all,
+  server_context: { tentacle_id: ENV["NEURAMD_TENTACLE_ID"].to_s }
 )
 
 transport = MCP::Server::Transports::StdioTransport.new(server)

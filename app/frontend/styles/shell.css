@@ -2048,3 +2048,68 @@ body.nm-app-shell #app-root {
 .nm-tts-player__close:hover {
   color: #fff;
 }
+
+.nm-route-suggestion {
+  background: var(--nm-shell-surface);
+  border: 1px solid #3b82f6;
+  border-radius: 10px;
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.nm-route-suggestion__header {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.nm-route-suggestion__badge {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #60a5fa;
+}
+
+.nm-route-suggestion__rationale {
+  margin: 0;
+  font-size: 12px;
+  color: var(--nm-shell-muted);
+}
+
+.nm-route-suggestion__prompt {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--nm-shell-text);
+}
+
+.nm-route-suggestion__prompt textarea {
+  font-family: inherit;
+  font-size: 13px;
+  padding: 8px;
+  border-radius: 6px;
+  border: 1px solid var(--nm-shell-border);
+  background: #0b0b0b;
+  color: var(--nm-shell-text);
+  resize: vertical;
+}
+
+.nm-route-suggestion__actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.nm-button--ghost {
+  background: transparent;
+  color: var(--nm-shell-muted);
+  border-color: var(--nm-shell-border);
+}
+
+.nm-button--ghost:hover:not(:disabled) {
+  background: #1f2937;
+  color: var(--nm-shell-text);
+}
