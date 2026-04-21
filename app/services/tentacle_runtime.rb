@@ -6,7 +6,8 @@ class TentacleRuntime
   INITIAL_PROMPT_BOOT_DELAY = 1.5
 
   class << self
-    def start(tentacle_id:, command:, cwd: nil, env: {}, on_exit: nil, initial_prompt: nil)
+    def start(tentacle_id:, command:, cwd: nil, env: {}, on_exit: nil, initial_prompt: nil,
+              context_warning_ratio: nil, context_window_tokens: nil)
       existing = SESSIONS[tentacle_id]
       return existing if existing&.alive?
 
@@ -16,7 +17,9 @@ class TentacleRuntime
         command: Array(command),
         cwd: cwd,
         env: env,
-        on_exit: on_exit
+        on_exit: on_exit,
+        context_warning_ratio: context_warning_ratio,
+        context_window_tokens: context_window_tokens
       )
       SESSIONS[tentacle_id] = session
       schedule_initial_prompt(session, initial_prompt) if initial_prompt.present?
@@ -67,10 +70,14 @@ class TentacleRuntime
       "LANG" => ENV["LANG"] || "en_US.UTF-8"
     }.freeze
     LIVE_TRANSCRIPT_CAP = 200_000
+    DEFAULT_CONTEXT_WINDOW_TOKENS = 200_000
+    DEFAULT_CONTEXT_WARNING_RATIO = 0.70
+    TOKEN_BYTES_RATIO = 4
 
     attr_reader :tentacle_id, :pid, :started_at
 
-    def initialize(tentacle_id:, command:, cwd: nil, env: {}, on_exit: nil)
+    def initialize(tentacle_id:, command:, cwd: nil, env: {}, on_exit: nil,
+                   context_warning_ratio: nil, context_window_tokens: nil)
       @tentacle_id = tentacle_id
       @command = command
       @cwd = cwd
@@ -84,6 +91,10 @@ class TentacleRuntime
       @boot_mutex = Mutex.new
       @boot_cv = ConditionVariable.new
       @booted = false
+      @context_warning_ratio = (context_warning_ratio || DEFAULT_CONTEXT_WARNING_RATIO).to_f
+      @context_window_tokens = (context_window_tokens || DEFAULT_CONTEXT_WINDOW_TOKENS).to_i
+      @context_warning_fired = false
+      @context_warning_mutex = Mutex.new
       @started_at = Time.current
       spawn_process
       start_reader
@@ -197,16 +208,46 @@ class TentacleRuntime
     end
 
     def append_to_transcript(chunk)
-      @transcript_mutex.synchronize do
+      total_bytes = @transcript_mutex.synchronize do
         @transcript << chunk
-        next if @transcript.bytesize <= LIVE_TRANSCRIPT_CAP
-
-        overflow = @transcript.bytesize - LIVE_TRANSCRIPT_CAP
-        tail = @transcript.byteslice(overflow, LIVE_TRANSCRIPT_CAP)
-        tail.force_encoding(Encoding::UTF_8).scrub!
-        @transcript_dropped_bytes += overflow
-        @transcript = +tail
+        if @transcript.bytesize > LIVE_TRANSCRIPT_CAP
+          overflow = @transcript.bytesize - LIVE_TRANSCRIPT_CAP
+          tail = @transcript.byteslice(overflow, LIVE_TRANSCRIPT_CAP)
+          tail.force_encoding(Encoding::UTF_8).scrub!
+          @transcript_dropped_bytes += overflow
+          @transcript = +tail
+        end
+        @transcript.bytesize + @transcript_dropped_bytes
       end
+      check_context_warning!(total_bytes)
+    end
+
+    def check_context_warning!(total_bytes)
+      return if @context_warning_fired
+      return if @context_window_tokens <= 0
+
+      estimated_tokens = total_bytes / TOKEN_BYTES_RATIO
+      ratio = estimated_tokens.to_f / @context_window_tokens
+      return if ratio < @context_warning_ratio
+
+      should_fire = @context_warning_mutex.synchronize do
+        next false if @context_warning_fired
+        @context_warning_fired = true
+        true
+      end
+      return unless should_fire
+
+      fire_context_warning(ratio: ratio, estimated_tokens: estimated_tokens)
+    end
+
+    def fire_context_warning(ratio:, estimated_tokens:)
+      TentacleChannel.broadcast_context_warning(
+        tentacle_id: @tentacle_id,
+        ratio: ratio,
+        estimated_tokens: estimated_tokens
+      )
+    rescue StandardError => e
+      Rails.logger.error("TentacleRuntime#context_warning failed: #{e.class}: #{e.message}")
     end
 
     def fire_on_exit(exit_status:)

@@ -36,4 +36,13 @@ class TentacleChannel < ApplicationCable::Channel
   def self.broadcast_exit(tentacle_id:, status: nil)
     broadcast_to(tentacle_id, type: "exit", status: status)
   end
+
+  def self.broadcast_context_warning(tentacle_id:, ratio:, estimated_tokens:)
+    broadcast_to(
+      tentacle_id,
+      type: "context-warning",
+      ratio: ratio,
+      estimated_tokens: estimated_tokens
+    )
+  end
 end
