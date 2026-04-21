@@ -28,6 +28,10 @@ while read -r oldrev newrev refname; do
 	unset GIT_DIR GIT_WORK_TREE
 
 	git fetch origin "$BRANCH"
+	# Wipe any local edits/untracked drift before switching — working tree
+	# should be a faithful mirror of the pushed commit.
+	git reset --hard HEAD
+	git clean -fd
 	git checkout -B "$BRANCH" "origin/$BRANCH"
 	git reset --hard "$newrev"
 
