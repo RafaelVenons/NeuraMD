@@ -1,14 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from "react"
 
-type CanvasTransform = {
-  translateX: number
-  translateY: number
-  scale: number
-}
-
-const MIN_SCALE = 0.15
-const MAX_SCALE = 4.0
-const ZOOM_FACTOR = 0.12
+import {
+  applyPan,
+  applyZoomAroundPoint,
+  computeFitTransform,
+  screenToGraph as screenToGraphPure,
+  type CanvasTransform,
+} from "~/components/graph/canvasTransform"
 
 type Result = {
   transform: CanvasTransform
@@ -74,10 +72,7 @@ export function useCanvasTransform(): Result {
       const svg = svgRef.current
       if (!svg) return { x: clientX, y: clientY }
       const rect = svg.getBoundingClientRect()
-      return {
-        x: (clientX - rect.left - transform.translateX) / transform.scale,
-        y: (clientY - rect.top - transform.translateY) / transform.scale,
-      }
+      return screenToGraphPure(clientX, clientY, rect, transform)
     },
     [transform]
   )
@@ -89,18 +84,8 @@ export function useCanvasTransform(): Result {
     const rect = svg.getBoundingClientRect()
     const cx = e.clientX - rect.left
     const cy = e.clientY - rect.top
-
-    setTransform((prev) => {
-      const direction = e.deltaY < 0 ? 1 : -1
-      const factor = 1 + direction * ZOOM_FACTOR
-      const nextScale = Math.min(MAX_SCALE, Math.max(MIN_SCALE, prev.scale * factor))
-      const ratio = nextScale / prev.scale
-      return {
-        scale: nextScale,
-        translateX: cx - (cx - prev.translateX) * ratio,
-        translateY: cy - (cy - prev.translateY) * ratio,
-      }
-    })
+    const direction = e.deltaY < 0 ? 1 : -1
+    setTransform((prev) => applyZoomAroundPoint(prev, cx, cy, direction))
   }, [])
 
   const handlePointerDown = useCallback(
@@ -123,11 +108,9 @@ export function useCanvasTransform(): Result {
   const handlePointerMove = useCallback((e: React.PointerEvent<SVGSVGElement>) => {
     const pan = panState.current
     if (!pan) return
-    setTransform((prev) => ({
-      ...prev,
-      translateX: pan.startTx + (e.clientX - pan.startX),
-      translateY: pan.startTy + (e.clientY - pan.startY),
-    }))
+    setTransform((prev) =>
+      applyPan(prev, pan.startTx, pan.startTy, pan.startX, pan.startY, e.clientX, e.clientY)
+    )
   }, [])
 
   const handlePointerUp = useCallback(() => {
@@ -141,11 +124,7 @@ export function useCanvasTransform(): Result {
     const rect = svg.getBoundingClientRect()
     const cx = rect.width / 2
     const cy = rect.height / 2
-    setTransform((prev) => {
-      const nextScale = Math.min(MAX_SCALE, prev.scale * (1 + ZOOM_FACTOR))
-      const ratio = nextScale / prev.scale
-      return { scale: nextScale, translateX: cx - (cx - prev.translateX) * ratio, translateY: cy - (cy - prev.translateY) * ratio }
-    })
+    setTransform((prev) => applyZoomAroundPoint(prev, cx, cy, 1))
   }, [])
 
   const zoomOut = useCallback(() => {
@@ -154,41 +133,16 @@ export function useCanvasTransform(): Result {
     const rect = svg.getBoundingClientRect()
     const cx = rect.width / 2
     const cy = rect.height / 2
-    setTransform((prev) => {
-      const nextScale = Math.max(MIN_SCALE, prev.scale * (1 - ZOOM_FACTOR))
-      const ratio = nextScale / prev.scale
-      return { scale: nextScale, translateX: cx - (cx - prev.translateX) * ratio, translateY: cy - (cy - prev.translateY) * ratio }
-    })
+    setTransform((prev) => applyZoomAroundPoint(prev, cx, cy, -1))
   }, [])
 
   const fitAll = useCallback((nodes: { x: number; y: number }[]) => {
     const svg = svgRef.current
-    if (!svg || nodes.length === 0) return
+    if (!svg) return
     const rect = svg.getBoundingClientRect()
-    if (rect.width === 0 || rect.height === 0) return
-    let minX = Infinity,
-      minY = Infinity,
-      maxX = -Infinity,
-      maxY = -Infinity
-    for (const n of nodes) {
-      if (n.x < minX) minX = n.x
-      if (n.y < minY) minY = n.y
-      if (n.x > maxX) maxX = n.x
-      if (n.y > maxY) maxY = n.y
-    }
-    const graphW = Math.max(1, maxX - minX)
-    const graphH = Math.max(1, maxY - minY)
-    const padding = 80
-    const scaleX = (rect.width - padding * 2) / graphW
-    const scaleY = (rect.height - padding * 2) / graphH
-    const scale = Math.min(Math.max(Math.min(scaleX, scaleY), MIN_SCALE), MAX_SCALE)
-    const cgx = (minX + maxX) / 2
-    const cgy = (minY + maxY) / 2
-    setTransform({
-      scale,
-      translateX: rect.width / 2 - cgx * scale,
-      translateY: rect.height / 2 - cgy * scale,
-    })
+    const next = computeFitTransform(nodes, rect)
+    if (!next) return
+    setTransform(next)
   }, [])
 
   return {
