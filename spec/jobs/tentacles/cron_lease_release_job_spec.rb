@@ -94,19 +94,25 @@ RSpec.describe Tentacles::CronLeaseReleaseJob, type: :job do
   end
 
   describe "#perform — failed child AND transcript persist fails" do
-    it "logs exit_status + persist error + transcript excerpt so debug info survives" do
+    it "logs exit_status + persist error + transcript metadata (bytesize+sha256) WITHOUT raw content" do
       allow(Tentacles::TranscriptService).to receive(:persist).and_raise("disk full")
-      expect(Rails.logger).to receive(:error).with(/transcript persist failed/)
-      expect(Rails.logger).to receive(:error)
-        .with(a_string_matching(/exit_status=2/)
-          .and(a_string_matching(/disk full/))
-          .and(a_string_matching(/Transcript excerpt/))
-          .and(a_string_matching(/ERROR: config invalid/)))
+      logged = []
+      allow(Rails.logger).to receive(:error) { |msg| logged << msg }
 
-      described_class.perform_now(**default_args(
-        exit_status: 2,
-        transcript: "ERROR: config invalid\nbacktrace line 1\nbacktrace line 2\n"
-      ))
+      raw_transcript = "API_KEY=sk-secret-do-not-log\nERROR: config invalid\nbacktrace line 1\n"
+      expected_sha = Digest::SHA256.hexdigest(raw_transcript.b)
+
+      described_class.perform_now(**default_args(exit_status: 2, transcript: raw_transcript))
+
+      final = logged.last
+      expect(final).to match(/exit_status=2/)
+      expect(final).to match(/disk full/)
+      expect(final).to match(/bytesize=#{raw_transcript.bytesize}\b/)
+      expect(final).to match(/sha256=#{expected_sha}/)
+      expect(final).not_to include("API_KEY")
+      expect(final).not_to include("sk-secret")
+      expect(final).not_to include("ERROR: config invalid")
+      expect(final).not_to include("backtrace")
 
       state = TentacleCronState.find_by(note_id: note.id)
       expect(state.last_attempted_at).to be_nil

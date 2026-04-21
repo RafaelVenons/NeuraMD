@@ -46,11 +46,13 @@ module Tentacles
       return if success
 
       if transcript_error
+        transcript_bytes = transcript.to_s.b
         Rails.logger.error(
           "Tentacles::CronLeaseReleaseJob run for note #{note_id} not successful " \
           "(exit_status=#{exit_status.inspect}) AND transcript persist failed " \
           "(#{transcript_error.class}: #{transcript_error.message}); lease cleared, retry on next tick. " \
-          "Transcript excerpt (first 512 bytes): #{transcript.to_s.byteslice(0, 512).inspect}"
+          "Transcript metadata: bytesize=#{transcript_bytes.bytesize} " \
+          "sha256=#{Digest::SHA256.hexdigest(transcript_bytes)}"
         )
       else
         Rails.logger.warn(
