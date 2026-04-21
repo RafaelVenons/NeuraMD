@@ -568,28 +568,29 @@ RSpec.describe Tentacles::CronTickJob, type: :job do
       end
     end
 
-    it "reclaims a fresh lease when lease_pid is dead on the same host (process crash)" do
+    it "reclaims a fresh lease when lease_pid is dead on the same host (child crashed, worker may still live)" do
       travel_to Time.zone.local(2026, 4, 21, 9, 5, 0) do
         note = make_cron_note(expr: "0 9 * * *")
-        dead_pid = 999_999
+        dead_child_pid = 999_999
         TentacleCronState.create!(
           note_id: note.id,
           last_attempted_at: Time.current - 30.seconds,
-          lease_pid: dead_pid,
+          lease_pid: dead_child_pid,
           lease_host: Socket.gethostname
         )
-        allow(Process).to receive(:kill).with(0, dead_pid).and_raise(Errno::ESRCH)
-        fake = instance_double(TentacleRuntime::Session, alive?: true, pid: 1, started_at: Time.current)
+        allow(Process).to receive(:kill).with(0, dead_child_pid).and_raise(Errno::ESRCH)
+        fresh_child_pid = 42_042
+        fake = instance_double(TentacleRuntime::Session, alive?: true, pid: fresh_child_pid, started_at: Time.current)
         allow(Rails.logger).to receive(:warn)
 
-        expect(Rails.logger).to receive(:warn).with(/orphaned lease.*#{note.id}.*pid #{dead_pid} dead/)
+        expect(Rails.logger).to receive(:warn).with(/orphaned lease.*#{note.id}.*pid #{dead_child_pid} dead/)
         expect(TentacleRuntime).to receive(:start).and_return(fake)
 
         described_class.perform_now
 
         state = TentacleCronState.find_by(note_id: note.id)
         expect(state.last_attempted_at).to be_within(5.seconds).of(Time.current)
-        expect(state.lease_pid).to eq(Process.pid)
+        expect(state.lease_pid).to eq(fresh_child_pid)
         expect(state.lease_host).to eq(Socket.gethostname)
       end
     end
@@ -643,15 +644,22 @@ RSpec.describe Tentacles::CronTickJob, type: :job do
       end
     end
 
-    it "records lease_pid and lease_host when claiming a fresh lease" do
+    it "claims with worker pid and transitions lease_pid to the child session pid after start returns" do
       note = make_cron_note(expr: "* * * * *")
-      fake = instance_double(TentacleRuntime::Session, alive?: true, pid: 1, started_at: Time.current)
-      allow(TentacleRuntime).to receive(:start).and_return(fake)
+      child_pid = 77_077
+      fake = instance_double(TentacleRuntime::Session, alive?: true, pid: child_pid, started_at: Time.current)
+
+      mid_start_pid = nil
+      allow(TentacleRuntime).to receive(:start) do |**_kwargs|
+        mid_start_pid = TentacleCronState.find_by(note_id: note.id)&.lease_pid
+        fake
+      end
 
       described_class.perform_now
 
+      expect(mid_start_pid).to eq(Process.pid)
       state = TentacleCronState.find_by(note_id: note.id)
-      expect(state.lease_pid).to eq(Process.pid)
+      expect(state.lease_pid).to eq(child_pid)
       expect(state.lease_host).to eq(Socket.gethostname)
     end
 

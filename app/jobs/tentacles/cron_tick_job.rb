@@ -69,11 +69,12 @@ module Tentacles
       state = claim_lease(note: note, previous: previous, reclaim_orphan: reclaim_orphan)
       return unless state
 
+      session = nil
       begin
         repo_root = canonical_cwd ? Pathname.new(canonical_cwd) : Rails.root
         worktree = WorktreeService.ensure(tentacle_id: note.id, repo_root: repo_root)
 
-        TentacleRuntime.start(
+        session = TentacleRuntime.start(
           tentacle_id: note.id,
           command: %w[claude],
           cwd: worktree,
@@ -84,6 +85,22 @@ module Tentacles
         state.update_columns(last_attempted_at: nil, lease_pid: nil, lease_host: nil, lease_token: nil)
         raise
       end
+
+      transition_lease_to_child_pid(state: state, session: session)
+    end
+
+    def transition_lease_to_child_pid(state:, session:)
+      child_pid = session&.pid
+      return unless child_pid
+
+      TentacleCronState
+        .where(note_id: state.note_id, lease_token: state.lease_token)
+        .update_all(lease_pid: child_pid)
+    rescue StandardError => e
+      Rails.logger.warn(
+        "Tentacles::CronTickJob failed to transition lease_pid to child pid for note #{state.note_id}: " \
+        "#{e.class}: #{e.message}; retaining worker pid (fast reclaim may wait for STALE_LEASE_TTL)"
+      )
     end
 
     def orphaned_by_dead_pid?(state)
