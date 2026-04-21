@@ -172,6 +172,69 @@ RSpec.describe Tentacles::CronTickJob, type: :job do
       )
     end
 
+    it "clears the lease inline when release-job enqueue raises so next tick can re-claim immediately" do
+      note = make_cron_note(expr: "* * * * *")
+      fake = instance_double(TentacleRuntime::Session, alive?: true, pid: 1, started_at: Time.current)
+      captured_on_exit = nil
+      allow(TentacleRuntime).to receive(:start) do |**kwargs|
+        captured_on_exit = kwargs[:on_exit]
+        fake
+      end
+
+      described_class.perform_now
+
+      allow(Tentacles::CronLeaseReleaseJob).to receive(:perform_later)
+        .and_raise(ActiveJob::SerializationError.new("queue db unreachable"))
+      allow(Rails.logger).to receive(:error)
+
+      expect do
+        captured_on_exit.call(
+          transcript: "hello\n",
+          command: %w[claude],
+          started_at: 1.minute.ago,
+          ended_at: Time.current,
+          exit_status: 0
+        )
+      end.not_to raise_error
+
+      state = TentacleCronState.find_by(note_id: note.id)
+      expect(state.last_attempted_at).to be_nil
+      expect(state.lease_pid).to be_nil
+      expect(state.lease_host).to be_nil
+      expect(state.lease_token).to be_nil
+      expect(state.last_fired_at).to be_nil
+    end
+
+    it "swallows and logs when both enqueue and inline lease clear fail" do
+      note = make_cron_note(expr: "* * * * *")
+      fake = instance_double(TentacleRuntime::Session, alive?: true, pid: 1, started_at: Time.current)
+      captured_on_exit = nil
+      allow(TentacleRuntime).to receive(:start) do |**kwargs|
+        captured_on_exit = kwargs[:on_exit]
+        fake
+      end
+
+      described_class.perform_now
+
+      claimed_token = TentacleCronState.find_by(note_id: note.id).lease_token
+      allow(Tentacles::CronLeaseReleaseJob).to receive(:perform_later)
+        .and_raise(ActiveJob::SerializationError.new("queue db unreachable"))
+      allow(TentacleCronState).to receive(:where)
+        .with(note_id: note.id, lease_token: claimed_token)
+        .and_raise(ActiveRecord::StatementInvalid.new("main db unreachable"))
+      expect(Rails.logger).to receive(:error).at_least(:twice)
+
+      expect do
+        captured_on_exit.call(
+          transcript: "hello\n",
+          command: %w[claude],
+          started_at: 1.minute.ago,
+          ended_at: Time.current,
+          exit_status: 0
+        )
+      end.not_to raise_error
+    end
+
     it "claims the lease via last_attempted_at before start and the on_exit callback commits last_fired_at" do
       note = make_cron_note(expr: "* * * * *")
       fake = instance_double(TentacleRuntime::Session, alive?: true, pid: 1, started_at: Time.current)

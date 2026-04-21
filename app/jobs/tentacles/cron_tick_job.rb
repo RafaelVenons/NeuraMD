@@ -128,6 +128,7 @@ module Tentacles
 
     def build_on_exit(note, lease_token:)
       note_id = note.id
+      tick_job = self
       ->(transcript:, command:, started_at:, ended_at:, exit_status: nil, **) do
         Tentacles::CronLeaseReleaseJob.perform_later(
           note_id: note_id,
@@ -138,7 +139,41 @@ module Tentacles
           ended_at: ended_at.iso8601(6),
           exit_status: exit_status
         )
+      rescue StandardError => e
+        tick_job.emergency_release_on_enqueue_failure(
+          note_id: note_id, lease_token: lease_token, error: e
+        )
       end
     end
+
+    public
+
+    # Best-effort safety net when CronLeaseReleaseJob.perform_later raises
+    # (queue DB unreachable, serialization error). Clears the lease inline
+    # without advancing last_fired_at so the next tick can re-claim
+    # immediately. Transcript is lost in this path — acceptable tradeoff
+    # versus wedging the schedule for STALE_LEASE_TTL.
+    # If the inline clear also fails, log and swallow; stale-TTL reclaim is
+    # the ultimate backstop.
+    def emergency_release_on_enqueue_failure(note_id:, lease_token:, error:)
+      Rails.logger.error(
+        "Tentacles::CronTickJob release-job enqueue failed for note #{note_id}: " \
+        "#{error.class}: #{error.message}; clearing lease inline, transcript lost"
+      )
+      TentacleCronState
+        .where(note_id: note_id, lease_token: lease_token)
+        .update_all(last_attempted_at: nil, lease_pid: nil, lease_host: nil, lease_token: nil)
+    rescue StandardError => e
+      begin
+        Rails.logger.error(
+          "Tentacles::CronTickJob emergency lease clear failed for note #{note_id}: " \
+          "#{e.class}: #{e.message}; falling back to STALE_LEASE_TTL reclaim"
+        )
+      rescue StandardError
+        nil
+      end
+    end
+
+    private
   end
 end
