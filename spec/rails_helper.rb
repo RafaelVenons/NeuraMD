@@ -1,7 +1,14 @@
 require "spec_helper"
-ENV["RAILS_ENV"] ||= "test"
+# Force RAILS_ENV=test even if the parent shell exports development.
+# A prior TentacleRuntime revision leaked RAILS_ENV=development into child
+# shells; rspec then ran against the dev DB and DatabaseCleaner.clean_with(
+# :truncation) wiped the user's acervo.
+ENV["RAILS_ENV"] = "test"
 require_relative "../config/environment"
 abort("The Rails environment is running in production mode!") if Rails.env.production?
+unless Rails.env.test?
+  abort("rails_helper refused to boot: Rails.env=#{Rails.env.inspect}, expected 'test'")
+end
 require "rspec/rails"
 require "active_job/test_helper"
 require "active_support/testing/time_helpers"

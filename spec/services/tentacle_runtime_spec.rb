@@ -77,6 +77,33 @@ RSpec.describe TentacleRuntime do
 
       expect(wait_until { received.join.include?(tentacle_id) }).to be_truthy
     end
+
+    it "scrubs Rails env vars so a child rspec cannot inherit RAILS_ENV=development" do
+      # Regression: a tentacle spawned from the dev server used to inherit
+      # RAILS_ENV=development; any `bundle exec rspec` child then ran against
+      # the dev DB and DatabaseCleaner.clean_with(:truncation) wiped the acervo.
+      received = []
+      allow(TentacleChannel).to receive(:broadcast_output) { |data:, **| received << data }
+
+      previous = {"RAILS_ENV" => ENV["RAILS_ENV"], "RACK_ENV" => ENV["RACK_ENV"], "DATABASE_URL" => ENV["DATABASE_URL"]}
+      ENV["RAILS_ENV"] = "development"
+      ENV["RACK_ENV"] = "development"
+      ENV["DATABASE_URL"] = "postgres://leaked/db"
+      begin
+        described_class.start(
+          tentacle_id: tentacle_id,
+          command: ["sh", "-c", 'printf "rails_env=%s rack_env=%s database_url=%s" "${RAILS_ENV:-empty}" "${RACK_ENV:-empty}" "${DATABASE_URL:-empty}"']
+        )
+      ensure
+        previous.each { |k, v| v.nil? ? ENV.delete(k) : ENV[k] = v }
+      end
+
+      expect(wait_until { received.join.include?("rails_env=") }).to be_truthy
+      combined = received.join
+      expect(combined).to include("rails_env=empty")
+      expect(combined).to include("rack_env=empty")
+      expect(combined).to include("database_url=empty")
+    end
   end
 
   describe ".write" do

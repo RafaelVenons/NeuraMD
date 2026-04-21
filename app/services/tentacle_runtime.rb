@@ -67,7 +67,14 @@ class TentacleRuntime
   class Session
     DEFAULT_ENV = {
       "TERM" => "xterm-256color",
-      "LANG" => ENV["LANG"] || "en_US.UTF-8"
+      "LANG" => ENV["LANG"] || "en_US.UTF-8",
+      # Scrub Rails-specific vars from the parent process. A child shell running
+      # `bundle exec rspec` must not inherit RAILS_ENV=development from the
+      # server — doing so makes DatabaseCleaner truncate the dev DB.
+      "RAILS_ENV" => nil,
+      "RACK_ENV" => nil,
+      "DATABASE_URL" => nil,
+      "BUNDLE_GEMFILE" => nil
     }.freeze
     LIVE_TRANSCRIPT_CAP = 200_000
     DEFAULT_CONTEXT_WINDOW_TOKENS = 200_000
