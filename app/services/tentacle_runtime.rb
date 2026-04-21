@@ -65,17 +65,23 @@ class TentacleRuntime
   end
 
   class Session
-    DEFAULT_ENV = {
-      "TERM" => "xterm-256color",
-      "LANG" => ENV["LANG"] || "en_US.UTF-8",
-      # Scrub Rails-specific vars from the parent process. A child shell running
-      # `bundle exec rspec` must not inherit RAILS_ENV=development from the
-      # server — doing so makes DatabaseCleaner truncate the dev DB.
-      "RAILS_ENV" => nil,
-      "RACK_ENV" => nil,
-      "DATABASE_URL" => nil,
-      "BUNDLE_GEMFILE" => nil
-    }.freeze
+    # Scrub Rails-specific vars inherited from the parent process. In dev,
+    # a child shell running `bundle exec rspec` must not inherit
+    # RAILS_ENV=development — DatabaseCleaner would truncate the dev DB. In
+    # production the opposite is needed: the child (e.g. bin/mcp-server) has
+    # to see RAILS_ENV=production, otherwise it falls back to development and
+    # tries to load dev-only gems missing from the production bundle.
+    def self.default_env
+      rails_env = Rails.env.production? ? "production" : nil
+      {
+        "TERM" => "xterm-256color",
+        "LANG" => ENV["LANG"] || "en_US.UTF-8",
+        "RAILS_ENV" => rails_env,
+        "RACK_ENV" => rails_env,
+        "DATABASE_URL" => nil,
+        "BUNDLE_GEMFILE" => nil
+      }
+    end
     LIVE_TRANSCRIPT_CAP = 200_000
     DEFAULT_CONTEXT_WINDOW_TOKENS = 200_000
     DEFAULT_CONTEXT_WARNING_RATIO = 0.70
@@ -88,7 +94,7 @@ class TentacleRuntime
       @tentacle_id = tentacle_id
       @command = command
       @cwd = cwd
-      @env = DEFAULT_ENV.merge(env).merge("NEURAMD_TENTACLE_ID" => tentacle_id.to_s)
+      @env = self.class.default_env.merge(env).merge("NEURAMD_TENTACLE_ID" => tentacle_id.to_s)
       @on_exit = on_exit
       @transcript = +""
       @transcript_mutex = Mutex.new

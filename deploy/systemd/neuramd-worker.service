@@ -18,6 +18,7 @@ Environment=NEURAMD_DATABASE=neura_md_production
 Environment=NEURAMD_CACHE_DATABASE=neura_md_production_cache
 Environment=NEURAMD_QUEUE_DATABASE=neura_md_production_queue
 Environment=NEURAMD_LEGACY_DATABASE=neura_md_legacy
+Environment=NEURAMD_TENTACLES_ENABLED=1
 Environment=PATH=/home/rafael/.local/share/mise/shims:/home/rafael/.local/bin:/usr/local/bin:/usr/bin
 ExecStart=/home/rafael/.local/share/mise/shims/bundle exec bin/jobs
 Restart=always
@@ -38,7 +39,7 @@ NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=full
 ProtectHome=read-only
-ReadWritePaths=/home/rafael/apps/NeuraMD/tmp /home/rafael/apps/NeuraMD/log /home/rafael/apps/NeuraMD/storage
+ReadWritePaths=/home/rafael/apps/NeuraMD/tmp /home/rafael/apps/NeuraMD/log /home/rafael/apps/NeuraMD/storage /home/rafael/apps/NeuraMD/.git /home/rafael/.claude
 
 [Install]
 WantedBy=multi-user.target

@@ -104,6 +104,26 @@ RSpec.describe TentacleRuntime do
       expect(combined).to include("rack_env=empty")
       expect(combined).to include("database_url=empty")
     end
+
+    it "propagates RAILS_ENV=production to the child when the server runs in production" do
+      # In production, the inverse of the dev scrubbing is required: the
+      # child (e.g. bin/mcp-server booting Rails) must see RAILS_ENV=production,
+      # otherwise it falls back to development and tries to load dev-only
+      # gems missing from the production bundle.
+      received = []
+      allow(TentacleChannel).to receive(:broadcast_output) { |data:, **| received << data }
+      allow(Rails).to receive(:env).and_return(ActiveSupport::StringInquirer.new("production"))
+
+      described_class.start(
+        tentacle_id: tentacle_id,
+        command: ["sh", "-c", 'printf "rails_env=%s rack_env=%s" "${RAILS_ENV:-empty}" "${RACK_ENV:-empty}"']
+      )
+
+      expect(wait_until { received.join.include?("rails_env=") }).to be_truthy
+      combined = received.join
+      expect(combined).to include("rails_env=production")
+      expect(combined).to include("rack_env=production")
+    end
   end
 
   describe ".write" do

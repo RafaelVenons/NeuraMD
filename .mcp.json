@@ -1,8 +1,15 @@
 {
   "mcpServers": {
     "neuramd": {
-      "command": "/home/venom/projects/NeuraMD/bin/mcp-server",
+      "command": "bin/mcp-server",
       "args": []
+    },
+    "neuramd-homelab": {
+      "command": "ssh",
+      "args": [
+        "venom@HomeLab",
+        "cd /home/venom/projects/NeuraMD && bin/mcp-server"
+      ]
     }
   }
 }
