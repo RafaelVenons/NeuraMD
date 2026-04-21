@@ -303,6 +303,66 @@ RSpec.describe Tentacles::CronTickJob, type: :job do
       expect(final.last_attempted_at).to be_nil
     end
 
+    it "does not clobber a newer claim's lease when an old on_exit fires late" do
+      note = make_cron_note(expr: "* * * * *")
+      fake = instance_double(TentacleRuntime::Session, alive?: true, pid: 1, started_at: Time.current)
+      captured_on_exit = nil
+      allow(TentacleRuntime).to receive(:start) do |**kwargs|
+        captured_on_exit = kwargs[:on_exit]
+        fake
+      end
+
+      described_class.perform_now
+
+      TentacleCronState.where(note_id: note.id).update_all(
+        lease_pid: 999_999,
+        lease_host: "different-host",
+        last_attempted_at: Time.current
+      )
+
+      allow(Tentacles::TranscriptService).to receive(:persist)
+      captured_on_exit.call(
+        transcript: "done\n",
+        command: %w[claude],
+        started_at: 1.minute.ago,
+        ended_at: Time.current,
+        exit_status: 0
+      )
+
+      final = TentacleCronState.find_by(note_id: note.id)
+      expect(final.lease_pid).to eq(999_999)
+      expect(final.lease_host).to eq("different-host")
+      expect(final.last_fired_at).to be_nil
+    end
+
+    it "does not raise out of on_exit when state cleanup fails" do
+      note = make_cron_note(expr: "* * * * *")
+      fake = instance_double(TentacleRuntime::Session, alive?: true, pid: 1, started_at: Time.current)
+      captured_on_exit = nil
+      allow(TentacleRuntime).to receive(:start) do |**kwargs|
+        captured_on_exit = kwargs[:on_exit]
+        fake
+      end
+
+      described_class.perform_now
+
+      allow(Tentacles::TranscriptService).to receive(:persist)
+      allow(TentacleCronState).to receive(:where)
+        .with(note_id: note.id, lease_pid: Process.pid, lease_host: Socket.gethostname)
+        .and_raise(ActiveRecord::StatementInvalid.new("db unreachable"))
+      allow(Rails.logger).to receive(:error)
+
+      expect do
+        captured_on_exit.call(
+          transcript: "x\n",
+          command: %w[claude],
+          started_at: 1.minute.ago,
+          ended_at: Time.current,
+          exit_status: 0
+        )
+      end.not_to raise_error
+    end
+
     it "retries on the next tick after a failed run (lease cleared, not fired)" do
       travel_to Time.zone.local(2026, 4, 21, 9, 5, 0) do
         note = make_cron_note(expr: "0 9 * * *")

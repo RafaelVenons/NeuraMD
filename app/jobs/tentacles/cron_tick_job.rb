@@ -78,7 +78,7 @@ module Tentacles
           command: %w[claude],
           cwd: worktree,
           initial_prompt: prompt,
-          on_exit: build_on_exit(note)
+          on_exit: build_on_exit(note, lease_pid: state.lease_pid, lease_host: state.lease_host)
         )
       rescue StandardError
         state.update_columns(last_attempted_at: nil, lease_pid: nil, lease_host: nil)
@@ -125,7 +125,7 @@ module Tentacles
       nil
     end
 
-    def build_on_exit(note)
+    def build_on_exit(note, lease_pid:, lease_host:)
       ->(transcript:, command:, started_at:, ended_at:, exit_status: nil, **) do
         persisted = false
         begin
@@ -140,16 +140,34 @@ module Tentacles
           persisted = true
         rescue StandardError => e
           Rails.logger.error("Tentacles::CronTickJob transcript persistence failed for #{note.id}: #{e.class}: #{e.message}")
+        ensure
+          release_cron_lease(
+            note_id: note.id,
+            lease_pid: lease_pid,
+            lease_host: lease_host,
+            persisted: persisted,
+            exit_status: exit_status
+          )
         end
+      end
+    end
 
-        success = persisted && exit_status == 0
-        updates = { last_attempted_at: nil, lease_pid: nil, lease_host: nil }
-        if success
-          updates[:last_fired_at] = Time.current
-        else
-          Rails.logger.warn("Tentacles::CronTickJob cron run failed for note #{note.id} (exit_status=#{exit_status.inspect}, persisted=#{persisted}); retry on next tick")
-        end
-        TentacleCronState.where(note_id: note.id).update_all(updates)
+    def release_cron_lease(note_id:, lease_pid:, lease_host:, persisted:, exit_status:)
+      success = persisted && exit_status == 0
+      updates = { last_attempted_at: nil, lease_pid: nil, lease_host: nil }
+      updates[:last_fired_at] = Time.current if success
+
+      TentacleCronState
+        .where(note_id: note_id, lease_pid: lease_pid, lease_host: lease_host)
+        .update_all(updates)
+
+      return if success
+      Rails.logger.warn("Tentacles::CronTickJob cron run failed for note #{note_id} (exit_status=#{exit_status.inspect}, persisted=#{persisted}); retry on next tick")
+    rescue StandardError => e
+      begin
+        Rails.logger.error("Tentacles::CronTickJob lease cleanup failed for note #{note_id}: #{e.class}: #{e.message}")
+      rescue StandardError
+        nil
       end
     end
   end
