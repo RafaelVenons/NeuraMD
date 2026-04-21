@@ -178,6 +178,8 @@ class TentacleRuntime
           begin
             loop do
               chunk = reader.readpartial(4096)
+              chunk.force_encoding(Encoding::UTF_8)
+              chunk.scrub!("?")
               session.append_to_transcript(chunk)
               session.signal_boot!
               TentacleChannel.broadcast_output(tentacle_id: tentacle_id, data: chunk)
