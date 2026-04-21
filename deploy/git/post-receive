@@ -28,11 +28,15 @@ while read -r oldrev newrev refname; do
 	unset GIT_DIR GIT_WORK_TREE
 
 	git fetch origin "$BRANCH"
-	# Wipe any local edits/untracked drift before switching — working tree
-	# should be a faithful mirror of the pushed commit.
+	# Reset tracked files to HEAD, but preserve untracked runtime artifacts
+	# (recovery state, local logs, operator-created files). `git clean -fd`
+	# is intentionally omitted so a crashed-deploy recovery file or backup
+	# dump left under the app tree is not destroyed on the next push.
 	git reset --hard HEAD
-	git clean -fd
-	git checkout -B "$BRANCH" "origin/$BRANCH"
+	if ! git checkout -B "$BRANCH" "origin/$BRANCH"; then
+		echo "autodeploy aborted: checkout conflicts with untracked files — resolve manually"
+		exit 1
+	fi
 	git reset --hard "$newrev"
 
 	bundle install --jobs=4 --deployment --without development test
