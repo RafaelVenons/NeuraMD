@@ -409,6 +409,67 @@ RSpec.describe Tentacles::CronTickJob, type: :job do
       end.not_to raise_error
     end
 
+    it "enqueues a compensation job when cleanup raises after a successful run" do
+      note = make_cron_note(expr: "* * * * *")
+      fake = instance_double(TentacleRuntime::Session, alive?: true, pid: 1, started_at: Time.current)
+      captured_on_exit = nil
+      allow(TentacleRuntime).to receive(:start) do |**kwargs|
+        captured_on_exit = kwargs[:on_exit]
+        fake
+      end
+
+      described_class.perform_now
+
+      allow(Tentacles::TranscriptService).to receive(:persist)
+      claimed_token = TentacleCronState.find_by(note_id: note.id).lease_token
+      allow(TentacleCronState).to receive(:where)
+        .with(note_id: note.id, lease_token: claimed_token)
+        .and_raise(ActiveRecord::StatementInvalid.new("db unreachable"))
+      allow(Rails.logger).to receive(:error)
+
+      expect do
+        captured_on_exit.call(
+          transcript: "x\n",
+          command: %w[claude],
+          started_at: 1.minute.ago,
+          ended_at: Time.current,
+          exit_status: 0
+        )
+      end.to have_enqueued_job(Tentacles::CronLeaseReleaseJob)
+        .with(hash_including(note_id: note.id, lease_token: claimed_token, success: true))
+    end
+
+    it "enqueues a compensation job when cleanup raises after a failed run" do
+      note = make_cron_note(expr: "* * * * *")
+      fake = instance_double(TentacleRuntime::Session, alive?: true, pid: 1, started_at: Time.current)
+      captured_on_exit = nil
+      allow(TentacleRuntime).to receive(:start) do |**kwargs|
+        captured_on_exit = kwargs[:on_exit]
+        fake
+      end
+
+      described_class.perform_now
+
+      allow(Tentacles::TranscriptService).to receive(:persist)
+      claimed_token = TentacleCronState.find_by(note_id: note.id).lease_token
+      allow(TentacleCronState).to receive(:where)
+        .with(note_id: note.id, lease_token: claimed_token)
+        .and_raise(ActiveRecord::StatementInvalid.new("db unreachable"))
+      allow(Rails.logger).to receive(:error)
+      allow(Rails.logger).to receive(:warn)
+
+      expect do
+        captured_on_exit.call(
+          transcript: "fail\n",
+          command: %w[claude],
+          started_at: 1.minute.ago,
+          ended_at: Time.current,
+          exit_status: 2
+        )
+      end.to have_enqueued_job(Tentacles::CronLeaseReleaseJob)
+        .with(hash_including(note_id: note.id, lease_token: claimed_token, success: false))
+    end
+
     it "retries on the next tick after a failed run (lease cleared, not fired)" do
       travel_to Time.zone.local(2026, 4, 21, 9, 5, 0) do
         note = make_cron_note(expr: "0 9 * * *")

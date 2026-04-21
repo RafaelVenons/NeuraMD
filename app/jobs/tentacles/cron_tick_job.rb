@@ -165,7 +165,20 @@ module Tentacles
       Rails.logger.warn("Tentacles::CronTickJob cron run failed for note #{note_id} (exit_status=#{exit_status.inspect}, persisted=#{persisted}); retry on next tick")
     rescue StandardError => e
       begin
-        Rails.logger.error("Tentacles::CronTickJob lease cleanup failed for note #{note_id}: #{e.class}: #{e.message}")
+        Rails.logger.error("Tentacles::CronTickJob lease cleanup failed for note #{note_id} (success=#{success}): #{e.class}: #{e.message}; enqueuing compensation")
+      rescue StandardError
+        nil
+      end
+      enqueue_compensation(note_id: note_id, lease_token: lease_token, success: success)
+    end
+
+    def enqueue_compensation(note_id:, lease_token:, success:)
+      Tentacles::CronLeaseReleaseJob.perform_later(
+        note_id: note_id, lease_token: lease_token, success: success
+      )
+    rescue StandardError => e
+      begin
+        Rails.logger.error("Tentacles::CronTickJob compensation enqueue failed for note #{note_id}: #{e.class}: #{e.message}")
       rescue StandardError
         nil
       end
