@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_04_20_230000) do
+ActiveRecord::Schema[8.1].define(version: 2026_04_21_120000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
   enable_extension "pg_trgm"
@@ -314,6 +314,13 @@ ActiveRecord::Schema[8.1].define(version: 2026_04_20_230000) do
     t.index ["name"], name: "index_tags_on_name", unique: true
   end
 
+  create_table "tentacle_cron_states", primary_key: "note_id", id: :uuid, default: nil, force: :cascade do |t|
+    t.datetime "created_at", null: false
+    t.datetime "last_attempted_at"
+    t.datetime "last_fired_at"
+    t.datetime "updated_at", null: false
+  end
+
   create_table "users", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
     t.datetime "created_at", null: false
     t.datetime "current_sign_in_at"
@@ -355,4 +362,5 @@ ActiveRecord::Schema[8.1].define(version: 2026_04_20_230000) do
   add_foreign_key "note_tts_assets", "note_revisions"
   add_foreign_key "notes", "note_revisions", column: "head_revision_id", on_delete: :nullify
   add_foreign_key "slug_redirects", "notes"
+  add_foreign_key "tentacle_cron_states", "notes", on_delete: :cascade
 end

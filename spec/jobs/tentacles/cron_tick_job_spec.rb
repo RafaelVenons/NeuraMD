@@ -1,0 +1,296 @@
+require "rails_helper"
+
+RSpec.describe Tentacles::CronTickJob, type: :job do
+  before do
+    PropertyDefinition.find_or_create_by!(key: "cron_expr") do |d|
+      d.value_type = "text"
+      d.system = true
+    end
+    PropertyDefinition.find_or_create_by!(key: "tentacle_cwd") do |d|
+      d.value_type = "text"
+      d.system = true
+    end
+    TentacleRuntime::SESSIONS.clear
+    allow(WorktreeService).to receive(:ensure) do |tentacle_id:, repo_root: Rails.root|
+      WorktreeService.path_for(tentacle_id: tentacle_id, repo_root: repo_root)
+    end
+  end
+
+  after { TentacleRuntime::SESSIONS.clear }
+
+  def make_cron_note(expr:, last_fired_at: nil, cwd: nil, body: "charter body")
+    note = create(:note, title: "Cron test #{SecureRandom.hex(4)}")
+    rev = create(:note_revision, note: note, content_markdown: body)
+    note.update_columns(head_revision_id: rev.id)
+    note.tags << Tag.find_or_create_by!(name: "cron")
+    changes = {"cron_expr" => expr}
+    changes["tentacle_cwd"] = cwd if cwd
+    Properties::SetService.call(note: note, changes: changes)
+    TentacleCronState.create!(note_id: note.id, last_fired_at: last_fired_at) if last_fired_at
+    note.reload
+  end
+
+  describe "#perform" do
+    it "does nothing when no note carries the cron tag" do
+      expect(TentacleRuntime).not_to receive(:start)
+      described_class.perform_now
+    end
+
+    it "is a no-op when Tentacles::Authorization.enabled? is false" do
+      make_cron_note(expr: "* * * * *")
+      allow(Tentacles::Authorization).to receive(:enabled?).and_return(false)
+
+      expect(TentacleRuntime).not_to receive(:start)
+      expect { described_class.perform_now }.not_to change { TentacleCronState.count }
+    end
+
+    it "fires a cron that has never run and whose cron_expr has a previous_time before now" do
+      note = make_cron_note(expr: "* * * * *")
+      fake = instance_double(TentacleRuntime::Session, alive?: true, pid: 1, started_at: Time.current)
+      expect(TentacleRuntime).to receive(:start).with(
+        hash_including(tentacle_id: note.id, command: %w[claude], initial_prompt: "charter body")
+      ).and_return(fake)
+
+      described_class.perform_now
+
+      state = TentacleCronState.find_by(note_id: note.id)
+      expect(state).not_to be_nil
+      expect(state.last_attempted_at).to be_within(5.seconds).of(Time.current)
+      expect(state.last_fired_at).to be_nil
+    end
+
+    it "does not fire when last_fired_at is newer than the most recent scheduled time" do
+      note = make_cron_note(expr: "0 9 * * *", last_fired_at: Time.current)
+      _ = note
+      expect(TentacleRuntime).not_to receive(:start)
+
+      described_class.perform_now
+    end
+
+    it "fires when last_fired_at is older than the most recent scheduled time" do
+      travel_to Time.zone.local(2026, 4, 21, 9, 5, 0) do
+        note = make_cron_note(expr: "0 9 * * *", last_fired_at: Time.zone.local(2026, 4, 20, 12, 0, 0))
+        fake = instance_double(TentacleRuntime::Session, alive?: true, pid: 1, started_at: Time.current)
+        expect(TentacleRuntime).to receive(:start).with(
+          hash_including(tentacle_id: note.id)
+        ).and_return(fake)
+
+        described_class.perform_now
+      end
+    end
+
+    it "skips a cron note whose cron_expr is invalid and logs a warning" do
+      note = make_cron_note(expr: "not a cron")
+      expect(TentacleRuntime).not_to receive(:start)
+      expect(Rails.logger).to receive(:warn).with(/#{note.id}.*cron_expr/)
+
+      described_class.perform_now
+    end
+
+    it "skips a cron note missing cron_expr property" do
+      note = create(:note, title: "No expr")
+      rev = create(:note_revision, note: note, content_markdown: "body")
+      note.update_columns(head_revision_id: rev.id)
+      note.tags << Tag.find_or_create_by!(name: "cron")
+
+      expect(TentacleRuntime).not_to receive(:start)
+      described_class.perform_now
+    end
+
+    it "does not fire again when a tentacle session is already alive for the note" do
+      note = make_cron_note(expr: "* * * * *")
+      existing = instance_double(TentacleRuntime::Session, alive?: true, pid: 4242, started_at: 1.minute.ago)
+      TentacleRuntime::SESSIONS[note.id] = existing
+
+      expect(TentacleRuntime).not_to receive(:start)
+      described_class.perform_now
+    end
+
+    it "provisions an isolated worktree and passes it to TentacleRuntime.start as cwd" do
+      note = make_cron_note(expr: "* * * * *", cwd: "/home/venom/projects/NeuraMD")
+      fake = instance_double(TentacleRuntime::Session, alive?: true, pid: 1, started_at: Time.current)
+      expected_path = WorktreeService.path_for(tentacle_id: note.id, repo_root: "/home/venom/projects/NeuraMD")
+
+      expect(WorktreeService).to receive(:ensure).with(
+        tentacle_id: note.id,
+        repo_root: Pathname.new("/home/venom/projects/NeuraMD")
+      ).and_return(expected_path)
+      expect(TentacleRuntime).to receive(:start) do |**kwargs|
+        expect(kwargs[:tentacle_id]).to eq(note.id)
+        expect(kwargs[:cwd]).to eq(expected_path)
+        fake
+      end
+
+      described_class.perform_now
+    end
+
+    it "falls back to Rails.root when tentacle_cwd is absent" do
+      note = make_cron_note(expr: "* * * * *")
+      fake = instance_double(TentacleRuntime::Session, alive?: true, pid: 1, started_at: Time.current)
+
+      expect(WorktreeService).to receive(:ensure).with(
+        tentacle_id: note.id,
+        repo_root: Rails.root
+      ).and_call_original
+      allow(TentacleRuntime).to receive(:start).and_return(fake)
+
+      described_class.perform_now
+    end
+
+    it "registers an on_exit callback that persists the transcript via TranscriptService" do
+      note = make_cron_note(expr: "* * * * *")
+      fake = instance_double(TentacleRuntime::Session, alive?: true, pid: 1, started_at: Time.current)
+      captured_on_exit = nil
+      allow(TentacleRuntime).to receive(:start) do |**kwargs|
+        captured_on_exit = kwargs[:on_exit]
+        fake
+      end
+
+      described_class.perform_now
+
+      expect(captured_on_exit).to respond_to(:call)
+      expect(Tentacles::TranscriptService).to receive(:persist).with(
+        hash_including(note: note, transcript: "hello\n", command: %w[claude], author: nil)
+      )
+      captured_on_exit.call(
+        transcript: "hello\n",
+        command: %w[claude],
+        started_at: 1.minute.ago,
+        ended_at: Time.current,
+        exit_status: 0
+      )
+    end
+
+    it "claims the lease via last_attempted_at before start and the on_exit callback commits last_fired_at" do
+      note = make_cron_note(expr: "* * * * *")
+      fake = instance_double(TentacleRuntime::Session, alive?: true, pid: 1, started_at: Time.current)
+      captured_on_exit = nil
+
+      observed_attempt = nil
+      observed_fire = nil
+      allow(TentacleRuntime).to receive(:start) do |**kwargs|
+        snapshot = TentacleCronState.find_by(note_id: note.id)
+        observed_attempt = snapshot&.last_attempted_at
+        observed_fire = snapshot&.last_fired_at
+        captured_on_exit = kwargs[:on_exit]
+        fake
+      end
+
+      described_class.perform_now
+
+      expect(observed_attempt).not_to be_nil
+      expect(observed_fire).to be_nil
+
+      mid_run = TentacleCronState.find_by(note_id: note.id)
+      expect(mid_run.last_attempted_at).not_to be_nil
+      expect(mid_run.last_fired_at).to be_nil
+
+      allow(Tentacles::TranscriptService).to receive(:persist)
+      captured_on_exit.call(
+        transcript: "done\n",
+        command: %w[claude],
+        started_at: 1.minute.ago,
+        ended_at: Time.current,
+        exit_status: 0
+      )
+
+      final = TentacleCronState.find_by(note_id: note.id)
+      expect(final.last_attempted_at).to be_nil
+      expect(final.last_fired_at).to be_within(5.seconds).of(Time.current)
+    end
+
+    it "clears last_attempted_at when start raises so next tick retries" do
+      note = make_cron_note(expr: "0 9 * * *")
+      allow(TentacleRuntime).to receive(:start).and_raise("boot failed")
+      allow(Rails.logger).to receive(:error)
+
+      travel_to Time.zone.local(2026, 4, 21, 9, 5, 0) do
+        described_class.perform_now
+      end
+
+      state = TentacleCronState.find_by(note_id: note.id)
+      expect(state.last_fired_at).to be_nil
+      expect(state.last_attempted_at).to be_nil
+
+      fake = instance_double(TentacleRuntime::Session, alive?: true, pid: 1, started_at: Time.current)
+      expect(TentacleRuntime).to receive(:start).and_return(fake)
+
+      travel_to Time.zone.local(2026, 4, 21, 9, 6, 0) do
+        described_class.perform_now
+      end
+
+      expect(state.reload.last_attempted_at).not_to be_nil
+    end
+
+    it "releases the lease even when transcript persistence raises inside on_exit" do
+      note = make_cron_note(expr: "* * * * *")
+      fake = instance_double(TentacleRuntime::Session, alive?: true, pid: 1, started_at: Time.current)
+      captured_on_exit = nil
+      allow(TentacleRuntime).to receive(:start) do |**kwargs|
+        captured_on_exit = kwargs[:on_exit]
+        fake
+      end
+
+      described_class.perform_now
+
+      allow(Tentacles::TranscriptService).to receive(:persist).and_raise("disk full")
+      allow(Rails.logger).to receive(:error)
+      captured_on_exit.call(
+        transcript: "x\n",
+        command: %w[claude],
+        started_at: 1.minute.ago,
+        ended_at: Time.current,
+        exit_status: 1
+      )
+
+      final = TentacleCronState.find_by(note_id: note.id)
+      expect(final.last_attempted_at).to be_nil
+      expect(final.last_fired_at).to be_within(5.seconds).of(Time.current)
+    end
+
+    it "reclaims a stale lease older than STALE_LEASE_TTL" do
+      travel_to Time.zone.local(2026, 4, 21, 12, 0, 0) do
+        note = make_cron_note(expr: "0 9 * * *")
+        TentacleCronState.create!(
+          note_id: note.id,
+          last_attempted_at: 3.hours.ago
+        )
+        fake = instance_double(TentacleRuntime::Session, alive?: true, pid: 1, started_at: Time.current)
+        allow(Rails.logger).to receive(:warn)
+
+        expect(Rails.logger).to receive(:warn).with(/reclaiming stale lease for note #{note.id}/)
+        expect(TentacleRuntime).to receive(:start).and_return(fake)
+
+        described_class.perform_now
+      end
+    end
+
+    it "does not re-claim a lease held by an in-flight run" do
+      travel_to Time.zone.local(2026, 4, 21, 9, 5, 0) do
+        note = make_cron_note(expr: "0 9 * * *")
+        TentacleCronState.create!(
+          note_id: note.id,
+          last_attempted_at: Time.current - 30.seconds
+        )
+
+        expect(TentacleRuntime).not_to receive(:start)
+        described_class.perform_now
+      end
+    end
+
+    it "catches errors from a single cron and continues processing others" do
+      bad = make_cron_note(expr: "* * * * *", body: "bad charter")
+      good = make_cron_note(expr: "* * * * *", body: "good charter")
+      fake = instance_double(TentacleRuntime::Session, alive?: true, pid: 1, started_at: Time.current)
+
+      allow(TentacleRuntime).to receive(:start) do |**kwargs|
+        raise "boom" if kwargs[:tentacle_id] == bad.id
+        fake
+      end
+
+      expect(Rails.logger).to receive(:error).with(/#{bad.id}/)
+      expect { described_class.perform_now }.not_to raise_error
+      expect(TentacleCronState.find_by(note_id: good.id)).not_to be_nil
+    end
+  end
+end

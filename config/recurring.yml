@@ -16,3 +16,6 @@ production:
   reap_tentacle_zombies:
     class: Tentacles::SupervisorJob
     schedule: every minute
+  tick_tentacle_crons:
+    class: Tentacles::CronTickJob
+    schedule: every minute
