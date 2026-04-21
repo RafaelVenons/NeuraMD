@@ -60,11 +60,11 @@ RSpec.describe Tentacles::CronLeaseReleaseJob, type: :job do
     end
   end
 
-  describe "#perform — transcript persist raises" do
-    it "rolls back transcript but still clears the lease, without advancing last_fired_at" do
+  describe "#perform — non-DB transcript persist error with successful child" do
+    it "advances last_fired_at and logs transcript loss (child side effects already happened; no re-run)" do
       allow(Tentacles::TranscriptService).to receive(:persist).and_raise("disk full")
-      allow(Rails.logger).to receive(:error)
-      allow(Rails.logger).to receive(:warn)
+      expect(Rails.logger).to receive(:error).with(/transcript persist failed/)
+      expect(Rails.logger).to receive(:error).with(/advancing last_fired_at without transcript/)
 
       described_class.perform_now(**default_args)
 
@@ -73,6 +73,22 @@ RSpec.describe Tentacles::CronLeaseReleaseJob, type: :job do
       expect(state.lease_pid).to be_nil
       expect(state.lease_host).to be_nil
       expect(state.lease_token).to be_nil
+      expect(state.last_fired_at).to be_within(5.seconds).of(Time.current)
+    end
+  end
+
+  describe "#perform — DB transcript persist error" do
+    it "re-enqueues via retry_on and leaves the lease intact so next attempt can commit" do
+      allow(Tentacles::TranscriptService).to receive(:persist)
+        .and_raise(ActiveRecord::StatementInvalid.new("conn lost"))
+
+      expect {
+        described_class.perform_now(**default_args)
+      }.to have_enqueued_job(described_class)
+        .with(hash_including(note_id: note.id, lease_token: token, exit_status: 0))
+
+      state = TentacleCronState.find_by(note_id: note.id)
+      expect(state.lease_token).to eq(token)
       expect(state.last_fired_at).to be_nil
     end
   end

@@ -333,7 +333,7 @@ RSpec.describe Tentacles::CronTickJob, type: :job do
       expect(state.reload.last_attempted_at).not_to be_nil
     end
 
-    it "releases the lease but does not advance last_fired_at when transcript persistence raises" do
+    it "advances last_fired_at when child succeeded but transcript persistence raises a non-DB error" do
       note = make_cron_note(expr: "* * * * *")
       fake = instance_double(TentacleRuntime::Session, alive?: true, pid: 1, started_at: Time.current)
       captured_on_exit = nil
@@ -361,7 +361,7 @@ RSpec.describe Tentacles::CronTickJob, type: :job do
       expect(final.last_attempted_at).to be_nil
       expect(final.lease_pid).to be_nil
       expect(final.lease_host).to be_nil
-      expect(final.last_fired_at).to be_nil
+      expect(final.last_fired_at).to be_within(5.seconds).of(Time.current)
     end
 
     it "does not advance last_fired_at when the child exited non-zero" do
