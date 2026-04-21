@@ -3,6 +3,20 @@ require "rails_helper"
 RSpec.describe Tentacles::CronLeaseReleaseJob, type: :job do
   let(:note) { create(:note, title: "Cron release target") }
   let(:token) { SecureRandom.uuid }
+  let(:started_at) { 1.minute.ago }
+  let(:ended_at) { Time.current }
+
+  def default_args(overrides = {})
+    {
+      note_id: note.id,
+      lease_token: token,
+      transcript: "hello\n",
+      command: %w[claude],
+      started_at: started_at.iso8601(6),
+      ended_at: ended_at.iso8601(6),
+      exit_status: 0
+    }.merge(overrides)
+  end
 
   before do
     TentacleCronState.create!(
@@ -14,43 +28,101 @@ RSpec.describe Tentacles::CronLeaseReleaseJob, type: :job do
     )
   end
 
-  it "clears the lease identity and advances last_fired_at when success=true" do
-    freeze_time do
-      described_class.perform_now(note_id: note.id, lease_token: token, success: true)
+  describe "#perform — successful run" do
+    it "persists the transcript, clears the lease, and advances last_fired_at" do
+      expect(Tentacles::TranscriptService).to receive(:persist).with(
+        hash_including(note: note, transcript: "hello\n", command: %w[claude])
+      )
+
+      freeze_time do
+        described_class.perform_now(**default_args)
+        state = TentacleCronState.find_by(note_id: note.id)
+        expect(state.last_attempted_at).to be_nil
+        expect(state.lease_pid).to be_nil
+        expect(state.lease_host).to be_nil
+        expect(state.lease_token).to be_nil
+        expect(state.last_fired_at).to be_within(1.second).of(Time.current)
+      end
+    end
+  end
+
+  describe "#perform — non-zero exit" do
+    it "clears the lease without advancing last_fired_at" do
+      allow(Tentacles::TranscriptService).to receive(:persist)
+      described_class.perform_now(**default_args(exit_status: 2))
+
       state = TentacleCronState.find_by(note_id: note.id)
       expect(state.last_attempted_at).to be_nil
       expect(state.lease_pid).to be_nil
       expect(state.lease_host).to be_nil
       expect(state.lease_token).to be_nil
-      expect(state.last_fired_at).to be_within(1.second).of(Time.current)
+      expect(state.last_fired_at).to be_nil
     end
   end
 
-  it "clears the lease identity without advancing last_fired_at when success=false" do
-    described_class.perform_now(note_id: note.id, lease_token: token, success: false)
-    state = TentacleCronState.find_by(note_id: note.id)
-    expect(state.last_attempted_at).to be_nil
-    expect(state.lease_pid).to be_nil
-    expect(state.lease_host).to be_nil
-    expect(state.lease_token).to be_nil
-    expect(state.last_fired_at).to be_nil
+  describe "#perform — transcript persist raises" do
+    it "rolls back transcript but still clears the lease, without advancing last_fired_at" do
+      allow(Tentacles::TranscriptService).to receive(:persist).and_raise("disk full")
+      allow(Rails.logger).to receive(:error)
+      allow(Rails.logger).to receive(:warn)
+
+      described_class.perform_now(**default_args)
+
+      state = TentacleCronState.find_by(note_id: note.id)
+      expect(state.last_attempted_at).to be_nil
+      expect(state.lease_pid).to be_nil
+      expect(state.lease_host).to be_nil
+      expect(state.lease_token).to be_nil
+      expect(state.last_fired_at).to be_nil
+    end
   end
 
-  it "is a no-op when lease_token no longer matches (already reclaimed)" do
-    described_class.perform_now(note_id: note.id, lease_token: "stale-token", success: true)
-    state = TentacleCronState.find_by(note_id: note.id)
-    expect(state.lease_token).to eq(token)
-    expect(state.last_fired_at).to be_nil
+  describe "#perform — identity-scoped cleanup" do
+    it "is a no-op when the row has been re-claimed with a different lease_token" do
+      other_token = SecureRandom.uuid
+      TentacleCronState.where(note_id: note.id).update_all(
+        lease_token: other_token,
+        last_attempted_at: Time.current,
+        lease_pid: 9_999_999,
+        lease_host: "newer-host"
+      )
+      allow(Tentacles::TranscriptService).to receive(:persist)
+
+      described_class.perform_now(**default_args)
+
+      state = TentacleCronState.find_by(note_id: note.id)
+      expect(state.lease_token).to eq(other_token)
+      expect(state.last_attempted_at).not_to be_nil
+      expect(state.last_fired_at).to be_nil
+    end
   end
 
-  it "re-enqueues itself when update_all raises a StatementInvalid" do
-    allow(TentacleCronState).to receive(:where)
-      .with(note_id: note.id, lease_token: token)
-      .and_raise(ActiveRecord::StatementInvalid.new("db unreachable"))
+  describe "#perform — persist succeeds but update_all raises" do
+    it "rolls back the transcript and re-enqueues via retry_on" do
+      allow(Tentacles::TranscriptService).to receive(:persist) do
+        note.note_revisions.create!(content_markdown: "canary", revision_kind: :checkpoint)
+      end
+      allow(TentacleCronState).to receive(:where)
+        .with(note_id: note.id, lease_token: token)
+        .and_raise(ActiveRecord::StatementInvalid.new("db unreachable"))
 
-    expect {
-      described_class.perform_now(note_id: note.id, lease_token: token, success: true)
-    }.to have_enqueued_job(described_class)
-      .with(hash_including(note_id: note.id, lease_token: token, success: true))
+      expect {
+        described_class.perform_now(**default_args)
+      }.to have_enqueued_job(described_class)
+        .with(hash_including(note_id: note.id, lease_token: token, exit_status: 0))
+
+      expect(note.note_revisions.where(content_markdown: "canary")).to be_empty
+    end
+  end
+
+  describe "#perform — missing note" do
+    it "discards itself when the note has been deleted" do
+      allow(Tentacles::TranscriptService).to receive(:persist)
+      note.destroy!
+
+      expect {
+        described_class.perform_now(**default_args)
+      }.not_to raise_error
+    end
   end
 end

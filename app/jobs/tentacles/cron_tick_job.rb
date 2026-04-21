@@ -127,60 +127,17 @@ module Tentacles
     end
 
     def build_on_exit(note, lease_token:)
+      note_id = note.id
       ->(transcript:, command:, started_at:, ended_at:, exit_status: nil, **) do
-        persisted = false
-        begin
-          Tentacles::TranscriptService.persist(
-            note: note,
-            transcript: transcript,
-            command: command,
-            started_at: started_at,
-            ended_at: ended_at,
-            author: nil
-          )
-          persisted = true
-        rescue StandardError => e
-          Rails.logger.error("Tentacles::CronTickJob transcript persistence failed for #{note.id}: #{e.class}: #{e.message}")
-        ensure
-          release_cron_lease(
-            note_id: note.id,
-            lease_token: lease_token,
-            persisted: persisted,
-            exit_status: exit_status
-          )
-        end
-      end
-    end
-
-    def release_cron_lease(note_id:, lease_token:, persisted:, exit_status:)
-      success = persisted && exit_status == 0
-      updates = { last_attempted_at: nil, lease_pid: nil, lease_host: nil, lease_token: nil }
-      updates[:last_fired_at] = Time.current if success
-
-      TentacleCronState
-        .where(note_id: note_id, lease_token: lease_token)
-        .update_all(updates)
-
-      return if success
-      Rails.logger.warn("Tentacles::CronTickJob cron run failed for note #{note_id} (exit_status=#{exit_status.inspect}, persisted=#{persisted}); retry on next tick")
-    rescue StandardError => e
-      begin
-        Rails.logger.error("Tentacles::CronTickJob lease cleanup failed for note #{note_id} (success=#{success}): #{e.class}: #{e.message}; enqueuing compensation")
-      rescue StandardError
-        nil
-      end
-      enqueue_compensation(note_id: note_id, lease_token: lease_token, success: success)
-    end
-
-    def enqueue_compensation(note_id:, lease_token:, success:)
-      Tentacles::CronLeaseReleaseJob.perform_later(
-        note_id: note_id, lease_token: lease_token, success: success
-      )
-    rescue StandardError => e
-      begin
-        Rails.logger.error("Tentacles::CronTickJob compensation enqueue failed for note #{note_id}: #{e.class}: #{e.message}")
-      rescue StandardError
-        nil
+        Tentacles::CronLeaseReleaseJob.perform_later(
+          note_id: note_id,
+          lease_token: lease_token,
+          transcript: transcript.to_s,
+          command: Array(command),
+          started_at: started_at.iso8601(6),
+          ended_at: ended_at.iso8601(6),
+          exit_status: exit_status
+        )
       end
     end
   end

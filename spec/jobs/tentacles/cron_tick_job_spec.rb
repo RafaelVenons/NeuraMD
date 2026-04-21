@@ -137,7 +137,7 @@ RSpec.describe Tentacles::CronTickJob, type: :job do
       described_class.perform_now
     end
 
-    it "registers an on_exit callback that persists the transcript via TranscriptService" do
+    it "registers an on_exit callback that enqueues a CronLeaseReleaseJob with the run payload" do
       note = make_cron_note(expr: "* * * * *")
       fake = instance_double(TentacleRuntime::Session, alive?: true, pid: 1, started_at: Time.current)
       captured_on_exit = nil
@@ -148,16 +148,27 @@ RSpec.describe Tentacles::CronTickJob, type: :job do
 
       described_class.perform_now
 
+      claimed_token = TentacleCronState.find_by(note_id: note.id).lease_token
       expect(captured_on_exit).to respond_to(:call)
-      expect(Tentacles::TranscriptService).to receive(:persist).with(
-        hash_including(note: note, transcript: "hello\n", command: %w[claude], author: nil)
-      )
-      captured_on_exit.call(
-        transcript: "hello\n",
-        command: %w[claude],
-        started_at: 1.minute.ago,
-        ended_at: Time.current,
-        exit_status: 0
+
+      started = 1.minute.ago
+      ended = Time.current
+      expect {
+        captured_on_exit.call(
+          transcript: "hello\n",
+          command: %w[claude],
+          started_at: started,
+          ended_at: ended,
+          exit_status: 0
+        )
+      }.to have_enqueued_job(Tentacles::CronLeaseReleaseJob).with(
+        hash_including(
+          note_id: note.id,
+          lease_token: claimed_token,
+          transcript: "hello\n",
+          command: %w[claude],
+          exit_status: 0
+        )
       )
     end
 
@@ -186,13 +197,15 @@ RSpec.describe Tentacles::CronTickJob, type: :job do
       expect(mid_run.last_fired_at).to be_nil
 
       allow(Tentacles::TranscriptService).to receive(:persist)
-      captured_on_exit.call(
-        transcript: "done\n",
-        command: %w[claude],
-        started_at: 1.minute.ago,
-        ended_at: Time.current,
-        exit_status: 0
-      )
+      perform_enqueued_jobs do
+        captured_on_exit.call(
+          transcript: "done\n",
+          command: %w[claude],
+          started_at: 1.minute.ago,
+          ended_at: Time.current,
+          exit_status: 0
+        )
+      end
 
       final = TentacleCronState.find_by(note_id: note.id)
       expect(final.last_attempted_at).to be_nil
@@ -236,13 +249,15 @@ RSpec.describe Tentacles::CronTickJob, type: :job do
       allow(Tentacles::TranscriptService).to receive(:persist).and_raise("disk full")
       allow(Rails.logger).to receive(:error)
       allow(Rails.logger).to receive(:warn)
-      captured_on_exit.call(
-        transcript: "x\n",
-        command: %w[claude],
-        started_at: 1.minute.ago,
-        ended_at: Time.current,
-        exit_status: 0
-      )
+      perform_enqueued_jobs do
+        captured_on_exit.call(
+          transcript: "x\n",
+          command: %w[claude],
+          started_at: 1.minute.ago,
+          ended_at: Time.current,
+          exit_status: 0
+        )
+      end
 
       final = TentacleCronState.find_by(note_id: note.id)
       expect(final.last_attempted_at).to be_nil
@@ -264,13 +279,15 @@ RSpec.describe Tentacles::CronTickJob, type: :job do
 
       allow(Tentacles::TranscriptService).to receive(:persist)
       allow(Rails.logger).to receive(:warn)
-      captured_on_exit.call(
-        transcript: "oops\n",
-        command: %w[claude],
-        started_at: 1.minute.ago,
-        ended_at: Time.current,
-        exit_status: 1
-      )
+      perform_enqueued_jobs do
+        captured_on_exit.call(
+          transcript: "oops\n",
+          command: %w[claude],
+          started_at: 1.minute.ago,
+          ended_at: Time.current,
+          exit_status: 1
+        )
+      end
 
       final = TentacleCronState.find_by(note_id: note.id)
       expect(final.last_fired_at).to be_nil
@@ -290,13 +307,15 @@ RSpec.describe Tentacles::CronTickJob, type: :job do
 
       allow(Tentacles::TranscriptService).to receive(:persist)
       allow(Rails.logger).to receive(:warn)
-      captured_on_exit.call(
-        transcript: "partial\n",
-        command: %w[claude],
-        started_at: 1.minute.ago,
-        ended_at: Time.current,
-        exit_status: nil
-      )
+      perform_enqueued_jobs do
+        captured_on_exit.call(
+          transcript: "partial\n",
+          command: %w[claude],
+          started_at: 1.minute.ago,
+          ended_at: Time.current,
+          exit_status: nil
+        )
+      end
 
       final = TentacleCronState.find_by(note_id: note.id)
       expect(final.last_fired_at).to be_nil
@@ -322,13 +341,15 @@ RSpec.describe Tentacles::CronTickJob, type: :job do
       )
 
       allow(Tentacles::TranscriptService).to receive(:persist)
-      captured_on_exit.call(
-        transcript: "done\n",
-        command: %w[claude],
-        started_at: 1.minute.ago,
-        ended_at: Time.current,
-        exit_status: 0
-      )
+      perform_enqueued_jobs do
+        captured_on_exit.call(
+          transcript: "done\n",
+          command: %w[claude],
+          started_at: 1.minute.ago,
+          ended_at: Time.current,
+          exit_status: 0
+        )
+      end
 
       final = TentacleCronState.find_by(note_id: note.id)
       expect(final.lease_pid).to eq(999_999)
@@ -354,13 +375,15 @@ RSpec.describe Tentacles::CronTickJob, type: :job do
       )
 
       allow(Tentacles::TranscriptService).to receive(:persist)
-      captured_on_exit.call(
-        transcript: "done\n",
-        command: %w[claude],
-        started_at: 1.minute.ago,
-        ended_at: Time.current,
-        exit_status: 0
-      )
+      perform_enqueued_jobs do
+        captured_on_exit.call(
+          transcript: "done\n",
+          command: %w[claude],
+          started_at: 1.minute.ago,
+          ended_at: Time.current,
+          exit_status: 0
+        )
+      end
 
       final = TentacleCronState.find_by(note_id: note.id)
       expect(final.lease_token).to eq(new_token)
@@ -380,96 +403,6 @@ RSpec.describe Tentacles::CronTickJob, type: :job do
       expect(state.lease_token.length).to be >= 32
     end
 
-    it "does not raise out of on_exit when state cleanup fails" do
-      note = make_cron_note(expr: "* * * * *")
-      fake = instance_double(TentacleRuntime::Session, alive?: true, pid: 1, started_at: Time.current)
-      captured_on_exit = nil
-      allow(TentacleRuntime).to receive(:start) do |**kwargs|
-        captured_on_exit = kwargs[:on_exit]
-        fake
-      end
-
-      described_class.perform_now
-
-      allow(Tentacles::TranscriptService).to receive(:persist)
-      claimed_token = TentacleCronState.find_by(note_id: note.id).lease_token
-      allow(TentacleCronState).to receive(:where)
-        .with(note_id: note.id, lease_token: claimed_token)
-        .and_raise(ActiveRecord::StatementInvalid.new("db unreachable"))
-      allow(Rails.logger).to receive(:error)
-
-      expect do
-        captured_on_exit.call(
-          transcript: "x\n",
-          command: %w[claude],
-          started_at: 1.minute.ago,
-          ended_at: Time.current,
-          exit_status: 0
-        )
-      end.not_to raise_error
-    end
-
-    it "enqueues a compensation job when cleanup raises after a successful run" do
-      note = make_cron_note(expr: "* * * * *")
-      fake = instance_double(TentacleRuntime::Session, alive?: true, pid: 1, started_at: Time.current)
-      captured_on_exit = nil
-      allow(TentacleRuntime).to receive(:start) do |**kwargs|
-        captured_on_exit = kwargs[:on_exit]
-        fake
-      end
-
-      described_class.perform_now
-
-      allow(Tentacles::TranscriptService).to receive(:persist)
-      claimed_token = TentacleCronState.find_by(note_id: note.id).lease_token
-      allow(TentacleCronState).to receive(:where)
-        .with(note_id: note.id, lease_token: claimed_token)
-        .and_raise(ActiveRecord::StatementInvalid.new("db unreachable"))
-      allow(Rails.logger).to receive(:error)
-
-      expect do
-        captured_on_exit.call(
-          transcript: "x\n",
-          command: %w[claude],
-          started_at: 1.minute.ago,
-          ended_at: Time.current,
-          exit_status: 0
-        )
-      end.to have_enqueued_job(Tentacles::CronLeaseReleaseJob)
-        .with(hash_including(note_id: note.id, lease_token: claimed_token, success: true))
-    end
-
-    it "enqueues a compensation job when cleanup raises after a failed run" do
-      note = make_cron_note(expr: "* * * * *")
-      fake = instance_double(TentacleRuntime::Session, alive?: true, pid: 1, started_at: Time.current)
-      captured_on_exit = nil
-      allow(TentacleRuntime).to receive(:start) do |**kwargs|
-        captured_on_exit = kwargs[:on_exit]
-        fake
-      end
-
-      described_class.perform_now
-
-      allow(Tentacles::TranscriptService).to receive(:persist)
-      claimed_token = TentacleCronState.find_by(note_id: note.id).lease_token
-      allow(TentacleCronState).to receive(:where)
-        .with(note_id: note.id, lease_token: claimed_token)
-        .and_raise(ActiveRecord::StatementInvalid.new("db unreachable"))
-      allow(Rails.logger).to receive(:error)
-      allow(Rails.logger).to receive(:warn)
-
-      expect do
-        captured_on_exit.call(
-          transcript: "fail\n",
-          command: %w[claude],
-          started_at: 1.minute.ago,
-          ended_at: Time.current,
-          exit_status: 2
-        )
-      end.to have_enqueued_job(Tentacles::CronLeaseReleaseJob)
-        .with(hash_including(note_id: note.id, lease_token: claimed_token, success: false))
-    end
-
     it "retries on the next tick after a failed run (lease cleared, not fired)" do
       travel_to Time.zone.local(2026, 4, 21, 9, 5, 0) do
         note = make_cron_note(expr: "0 9 * * *")
@@ -484,13 +417,15 @@ RSpec.describe Tentacles::CronTickJob, type: :job do
 
         allow(Tentacles::TranscriptService).to receive(:persist)
         allow(Rails.logger).to receive(:warn)
-        first_on_exit.call(
-          transcript: "failed\n",
-          command: %w[claude],
-          started_at: Time.current,
-          ended_at: Time.current,
-          exit_status: 2
-        )
+        perform_enqueued_jobs do
+          first_on_exit.call(
+            transcript: "failed\n",
+            command: %w[claude],
+            started_at: Time.current,
+            ended_at: Time.current,
+            exit_status: 2
+          )
+        end
 
         fake2 = instance_double(TentacleRuntime::Session, alive?: true, pid: 2, started_at: Time.current)
         expect(TentacleRuntime).to receive(:start).and_return(fake2)
