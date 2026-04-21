@@ -1,4 +1,5 @@
 require "fugit"
+require "socket"
 
 module Tentacles
   class CronTickJob < ApplicationJob
@@ -41,8 +42,12 @@ module Tentacles
       reclaim_orphan = false
       if existing_state&.last_attempted_at
         if existing_state.last_attempted_at > STALE_LEASE_TTL.ago
-          Rails.logger.warn("Tentacles::CronTickJob reclaiming orphaned lease for note #{note.id} (attempted at #{existing_state.last_attempted_at.iso8601}, no live session)")
-          reclaim_orphan = true
+          if orphaned_by_dead_pid?(existing_state)
+            Rails.logger.warn("Tentacles::CronTickJob reclaiming orphaned lease for note #{note.id} (pid #{existing_state.lease_pid} dead on #{existing_state.lease_host})")
+            reclaim_orphan = true
+          else
+            return
+          end
         else
           Rails.logger.warn("Tentacles::CronTickJob reclaiming stale lease for note #{note.id} (attempted at #{existing_state.last_attempted_at.iso8601})")
         end
@@ -76,9 +81,24 @@ module Tentacles
           on_exit: build_on_exit(note)
         )
       rescue StandardError
-        state.update_columns(last_attempted_at: nil)
+        state.update_columns(last_attempted_at: nil, lease_pid: nil, lease_host: nil)
         raise
       end
+    end
+
+    def orphaned_by_dead_pid?(state)
+      return false unless state.lease_pid && state.lease_host
+      return false unless state.lease_host == Socket.gethostname
+      !process_alive?(state.lease_pid)
+    end
+
+    def process_alive?(pid)
+      Process.kill(0, pid)
+      true
+    rescue Errno::ESRCH
+      false
+    rescue Errno::EPERM
+      true
     end
 
     def claim_lease(note:, previous:, reclaim_orphan: false)
@@ -89,7 +109,11 @@ module Tentacles
       unless reclaim_orphan
         query = query.where("last_attempted_at IS NULL OR last_attempted_at < ?", STALE_LEASE_TTL.ago)
       end
-      rows = query.update_all(last_attempted_at: Time.current)
+      rows = query.update_all(
+        last_attempted_at: Time.current,
+        lease_pid: Process.pid,
+        lease_host: Socket.gethostname
+      )
       return nil if rows.zero?
 
       TentacleCronState.find_by(note_id: note.id)
@@ -117,7 +141,7 @@ module Tentacles
         ensure
           TentacleCronState
             .where(note_id: note.id)
-            .update_all(last_fired_at: Time.current, last_attempted_at: nil)
+            .update_all(last_fired_at: Time.current, last_attempted_at: nil, lease_pid: nil, lease_host: nil)
         end
       end
     end

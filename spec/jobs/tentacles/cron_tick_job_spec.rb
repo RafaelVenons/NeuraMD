@@ -280,24 +280,91 @@ RSpec.describe Tentacles::CronTickJob, type: :job do
       end
     end
 
-    it "reclaims an orphaned lease when last_attempted_at is fresh but no session is alive (process restart)" do
+    it "reclaims a fresh lease when lease_pid is dead on the same host (process crash)" do
       travel_to Time.zone.local(2026, 4, 21, 9, 5, 0) do
         note = make_cron_note(expr: "0 9 * * *")
+        dead_pid = 999_999
         TentacleCronState.create!(
           note_id: note.id,
-          last_attempted_at: Time.current - 30.seconds
+          last_attempted_at: Time.current - 30.seconds,
+          lease_pid: dead_pid,
+          lease_host: Socket.gethostname
         )
+        allow(Process).to receive(:kill).with(0, dead_pid).and_raise(Errno::ESRCH)
         fake = instance_double(TentacleRuntime::Session, alive?: true, pid: 1, started_at: Time.current)
         allow(Rails.logger).to receive(:warn)
 
-        expect(Rails.logger).to receive(:warn).with(/orphaned lease.*#{note.id}/)
+        expect(Rails.logger).to receive(:warn).with(/orphaned lease.*#{note.id}.*pid #{dead_pid} dead/)
         expect(TentacleRuntime).to receive(:start).and_return(fake)
 
         described_class.perform_now
 
         state = TentacleCronState.find_by(note_id: note.id)
         expect(state.last_attempted_at).to be_within(5.seconds).of(Time.current)
+        expect(state.lease_pid).to eq(Process.pid)
+        expect(state.lease_host).to eq(Socket.gethostname)
       end
+    end
+
+    it "does not reclaim a fresh lease when lease_pid is still alive on the same host" do
+      travel_to Time.zone.local(2026, 4, 21, 9, 5, 0) do
+        note = make_cron_note(expr: "0 9 * * *")
+        live_pid = 123_456
+        TentacleCronState.create!(
+          note_id: note.id,
+          last_attempted_at: Time.current - 30.seconds,
+          lease_pid: live_pid,
+          lease_host: Socket.gethostname
+        )
+        allow(Process).to receive(:kill).with(0, live_pid).and_return(1)
+
+        expect(TentacleRuntime).not_to receive(:start)
+        described_class.perform_now
+      end
+    end
+
+    it "respects TTL when the fresh lease was recorded on a different host" do
+      travel_to Time.zone.local(2026, 4, 21, 9, 5, 0) do
+        note = make_cron_note(expr: "0 9 * * *")
+        TentacleCronState.create!(
+          note_id: note.id,
+          last_attempted_at: Time.current - 30.seconds,
+          lease_pid: 12_345,
+          lease_host: "other-host.example"
+        )
+
+        expect(Process).not_to receive(:kill)
+        expect(TentacleRuntime).not_to receive(:start)
+        described_class.perform_now
+      end
+    end
+
+    it "respects TTL when the fresh lease has no recorded pid (legacy row)" do
+      travel_to Time.zone.local(2026, 4, 21, 9, 5, 0) do
+        note = make_cron_note(expr: "0 9 * * *")
+        TentacleCronState.create!(
+          note_id: note.id,
+          last_attempted_at: Time.current - 30.seconds,
+          lease_pid: nil,
+          lease_host: nil
+        )
+
+        expect(Process).not_to receive(:kill)
+        expect(TentacleRuntime).not_to receive(:start)
+        described_class.perform_now
+      end
+    end
+
+    it "records lease_pid and lease_host when claiming a fresh lease" do
+      note = make_cron_note(expr: "* * * * *")
+      fake = instance_double(TentacleRuntime::Session, alive?: true, pid: 1, started_at: Time.current)
+      allow(TentacleRuntime).to receive(:start).and_return(fake)
+
+      described_class.perform_now
+
+      state = TentacleCronState.find_by(note_id: note.id)
+      expect(state.lease_pid).to eq(Process.pid)
+      expect(state.lease_host).to eq(Socket.gethostname)
     end
 
     it "catches errors from a single cron and continues processing others" do
