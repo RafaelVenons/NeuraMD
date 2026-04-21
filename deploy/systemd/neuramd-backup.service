@@ -1,0 +1,13 @@
+[Unit]
+Description=NeuraMD daily pg_dump backup
+After=postgresql.service
+Requires=postgresql.service
+
+[Service]
+Type=oneshot
+User=rafael
+Group=rafael
+ExecStart=/home/rafael/bin/backup-pg
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=neuramd-backup

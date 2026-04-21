@@ -1,0 +1,36 @@
+[Unit]
+Description=NeuraMD Solid Queue worker on AIrch
+After=network-online.target postgresql.service neuramd-web.service
+Wants=network-online.target
+Requires=postgresql.service
+
+[Service]
+Type=simple
+User=rafael
+Group=rafael
+WorkingDirectory=/home/rafael/apps/NeuraMD
+Environment=RAILS_ENV=production
+Environment=RAILS_LOG_TO_STDOUT=1
+Environment=POSTGRES_USER=postgres
+Environment=POSTGRES_HOST=127.0.0.1
+Environment=POSTGRES_PORT=5432
+Environment=NEURAMD_DATABASE=neura_md_production
+Environment=NEURAMD_CACHE_DATABASE=neura_md_production_cache
+Environment=NEURAMD_QUEUE_DATABASE=neura_md_production_queue
+Environment=NEURAMD_LEGACY_DATABASE=neura_md_legacy
+Environment=PATH=/home/rafael/.local/share/mise/shims:/home/rafael/.local/bin:/usr/local/bin:/usr/bin
+ExecStart=/home/rafael/.local/share/mise/shims/bundle exec bin/jobs
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=neuramd-worker
+
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=read-only
+ReadWritePaths=/home/rafael/apps/NeuraMD/tmp /home/rafael/apps/NeuraMD/log /home/rafael/apps/NeuraMD/storage
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,42 @@
+# NeuraMD — Caddy reverse proxy, LAN only, local CA via `tls internal`.
+# Access via https://airch.local — first visit prompts cert acceptance.
+
+{
+	# Auto-HTTPS on LAN using Caddy's internal CA
+	local_certs
+}
+
+airch.local {
+	tls internal
+
+	# Large request bodies for file imports
+	request_body {
+		max_size 20MB
+	}
+
+	# Reverse proxy to Puma
+	reverse_proxy 127.0.0.1:3000 {
+		# Action Cable websockets
+		header_up Host {host}
+		header_up X-Real-IP {remote_host}
+		header_up X-Forwarded-For {remote_host}
+		header_up X-Forwarded-Proto {scheme}
+		flush_interval -1
+	}
+
+	# Serve precompiled assets directly from public/assets, bypassing Rails
+	@assets path /assets/* /packs/*
+	handle @assets {
+		root * /home/rafael/apps/NeuraMD/public
+		file_server
+		header Cache-Control "public, max-age=31536000, immutable"
+	}
+
+	encode gzip zstd
+	log {
+		output file /var/log/caddy/neuramd.log {
+			roll_size 10MB
+			roll_keep 5
+		}
+	}
+}

@@ -28,12 +28,16 @@ test:
 production:
   primary: &primary_production
     <<: *default
-    url: <%= ENV["DATABASE_URL"] %>
+    database: <%= ENV.fetch("NEURAMD_DATABASE", "neura_md_production") %>
+    username: <%= ENV.fetch("POSTGRES_USER", "postgres") %>
+    password: <%= ENV.fetch("POSTGRES_PASSWORD", "") %>
+    host: <%= ENV.fetch("POSTGRES_HOST", "127.0.0.1") %>
+    port: <%= ENV.fetch("POSTGRES_PORT", 5432) %>
   cache:
     <<: *primary_production
-    database: neura_md_production_cache
+    database: <%= ENV.fetch("NEURAMD_CACHE_DATABASE", "neura_md_production_cache") %>
     migrations_paths: db/cache_migrate
   queue:
     <<: *primary_production
-    database: neura_md_production_queue
+    database: <%= ENV.fetch("NEURAMD_QUEUE_DATABASE", "neura_md_production_queue") %>
     migrations_paths: db/queue_migrate

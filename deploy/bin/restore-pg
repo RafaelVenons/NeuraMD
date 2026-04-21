@@ -1,0 +1,25 @@
+#!/usr/bin/env bash
+# Restore a pg_dump archive into a target database.
+# Usage: restore-pg <dump-file> <target-db>
+
+set -euo pipefail
+
+if [[ $# -ne 2 ]]; then
+	echo "usage: $0 <dump-file> <target-db>" >&2
+	exit 1
+fi
+
+dump="$1"
+target="$2"
+
+[[ -f "$dump" ]] || { echo "dump not found: $dump" >&2; exit 1; }
+
+echo "WARNING: this will DROP and recreate $target."
+read -rp "Type the target db name to confirm: " confirm
+[[ "$confirm" == "$target" ]] || { echo "aborted"; exit 1; }
+
+sudo -u postgres dropdb --if-exists "$target"
+sudo -u postgres createdb "$target"
+sudo -u postgres pg_restore -d "$target" --no-owner --no-privileges "$dump"
+
+echo "restored: $dump -> $target"

@@ -1,0 +1,40 @@
+#!/usr/bin/env bash
+# Git post-receive hook for NeuraMD bare repo on AIrch.
+# On push to refs/heads/main, update the working tree, install deps,
+# run migrations + asset precompile, and restart systemd services.
+#
+# Install: symlink to /home/rafael/git-mirrors/NeuraMD.git/hooks/post-receive
+# Blue-green not implemented — single working tree restarted in place.
+
+set -euo pipefail
+
+APP_DIR=/home/rafael/apps/NeuraMD
+BRANCH=main
+MISE_SHIMS=/home/rafael/.local/share/mise/shims
+
+while read -r oldrev newrev refname; do
+	[[ "$refname" == "refs/heads/$BRANCH" ]] || continue
+
+	echo "[$(date --iso-8601=seconds)] autodeploy: $oldrev -> $newrev ($refname)"
+
+	cd "$APP_DIR"
+	export PATH="$MISE_SHIMS:/home/rafael/.local/bin:$PATH"
+	export RAILS_ENV=production
+	export POSTGRES_USER=postgres POSTGRES_HOST=127.0.0.1 POSTGRES_PORT=5432
+	export NEURAMD_DATABASE=neura_md_production
+	export NEURAMD_CACHE_DATABASE=neura_md_production_cache
+	export NEURAMD_QUEUE_DATABASE=neura_md_production_queue
+	export NEURAMD_LEGACY_DATABASE=neura_md_legacy
+	unset GIT_DIR GIT_WORK_TREE
+
+	git fetch origin "$BRANCH"
+	git checkout -B "$BRANCH" "origin/$BRANCH"
+	git reset --hard "$newrev"
+
+	bundle install --jobs=4 --deployment --without development test
+	bundle exec rails db:migrate
+	bundle exec rails assets:precompile
+
+	sudo -n systemctl restart neuramd-web.service neuramd-worker.service
+	echo "[$(date --iso-8601=seconds)] autodeploy complete"
+done
