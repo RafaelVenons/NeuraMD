@@ -7,10 +7,27 @@
   --nm-shell-border: rgba(255, 255, 255, 0.08);
 }
 
+html,
+body {
+  margin: 0;
+  padding: 0;
+  background: var(--nm-shell-bg);
+  overscroll-behavior: none;
+}
+
+body.nm-app-shell {
+  height: 100vh;
+  overflow: hidden;
+}
+
+body.nm-app-shell #app-root {
+  height: 100%;
+}
+
 .nm-shell {
   display: grid;
   grid-template-columns: 64px 1fr;
-  min-height: 100vh;
+  height: 100%;
   background: var(--nm-shell-bg);
   color: var(--nm-shell-text);
   font-family: inherit;
@@ -158,17 +175,120 @@
 }
 
 .nm-graph-canvas {
+  position: relative;
   width: 100%;
   height: 100%;
 }
 
-.nm-graph-canvas svg {
+.nm-graph-canvas__svg {
   display: block;
+  width: 100%;
+  height: 100%;
   cursor: grab;
+  touch-action: none;
+  user-select: none;
+}
+
+.nm-graph-canvas__svg.is-panning {
+  cursor: grabbing;
 }
 
 .nm-graph-canvas__node {
   cursor: pointer;
+}
+
+.nm-graph-canvas__controls {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  z-index: 2;
+}
+
+.nm-graph-canvas__controls button {
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  border: 1px solid var(--nm-shell-border);
+  background: rgba(11, 13, 16, 0.85);
+  color: var(--nm-shell-text);
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.nm-graph-canvas__controls button:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.nm-graph-page__section {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.nm-graph-page__section-title {
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--nm-shell-muted);
+  margin: 0;
+}
+
+.nm-graph-page__tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  max-height: 40vh;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+.nm-graph-page__tag {
+  border: 1px solid var(--nm-shell-border);
+  background: rgba(255, 255, 255, 0.02);
+  color: var(--nm-shell-text);
+  padding: 3px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.nm-graph-page__tag:hover {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.nm-graph-page__tag.is-active {
+  background: rgba(92, 200, 255, 0.18);
+  border-color: rgba(92, 200, 255, 0.55);
+  color: #e8f4ff;
+}
+
+.nm-graph-page__tag-count {
+  color: var(--nm-shell-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.nm-graph-page__tag-clear {
+  align-self: flex-start;
+  background: transparent;
+  border: 0;
+  color: var(--nm-shell-muted);
+  font-size: 11px;
+  cursor: pointer;
+  padding: 0;
+}
+
+.nm-graph-page__tag-clear:hover {
+  color: var(--nm-shell-text);
 }
 
 .nm-graph-canvas__pulse {
