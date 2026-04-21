@@ -28,13 +28,22 @@ module Api
       def create
         authorize @note, :update?
         command = resolve_command(params[:command])
-        cwd = WorktreeService.ensure(tentacle_id: @note.id)
+
+        existing = ::TentacleRuntime.get(@note.id)
+        if existing&.alive?
+          render json: serialize_session(@note, existing, reused: true, boot_config_applied: false), status: :ok
+          return
+        end
+
+        repo_root, initial_prompt = sanitized_boot_config(@note)
+        cwd = WorktreeService.ensure(tentacle_id: @note.id, repo_root: repo_root)
         note = @note
         author = current_user
         session = ::TentacleRuntime.start(
           tentacle_id: @note.id,
           command: command,
           cwd: cwd,
+          initial_prompt: initial_prompt,
           on_exit: ->(transcript:, command:, started_at:, ended_at:, **) do
             ::Tentacles::TranscriptService.persist(
               note: note,
@@ -46,7 +55,7 @@ module Api
             )
           end
         )
-        render json: serialize_session(@note, session, command_override: command), status: :created
+        render json: serialize_session(@note, session, command_override: command, reused: false, boot_config_applied: true), status: :created
       end
 
       def destroy
@@ -68,33 +77,53 @@ module Api
         render_not_found unless @note
       end
 
+      def sanitized_boot_config(note)
+        props = note.current_properties
+        canonical_cwd, cwd_err = ::Tentacles::BootConfig.canonicalize_cwd(props["tentacle_cwd"])
+        if cwd_err && props["tentacle_cwd"].present?
+          Rails.logger.warn("Tentacle #{note.id} tentacle_cwd rejected at session start: #{cwd_err}")
+        end
+
+        validated_prompt, prompt_err = ::Tentacles::BootConfig.validate_initial_prompt(props["tentacle_initial_prompt"])
+        if prompt_err
+          Rails.logger.warn("Tentacle #{note.id} tentacle_initial_prompt rejected at session start: #{prompt_err}")
+        end
+
+        [canonical_cwd || Rails.root, validated_prompt]
+      end
+
       def resolve_command(raw)
         key = raw.to_s.strip.downcase
         KNOWN_COMMANDS.fetch(key, KNOWN_COMMANDS.fetch("bash"))
       end
 
-      def serialize_session(note, session, command_override: nil)
-        if session&.alive?
-          {
-            tentacle_id: note.id,
-            slug: note.slug,
-            title: note.title,
-            alive: true,
-            pid: session.pid,
-            started_at: session.started_at&.utc&.iso8601,
-            command: command_override || session.instance_variable_get(:@command)
-          }
-        else
-          {
-            tentacle_id: note.id,
-            slug: note.slug,
-            title: note.title,
-            alive: false,
-            pid: nil,
-            started_at: nil,
-            command: nil
-          }
-        end
+      def serialize_session(note, session, command_override: nil, reused: nil, boot_config_applied: nil)
+        payload =
+          if session&.alive?
+            {
+              tentacle_id: note.id,
+              slug: note.slug,
+              title: note.title,
+              alive: true,
+              pid: session.pid,
+              started_at: session.started_at&.utc&.iso8601,
+              command: command_override || session.instance_variable_get(:@command)
+            }
+          else
+            {
+              tentacle_id: note.id,
+              slug: note.slug,
+              title: note.title,
+              alive: false,
+              pid: nil,
+              started_at: nil,
+              command: nil
+            }
+          end
+
+        payload[:reused] = reused unless reused.nil?
+        payload[:boot_config_applied] = boot_config_applied unless boot_config_applied.nil?
+        payload
       end
     end
   end

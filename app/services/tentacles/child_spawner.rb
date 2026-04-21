@@ -6,15 +6,24 @@ module Tentacles
 
     Result = Struct.new(:child, :revision, :body, keyword_init: true)
 
-    def self.call(parent:, title:, description: nil, extra_tags: nil)
-      new(parent: parent, title: title, description: description, extra_tags: extra_tags).call
+    def self.call(parent:, title:, description: nil, extra_tags: nil, cwd: nil, initial_prompt: nil)
+      new(
+        parent: parent,
+        title: title,
+        description: description,
+        extra_tags: extra_tags,
+        cwd: cwd,
+        initial_prompt: initial_prompt
+      ).call
     end
 
-    def initialize(parent:, title:, description:, extra_tags:)
-      @parent      = parent
-      @title       = title.to_s.strip
-      @description = description.to_s.strip
-      @extra_tags  = extra_tags
+    def initialize(parent:, title:, description:, extra_tags:, cwd:, initial_prompt:)
+      @parent         = parent
+      @title          = title.to_s.strip
+      @description    = description.to_s.strip
+      @extra_tags     = extra_tags
+      @cwd            = cwd.presence
+      @initial_prompt = initial_prompt.presence
     end
 
     def call
@@ -28,6 +37,7 @@ module Tentacles
 
       Links::SyncService.call(src_note: child, revision: revision, content: body)
       apply_tags!(child)
+      revision = apply_boot_config!(child.reload) || revision
 
       Result.new(child: child.reload, revision: revision, body: body)
     end
@@ -48,6 +58,15 @@ module Tentacles
         tag = Tag.find_or_create_by!(name: name.downcase) { |t| t.tag_scope = "note" }
         note.tags << tag unless note.tags.include?(tag)
       end
+    end
+
+    def apply_boot_config!(note)
+      changes = {}
+      changes["tentacle_cwd"] = @cwd if @cwd
+      changes["tentacle_initial_prompt"] = @initial_prompt if @initial_prompt
+      return nil if changes.empty?
+
+      Properties::SetService.call(note: note, changes: changes)
     end
   end
 end

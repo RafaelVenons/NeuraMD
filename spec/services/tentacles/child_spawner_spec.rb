@@ -44,5 +44,50 @@ RSpec.describe Tentacles::ChildSpawner do
         described_class.call(parent: parent, title: "   ")
       }.to raise_error(described_class::BlankTitle)
     end
+
+    context "with agent boot config" do
+      before do
+        PropertyDefinition.find_or_create_by!(key: "tentacle_cwd") do |d|
+          d.value_type = "text"
+          d.system = true
+        end
+        PropertyDefinition.find_or_create_by!(key: "tentacle_initial_prompt") do |d|
+          d.value_type = "long_text"
+          d.system = true
+        end
+      end
+
+      it "sets tentacle_cwd and tentacle_initial_prompt on the head revision when provided" do
+        result = described_class.call(
+          parent: parent,
+          title: "With Config",
+          cwd: "/home/venom/projects/MapledaRapeize",
+          initial_prompt: "boot me"
+        )
+
+        expect(result.child.head_revision.properties_data["tentacle_cwd"])
+          .to eq("/home/venom/projects/MapledaRapeize")
+        expect(result.child.head_revision.properties_data["tentacle_initial_prompt"])
+          .to eq("boot me")
+      end
+
+      it "leaves properties empty when cwd and initial_prompt are nil" do
+        result = described_class.call(parent: parent, title: "Bare")
+
+        expect(result.child.head_revision.properties_data).to eq({})
+      end
+
+      it "only sets the keys that were provided" do
+        result = described_class.call(
+          parent: parent,
+          title: "Prompt Only",
+          initial_prompt: "only prompt"
+        )
+
+        expect(result.child.head_revision.properties_data).to eq(
+          "tentacle_initial_prompt" => "only prompt"
+        )
+      end
+    end
   end
 end

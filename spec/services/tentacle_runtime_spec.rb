@@ -46,6 +46,25 @@ RSpec.describe TentacleRuntime do
         expect(wait_until { received.join.include?(File.realpath(tmp)) }).to be_truthy
       end
     end
+
+    it "writes initial_prompt to stdin after boot when provided" do
+      received = []
+      allow(TentacleChannel).to receive(:broadcast_output) { |data:, **| received << data }
+
+      described_class.start(
+        tentacle_id: tentacle_id,
+        command: ["cat"],
+        initial_prompt: "hello tentacle"
+      )
+
+      expect(wait_until { received.join.include?("hello tentacle") }).to be_truthy
+    end
+
+    it "does not crash when initial_prompt is nil" do
+      expect {
+        described_class.start(tentacle_id: tentacle_id, command: ["sleep", "5"], initial_prompt: nil)
+      }.not_to raise_error
+    end
   end
 
   describe ".write" do

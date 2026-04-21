@@ -69,5 +69,130 @@ RSpec.describe Mcp::Tools::SpawnChildTentacleTool do
       expect(response.error?).to be true
       expect(response.content.first[:text]).to include("Title")
     end
+
+    context "with agent boot config (cwd + initial_prompt)" do
+      before do
+        PropertyDefinition.find_or_create_by!(key: "tentacle_cwd") do |d|
+          d.value_type = "text"
+          d.system = true
+          d.label = "Diretório de trabalho"
+        end
+        PropertyDefinition.find_or_create_by!(key: "tentacle_initial_prompt") do |d|
+          d.value_type = "long_text"
+          d.system = true
+          d.label = "Prompt inicial"
+        end
+      end
+
+      let(:allowed_dir) do
+        path = described_class::CWD_ALLOWED_PREFIXES.first + "maple-test-dir"
+        FileUtils.mkdir_p(path)
+        path
+      end
+
+      after { FileUtils.remove_entry(allowed_dir) if File.directory?(allowed_dir) }
+
+      it "persists tentacle_cwd and tentacle_initial_prompt as properties" do
+        response = described_class.call(
+          parent_slug: parent.slug,
+          title: "Dev Maple Session",
+          cwd: allowed_dir,
+          initial_prompt: "Você é Dev Maple. Leia o charter na nota."
+        )
+        data = JSON.parse(response.content.first[:text])
+        child = Note.find(data["id"])
+
+        expect(child.head_revision.properties_data["tentacle_cwd"]).to eq(allowed_dir)
+        expect(child.head_revision.properties_data["tentacle_initial_prompt"])
+          .to eq("Você é Dev Maple. Leia o charter na nota.")
+      end
+
+      it "rejects cwd outside the allowed prefixes" do
+        response = described_class.call(
+          parent_slug: parent.slug,
+          title: "Escape Attempt",
+          cwd: "/etc"
+        )
+        expect(response.error?).to be true
+        expect(response.content.first[:text]).to include("cwd")
+      end
+
+      it "rejects cwd that is not an existing directory" do
+        response = described_class.call(
+          parent_slug: parent.slug,
+          title: "Missing Dir",
+          cwd: described_class::CWD_ALLOWED_PREFIXES.first + "does-not-exist-#{SecureRandom.hex(4)}"
+        )
+        expect(response.error?).to be true
+        expect(response.content.first[:text]).to include("cwd")
+      end
+
+      it "rejects cwd with .. segments that resolve outside the whitelist" do
+        escape_path = described_class::CWD_ALLOWED_PREFIXES.first + "../../../etc"
+        response = described_class.call(
+          parent_slug: parent.slug,
+          title: "Dotdot Escape",
+          cwd: escape_path
+        )
+        expect(response.error?).to be true
+        expect(response.content.first[:text]).to include("cwd")
+      end
+
+      it "rejects cwd that is a symlink pointing outside the whitelist" do
+        outside_target = Dir.mktmpdir
+        symlink_path = described_class::CWD_ALLOWED_PREFIXES.first + "maple-symlink-#{SecureRandom.hex(4)}"
+        File.symlink(outside_target, symlink_path)
+
+        response = described_class.call(
+          parent_slug: parent.slug,
+          title: "Symlink Escape",
+          cwd: symlink_path
+        )
+        expect(response.error?).to be true
+        expect(response.content.first[:text]).to include("cwd")
+      ensure
+        File.unlink(symlink_path) if symlink_path && File.symlink?(symlink_path)
+        FileUtils.remove_entry(outside_target) if outside_target && File.directory?(outside_target)
+      end
+
+      it "persists the canonical path when cwd contains resolvable segments" do
+        nested = File.join(allowed_dir, "nested")
+        FileUtils.mkdir_p(nested)
+        indirect = File.join(nested, "..")
+
+        response = described_class.call(
+          parent_slug: parent.slug,
+          title: "Canonicalized",
+          cwd: indirect
+        )
+        data = JSON.parse(response.content.first[:text])
+        child = Note.find(data["id"])
+
+        expect(child.head_revision.properties_data["tentacle_cwd"]).to eq(allowed_dir)
+      end
+
+      it "rejects initial_prompt larger than 2KB" do
+        response = described_class.call(
+          parent_slug: parent.slug,
+          title: "Chatty",
+          initial_prompt: "a" * 2049
+        )
+        expect(response.error?).to be true
+        expect(response.content.first[:text]).to include("initial_prompt")
+      end
+
+      it "accepts initial_prompt alone without cwd" do
+        response = described_class.call(
+          parent_slug: parent.slug,
+          title: "Prompt Only",
+          initial_prompt: "boot message"
+        )
+        data = JSON.parse(response.content.first[:text])
+        child = Note.find(data["id"])
+
+        expect(child.head_revision.properties_data["tentacle_initial_prompt"]).to eq("boot message")
+        expect(child.head_revision.properties_data["tentacle_cwd"]).to be_nil
+      end
+    end
   end
 end

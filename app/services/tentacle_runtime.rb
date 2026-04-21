@@ -3,9 +3,10 @@ require "concurrent/map"
 
 class TentacleRuntime
   SESSIONS = Concurrent::Map.new
+  INITIAL_PROMPT_BOOT_DELAY = 1.5
 
   class << self
-    def start(tentacle_id:, command:, cwd: nil, env: {}, on_exit: nil)
+    def start(tentacle_id:, command:, cwd: nil, env: {}, on_exit: nil, initial_prompt: nil)
       existing = SESSIONS[tentacle_id]
       return existing if existing&.alive?
 
@@ -18,8 +19,24 @@ class TentacleRuntime
         on_exit: on_exit
       )
       SESSIONS[tentacle_id] = session
+      schedule_initial_prompt(session, initial_prompt) if initial_prompt.present?
       session
     end
+
+    private
+
+    def schedule_initial_prompt(session, prompt)
+      Thread.new do
+        Rails.application.executor.wrap do
+          session.wait_for_first_output(timeout: INITIAL_PROMPT_BOOT_DELAY)
+          session.write("#{prompt}\n")
+        rescue StandardError => e
+          Rails.logger.error("TentacleRuntime initial_prompt failed: #{e.class}: #{e.message}")
+        end
+      end
+    end
+
+    public
 
     def write(tentacle_id:, data:)
       SESSIONS[tentacle_id]&.write(data)
@@ -64,9 +81,19 @@ class TentacleRuntime
       @transcript_dropped_bytes = 0
       @on_exit_fired = false
       @on_exit_mutex = Mutex.new
+      @boot_mutex = Mutex.new
+      @boot_cv = ConditionVariable.new
+      @booted = false
       @started_at = Time.current
       spawn_process
       start_reader
+    end
+
+    def wait_for_first_output(timeout:)
+      @boot_mutex.synchronize do
+        next if @booted
+        @boot_cv.wait(@boot_mutex, timeout)
+      end
     end
 
     def transcript
@@ -141,6 +168,7 @@ class TentacleRuntime
             loop do
               chunk = reader.readpartial(4096)
               session.append_to_transcript(chunk)
+              session.signal_boot!
               TentacleChannel.broadcast_output(tentacle_id: tentacle_id, data: chunk)
             end
           rescue Errno::EIO, EOFError, IOError
@@ -159,6 +187,14 @@ class TentacleRuntime
     end
 
     public
+
+    def signal_boot!
+      @boot_mutex.synchronize do
+        next if @booted
+        @booted = true
+        @boot_cv.broadcast
+      end
+    end
 
     def append_to_transcript(chunk)
       @transcript_mutex.synchronize do
