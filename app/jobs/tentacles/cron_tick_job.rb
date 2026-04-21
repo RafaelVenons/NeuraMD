@@ -126,7 +126,8 @@ module Tentacles
     end
 
     def build_on_exit(note)
-      ->(transcript:, command:, started_at:, ended_at:, **) do
+      ->(transcript:, command:, started_at:, ended_at:, exit_status: nil, **) do
+        persisted = false
         begin
           Tentacles::TranscriptService.persist(
             note: note,
@@ -136,13 +137,19 @@ module Tentacles
             ended_at: ended_at,
             author: nil
           )
+          persisted = true
         rescue StandardError => e
           Rails.logger.error("Tentacles::CronTickJob transcript persistence failed for #{note.id}: #{e.class}: #{e.message}")
-        ensure
-          TentacleCronState
-            .where(note_id: note.id)
-            .update_all(last_fired_at: Time.current, last_attempted_at: nil, lease_pid: nil, lease_host: nil)
         end
+
+        success = persisted && exit_status == 0
+        updates = { last_attempted_at: nil, lease_pid: nil, lease_host: nil }
+        if success
+          updates[:last_fired_at] = Time.current
+        else
+          Rails.logger.warn("Tentacles::CronTickJob cron run failed for note #{note.id} (exit_status=#{exit_status.inspect}, persisted=#{persisted}); retry on next tick")
+        end
+        TentacleCronState.where(note_id: note.id).update_all(updates)
       end
     end
   end

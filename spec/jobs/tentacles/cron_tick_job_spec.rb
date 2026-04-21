@@ -222,7 +222,7 @@ RSpec.describe Tentacles::CronTickJob, type: :job do
       expect(state.reload.last_attempted_at).not_to be_nil
     end
 
-    it "releases the lease even when transcript persistence raises inside on_exit" do
+    it "releases the lease but does not advance last_fired_at when transcript persistence raises" do
       note = make_cron_note(expr: "* * * * *")
       fake = instance_double(TentacleRuntime::Session, alive?: true, pid: 1, started_at: Time.current)
       captured_on_exit = nil
@@ -235,8 +235,37 @@ RSpec.describe Tentacles::CronTickJob, type: :job do
 
       allow(Tentacles::TranscriptService).to receive(:persist).and_raise("disk full")
       allow(Rails.logger).to receive(:error)
+      allow(Rails.logger).to receive(:warn)
       captured_on_exit.call(
         transcript: "x\n",
+        command: %w[claude],
+        started_at: 1.minute.ago,
+        ended_at: Time.current,
+        exit_status: 0
+      )
+
+      final = TentacleCronState.find_by(note_id: note.id)
+      expect(final.last_attempted_at).to be_nil
+      expect(final.lease_pid).to be_nil
+      expect(final.lease_host).to be_nil
+      expect(final.last_fired_at).to be_nil
+    end
+
+    it "does not advance last_fired_at when the child exited non-zero" do
+      note = make_cron_note(expr: "* * * * *")
+      fake = instance_double(TentacleRuntime::Session, alive?: true, pid: 1, started_at: Time.current)
+      captured_on_exit = nil
+      allow(TentacleRuntime).to receive(:start) do |**kwargs|
+        captured_on_exit = kwargs[:on_exit]
+        fake
+      end
+
+      described_class.perform_now
+
+      allow(Tentacles::TranscriptService).to receive(:persist)
+      allow(Rails.logger).to receive(:warn)
+      captured_on_exit.call(
+        transcript: "oops\n",
         command: %w[claude],
         started_at: 1.minute.ago,
         ended_at: Time.current,
@@ -244,8 +273,67 @@ RSpec.describe Tentacles::CronTickJob, type: :job do
       )
 
       final = TentacleCronState.find_by(note_id: note.id)
+      expect(final.last_fired_at).to be_nil
       expect(final.last_attempted_at).to be_nil
-      expect(final.last_fired_at).to be_within(5.seconds).of(Time.current)
+    end
+
+    it "does not advance last_fired_at when exit_status is nil (unclean reap)" do
+      note = make_cron_note(expr: "* * * * *")
+      fake = instance_double(TentacleRuntime::Session, alive?: true, pid: 1, started_at: Time.current)
+      captured_on_exit = nil
+      allow(TentacleRuntime).to receive(:start) do |**kwargs|
+        captured_on_exit = kwargs[:on_exit]
+        fake
+      end
+
+      described_class.perform_now
+
+      allow(Tentacles::TranscriptService).to receive(:persist)
+      allow(Rails.logger).to receive(:warn)
+      captured_on_exit.call(
+        transcript: "partial\n",
+        command: %w[claude],
+        started_at: 1.minute.ago,
+        ended_at: Time.current,
+        exit_status: nil
+      )
+
+      final = TentacleCronState.find_by(note_id: note.id)
+      expect(final.last_fired_at).to be_nil
+      expect(final.last_attempted_at).to be_nil
+    end
+
+    it "retries on the next tick after a failed run (lease cleared, not fired)" do
+      travel_to Time.zone.local(2026, 4, 21, 9, 5, 0) do
+        note = make_cron_note(expr: "0 9 * * *")
+        first_on_exit = nil
+        fake1 = instance_double(TentacleRuntime::Session, alive?: true, pid: 1, started_at: Time.current)
+        allow(TentacleRuntime).to receive(:start) do |**kwargs|
+          first_on_exit = kwargs[:on_exit]
+          fake1
+        end
+
+        described_class.perform_now
+
+        allow(Tentacles::TranscriptService).to receive(:persist)
+        allow(Rails.logger).to receive(:warn)
+        first_on_exit.call(
+          transcript: "failed\n",
+          command: %w[claude],
+          started_at: Time.current,
+          ended_at: Time.current,
+          exit_status: 2
+        )
+
+        fake2 = instance_double(TentacleRuntime::Session, alive?: true, pid: 2, started_at: Time.current)
+        expect(TentacleRuntime).to receive(:start).and_return(fake2)
+
+        described_class.perform_now
+
+        state = TentacleCronState.find_by(note_id: note.id)
+        expect(state.last_attempted_at).not_to be_nil
+        expect(state.last_fired_at).to be_nil
+      end
     end
 
     it "reclaims a stale lease older than STALE_LEASE_TTL" do
