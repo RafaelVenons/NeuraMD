@@ -49,6 +49,37 @@ RSpec.describe WorktreeService do
       expect(listing.scan("worktree #{first}").size).to eq(1)
     end
 
+    it "links gitignored runtime paths from the main repo into the worktree" do
+      FileUtils.mkdir_p(repo_root.join("vendor/bundle/ruby/3.3.0"))
+      File.write(repo_root.join("vendor/bundle/ruby/3.3.0/marker"), "installed\n")
+      FileUtils.mkdir_p(repo_root.join(".bundle"))
+      File.write(repo_root.join(".bundle/config"), "BUNDLE_PATH: \"vendor/bundle\"\n")
+      FileUtils.mkdir_p(repo_root.join("config"))
+      File.write(repo_root.join("config/master.key"), "deadbeef\n")
+
+      path = described_class.ensure(tentacle_id: tentacle_id, repo_root: repo_root)
+
+      [
+        ["vendor/bundle", "vendor/bundle"],
+        [".bundle", ".bundle"],
+        ["config/master.key", "config/master.key"]
+      ].each do |source_rel, target_rel|
+        target = File.join(path, target_rel)
+        expect(File.symlink?(target)).to be(true), "expected #{target_rel} to be a symlink"
+        expect(File.realpath(target)).to eq(repo_root.join(source_rel).realpath.to_s)
+      end
+      expect(File.read(File.join(path, "vendor/bundle/ruby/3.3.0/marker"))).to eq("installed\n")
+      expect(File.read(File.join(path, "config/master.key"))).to eq("deadbeef\n")
+    end
+
+    it "skips linking when the main repo has no runtime paths to share" do
+      path = described_class.ensure(tentacle_id: tentacle_id, repo_root: repo_root)
+
+      expect(File.exist?(File.join(path, "vendor/bundle"))).to be(false)
+      expect(File.exist?(File.join(path, ".bundle"))).to be(false)
+      expect(File.exist?(File.join(path, "config/master.key"))).to be(false)
+    end
+
     it "recovers when the directory exists but is not registered as a worktree" do
       orphan_path = repo_root.join("tmp/tentacles", tentacle_id)
       FileUtils.mkdir_p(orphan_path)

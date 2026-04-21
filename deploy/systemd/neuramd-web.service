@@ -44,7 +44,7 @@ NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=full
 ProtectHome=read-only
-ReadWritePaths=/home/rafael/apps/NeuraMD/tmp /home/rafael/apps/NeuraMD/log /home/rafael/apps/NeuraMD/storage /home/rafael/apps/NeuraMD/.git /home/rafael/.claude
+ReadWritePaths=/home/rafael/apps/NeuraMD/tmp /home/rafael/apps/NeuraMD/log /home/rafael/apps/NeuraMD/storage /home/rafael/apps/NeuraMD/.git /home/rafael/.claude /home/rafael/.claude.json
 
 [Install]
 WantedBy=multi-user.target

@@ -20,6 +20,7 @@ class WorktreeService
       args = ["worktree", "add"]
       args.concat(branch_exists?(branch, repo_root: repo_root) ? [path.to_s, branch] : ["-b", branch, path.to_s])
       run_git!(args, repo_root: repo_root)
+      link_shared_paths(path: path, repo_root: repo_root)
       path.to_s
     end
 
@@ -41,6 +42,29 @@ class WorktreeService
     end
 
     private
+
+    # Tentacle worktrees are bare checkouts of the working tree — they lack
+    # any gitignored runtime files the main repo depends on. Without these,
+    # a Ruby process spawned from the worktree (bin/mcp-server, bundle exec
+    # rspec, Rails.application.initialize!) fails on Bundler::GemNotFound or
+    # `Missing secret_key_base`. Symlink each path instead of copying so the
+    # worktree always reflects the main repo.
+    SHARED_PATHS = [
+      "vendor/bundle",
+      ".bundle",
+      "config/master.key"
+    ].freeze
+
+    def link_shared_paths(path:, repo_root:)
+      SHARED_PATHS.each do |rel|
+        source = repo_root.join(rel)
+        target = path.join(rel)
+        next unless source.exist?
+        next if target.symlink? || target.exist?
+        FileUtils.mkdir_p(target.parent)
+        FileUtils.ln_s(source.to_s, target.to_s)
+      end
+    end
 
     def branch_for(tentacle_id)
       "#{BRANCH_PREFIX}#{tentacle_id}"
