@@ -26,6 +26,14 @@ StandardOutput=journal
 StandardError=journal
 SyslogIdentifier=neuramd-worker
 
+# Tentacle cwd whitelist. The cron tick job boots tentacles from this
+# worker, so any custom cwd root must be mirrored in ReadWritePaths
+# (specifically the `<root>/tmp/tentacles` subpath) or the worktree
+# provisioning call will fail under ProtectHome=read-only. Leaving it
+# unset falls back to Tentacles::BootConfig::DEFAULT_CWD_ALLOWED_PREFIXES.
+# Environment=NEURAMD_TENTACLE_CWD_ROOTS=/home/rafael/projects/
+
+# Hardening
 NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=full

@@ -1,9 +1,16 @@
 module Tentacles
   module BootConfig
-    CWD_ALLOWED_PREFIXES = ["/home/venom/projects/"].freeze
+    DEFAULT_CWD_ALLOWED_PREFIXES = ["/home/venom/projects/"].freeze
     INITIAL_PROMPT_MAX_BYTES = 2048
 
     module_function
+
+    def allowed_cwd_prefixes
+      raw = ENV["NEURAMD_TENTACLE_CWD_ROOTS"].to_s
+      return DEFAULT_CWD_ALLOWED_PREFIXES if raw.strip.empty?
+
+      raw.split(",").map(&:strip).reject(&:empty?).map { |p| p.end_with?("/") ? p : "#{p}/" }
+    end
 
     def canonicalize_cwd(value)
       return [nil, nil] if value.nil? || value.to_s.strip.empty?
@@ -17,8 +24,9 @@ module Tentacles
 
       return [nil, "cwd directory does not exist: #{value}"] unless File.directory?(canonical)
 
-      unless CWD_ALLOWED_PREFIXES.any? { |prefix| canonical.start_with?(prefix) }
-        return [nil, "cwd must be under one of: #{CWD_ALLOWED_PREFIXES.join(", ")}"]
+      prefixes = allowed_cwd_prefixes
+      unless prefixes.any? { |prefix| canonical.start_with?(prefix) }
+        return [nil, "cwd must be under one of: #{prefixes.join(", ")}"]
       end
 
       [canonical, nil]

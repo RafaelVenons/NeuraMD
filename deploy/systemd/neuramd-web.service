@@ -30,6 +30,14 @@ StandardOutput=journal
 StandardError=journal
 SyslogIdentifier=neuramd-web
 
+# Tentacle cwd whitelist. To let tentacles boot under a different repo
+# root (cron jobs or manual sessions with tentacle_cwd set), set the env
+# and ALSO append the matching `<root>/tmp/tentacles` path to
+# ReadWritePaths — WorktreeService.ensure writes there and will fail
+# silently under ProtectHome=read-only otherwise. Leaving it unset keeps
+# the compiled default in Tentacles::BootConfig::DEFAULT_CWD_ALLOWED_PREFIXES.
+# Environment=NEURAMD_TENTACLE_CWD_ROOTS=/home/rafael/projects/
+
 # Hardening
 NoNewPrivileges=true
 PrivateTmp=true

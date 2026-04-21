@@ -85,7 +85,7 @@ RSpec.describe Mcp::Tools::SpawnChildTentacleTool do
       end
 
       let(:allowed_dir) do
-        path = described_class::CWD_ALLOWED_PREFIXES.first + "maple-test-dir"
+        path = described_class.cwd_allowed_prefixes.first + "maple-test-dir"
         FileUtils.mkdir_p(path)
         path
       end
@@ -121,14 +121,14 @@ RSpec.describe Mcp::Tools::SpawnChildTentacleTool do
         response = described_class.call(
           parent_slug: parent.slug,
           title: "Missing Dir",
-          cwd: described_class::CWD_ALLOWED_PREFIXES.first + "does-not-exist-#{SecureRandom.hex(4)}"
+          cwd: described_class.cwd_allowed_prefixes.first + "does-not-exist-#{SecureRandom.hex(4)}"
         )
         expect(response.error?).to be true
         expect(response.content.first[:text]).to include("cwd")
       end
 
       it "rejects cwd with .. segments that resolve outside the whitelist" do
-        escape_path = described_class::CWD_ALLOWED_PREFIXES.first + "../../../etc"
+        escape_path = described_class.cwd_allowed_prefixes.first + "../../../etc"
         response = described_class.call(
           parent_slug: parent.slug,
           title: "Dotdot Escape",
@@ -140,7 +140,7 @@ RSpec.describe Mcp::Tools::SpawnChildTentacleTool do
 
       it "rejects cwd that is a symlink pointing outside the whitelist" do
         outside_target = Dir.mktmpdir
-        symlink_path = described_class::CWD_ALLOWED_PREFIXES.first + "maple-symlink-#{SecureRandom.hex(4)}"
+        symlink_path = described_class.cwd_allowed_prefixes.first + "maple-symlink-#{SecureRandom.hex(4)}"
         File.symlink(outside_target, symlink_path)
 
         response = described_class.call(

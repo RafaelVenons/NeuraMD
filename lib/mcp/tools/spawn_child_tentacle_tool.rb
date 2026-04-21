@@ -10,8 +10,11 @@ module Mcp
       tool_name "spawn_child_tentacle"
       description "Create a child tentacle (note) wikilinked to a parent via [[Parent|f:uuid]]. Adds the `tentacle` tag plus any extras, seeds an empty `## Todos` section, and returns the new slug. Optional `cwd` (whitelisted) and `initial_prompt` (≤2KB) are persisted as properties for the runtime to honor on session start. Open the terminal at /notes/<slug>/tentacle."
 
-      CWD_ALLOWED_PREFIXES = Tentacles::BootConfig::CWD_ALLOWED_PREFIXES
       INITIAL_PROMPT_MAX_BYTES = Tentacles::BootConfig::INITIAL_PROMPT_MAX_BYTES
+
+      def self.cwd_allowed_prefixes
+        Tentacles::BootConfig.allowed_cwd_prefixes
+      end
 
       input_schema(
         type: "object",
