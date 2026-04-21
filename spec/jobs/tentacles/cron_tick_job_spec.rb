@@ -265,16 +265,38 @@ RSpec.describe Tentacles::CronTickJob, type: :job do
       end
     end
 
-    it "does not re-claim a lease held by an in-flight run" do
+    it "does not re-claim a lease held by a live in-flight run" do
       travel_to Time.zone.local(2026, 4, 21, 9, 5, 0) do
         note = make_cron_note(expr: "0 9 * * *")
         TentacleCronState.create!(
           note_id: note.id,
           last_attempted_at: Time.current - 30.seconds
         )
+        live = instance_double(TentacleRuntime::Session, alive?: true, pid: 4242, started_at: 1.minute.ago)
+        TentacleRuntime::SESSIONS[note.id] = live
 
         expect(TentacleRuntime).not_to receive(:start)
         described_class.perform_now
+      end
+    end
+
+    it "reclaims an orphaned lease when last_attempted_at is fresh but no session is alive (process restart)" do
+      travel_to Time.zone.local(2026, 4, 21, 9, 5, 0) do
+        note = make_cron_note(expr: "0 9 * * *")
+        TentacleCronState.create!(
+          note_id: note.id,
+          last_attempted_at: Time.current - 30.seconds
+        )
+        fake = instance_double(TentacleRuntime::Session, alive?: true, pid: 1, started_at: Time.current)
+        allow(Rails.logger).to receive(:warn)
+
+        expect(Rails.logger).to receive(:warn).with(/orphaned lease.*#{note.id}/)
+        expect(TentacleRuntime).to receive(:start).and_return(fake)
+
+        described_class.perform_now
+
+        state = TentacleCronState.find_by(note_id: note.id)
+        expect(state.last_attempted_at).to be_within(5.seconds).of(Time.current)
       end
     end
 

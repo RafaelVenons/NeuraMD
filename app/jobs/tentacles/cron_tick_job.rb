@@ -35,14 +35,18 @@ module Tentacles
       previous = cron.previous_time(Time.current).to_t
       existing_state = TentacleCronState.find_by(note_id: note.id)
       return if existing_state&.last_fired_at && existing_state.last_fired_at >= previous
-      if existing_state&.last_attempted_at && existing_state.last_attempted_at > STALE_LEASE_TTL.ago
-        return
-      end
-      if existing_state&.last_attempted_at
-        Rails.logger.warn("Tentacles::CronTickJob reclaiming stale lease for note #{note.id} (attempted at #{existing_state.last_attempted_at.iso8601})")
-      end
 
       return if TentacleRuntime.get(note.id)&.alive?
+
+      reclaim_orphan = false
+      if existing_state&.last_attempted_at
+        if existing_state.last_attempted_at > STALE_LEASE_TTL.ago
+          Rails.logger.warn("Tentacles::CronTickJob reclaiming orphaned lease for note #{note.id} (attempted at #{existing_state.last_attempted_at.iso8601}, no live session)")
+          reclaim_orphan = true
+        else
+          Rails.logger.warn("Tentacles::CronTickJob reclaiming stale lease for note #{note.id} (attempted at #{existing_state.last_attempted_at.iso8601})")
+        end
+      end
 
       canonical_cwd, cwd_err = Tentacles::BootConfig.canonicalize_cwd(props["tentacle_cwd"])
       if cwd_err
@@ -57,7 +61,7 @@ module Tentacles
         return
       end
 
-      state = claim_lease(note: note, previous: previous)
+      state = claim_lease(note: note, previous: previous, reclaim_orphan: reclaim_orphan)
       return unless state
 
       begin
@@ -77,14 +81,15 @@ module Tentacles
       end
     end
 
-    def claim_lease(note:, previous:)
+    def claim_lease(note:, previous:, reclaim_orphan: false)
       ensure_state_row(note.id)
-      stale_cutoff = STALE_LEASE_TTL.ago
-      rows = TentacleCronState
+      query = TentacleCronState
         .where(note_id: note.id)
         .where("last_fired_at IS NULL OR last_fired_at < ?", previous)
-        .where("last_attempted_at IS NULL OR last_attempted_at < ?", stale_cutoff)
-        .update_all(last_attempted_at: Time.current)
+      unless reclaim_orphan
+        query = query.where("last_attempted_at IS NULL OR last_attempted_at < ?", STALE_LEASE_TTL.ago)
+      end
+      rows = query.update_all(last_attempted_at: Time.current)
       return nil if rows.zero?
 
       TentacleCronState.find_by(note_id: note.id)
