@@ -168,6 +168,30 @@ body.nm-app-shell #app-root {
 .nm-graph-page__legend > [data-type="tentacle"] dd {
   color: #a6e3a1;
 }
+.nm-graph-page__legend > [data-type="agent"] dd {
+  color: #b4a7d6;
+}
+
+.nm-graph-page__preset {
+  border: 1px solid rgba(180, 167, 214, 0.45);
+  background: rgba(180, 167, 214, 0.08);
+  color: var(--nm-shell-text);
+  padding: 6px 10px;
+  border-radius: 6px;
+  font-size: 12px;
+  cursor: pointer;
+  text-align: left;
+}
+
+.nm-graph-page__preset:hover {
+  background: rgba(180, 167, 214, 0.15);
+}
+
+.nm-graph-page__preset.is-active {
+  background: rgba(180, 167, 214, 0.25);
+  border-color: rgba(180, 167, 214, 0.8);
+  color: #f4eefe;
+}
 
 .nm-graph-page__canvas {
   position: relative;
