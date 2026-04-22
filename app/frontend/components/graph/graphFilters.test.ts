@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest"
 
-import { countByType, filterGraph, tagUsageCounts } from "~/components/graph/graphFilters"
-import type { GraphEdge, GraphNode } from "~/components/graph/types"
+import { agentNoteIds, countByType, filterGraph, tagUsageCounts } from "~/components/graph/graphFilters"
+import type { GraphEdge, GraphNode, GraphTag } from "~/components/graph/types"
 
 function node(id: string, type: GraphNode["type"] = "leaf"): GraphNode {
   return {
@@ -89,6 +89,39 @@ describe("filterGraph", () => {
     const result = filterGraph(nodes, edges, noteTags, new Set(["unknown"]))
     expect(result.nodes).toEqual([])
     expect(result.edges).toEqual([])
+  })
+})
+
+describe("agentNoteIds", () => {
+  const tags: GraphTag[] = [
+    { id: "team", name: "agente-team" },
+    { id: "gerente", name: "agente-gerente" },
+    { id: "other", name: "shop" },
+  ]
+  const noteTags = [
+    { note_id: "a", tag_id: "team" },
+    { note_id: "a", tag_id: "gerente" },
+    { note_id: "b", tag_id: "team" },
+    { note_id: "c", tag_id: "other" },
+  ]
+
+  it("returns note ids that carry the agent tag by name", () => {
+    const result = agentNoteIds(tags, noteTags, "agente-team")
+    expect(result).toEqual(new Set(["a", "b"]))
+  })
+
+  it("returns an empty set when the agent tag does not exist", () => {
+    const result = agentNoteIds(tags, noteTags, "agente-inexistente")
+    expect(result).toEqual(new Set())
+  })
+
+  it("returns an empty set when no note carries the tag", () => {
+    const result = agentNoteIds(tags, [], "agente-team")
+    expect(result).toEqual(new Set())
+  })
+
+  it("defaults to the agente-team tag name", () => {
+    expect(agentNoteIds(tags, noteTags)).toEqual(new Set(["a", "b"]))
   })
 })
 

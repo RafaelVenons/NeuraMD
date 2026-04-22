@@ -121,5 +121,106 @@ RSpec.describe WorktreeService do
       expect(path).to eq(repo_root.join("tmp/tentacles", tentacle_id).to_s)
       expect(File.exist?(path)).to be(false)
     end
+
+    it "returns <worktree_root>/<id> when an explicit worktree_root is given" do
+      custom = Pathname.new(sandbox).join("wt-root")
+      path = described_class.path_for(
+        tentacle_id: tentacle_id,
+        repo_root: repo_root,
+        worktree_root: custom
+      )
+      expect(path).to eq(custom.join(tentacle_id).to_s)
+    end
+  end
+
+  describe ".ensure with worktree_root:" do
+    let(:worktree_root) { Pathname.new(sandbox).join(".tentacle-worktrees", "neuramd") }
+
+    it "creates the worktree outside the repo_root" do
+      path = described_class.ensure(
+        tentacle_id: tentacle_id,
+        repo_root: repo_root,
+        worktree_root: worktree_root
+      )
+
+      expect(path).to eq(worktree_root.join(tentacle_id).to_s)
+      expect(File.directory?(path)).to be(true)
+      expect(path).not_to start_with(repo_root.to_s)
+
+      listing = run_git("worktree", "list", "--porcelain")
+      expect(listing).to include(path)
+      expect(listing).to include("branch refs/heads/tentacle/#{tentacle_id}")
+    end
+
+    it "is idempotent across calls" do
+      first = described_class.ensure(
+        tentacle_id: tentacle_id, repo_root: repo_root, worktree_root: worktree_root
+      )
+      second = described_class.ensure(
+        tentacle_id: tentacle_id, repo_root: repo_root, worktree_root: worktree_root
+      )
+      expect(second).to eq(first)
+      listing = run_git("worktree", "list", "--porcelain")
+      expect(listing.scan("worktree #{first}").size).to eq(1)
+    end
+  end
+
+  describe ".ensure with link_shared: false" do
+    let(:worktree_root) { Pathname.new(sandbox).join(".tentacle-worktrees", "neuramd") }
+
+    before do
+      FileUtils.mkdir_p(repo_root.join("vendor/bundle"))
+      File.write(repo_root.join("vendor/bundle/marker"), "installed\n")
+      FileUtils.mkdir_p(repo_root.join(".bundle"))
+      File.write(repo_root.join(".bundle/config"), "x\n")
+      FileUtils.mkdir_p(repo_root.join("config"))
+      File.write(repo_root.join("config/master.key"), "deadbeef\n")
+    end
+
+    it "does not symlink SHARED_PATHS from the repo_root" do
+      path = described_class.ensure(
+        tentacle_id: tentacle_id,
+        repo_root: repo_root,
+        worktree_root: worktree_root,
+        link_shared: false
+      )
+
+      ["vendor/bundle", ".bundle", "config/master.key"].each do |rel|
+        target = File.join(path, rel)
+        expect(File.exist?(target)).to be(false), "expected #{rel} to be absent"
+        expect(File.symlink?(target)).to be(false), "expected #{rel} to be absent (not a symlink)"
+      end
+    end
+
+    it "still links when link_shared is true (default)" do
+      path = described_class.ensure(
+        tentacle_id: tentacle_id,
+        repo_root: repo_root,
+        worktree_root: worktree_root
+      )
+
+      expect(File.symlink?(File.join(path, "vendor/bundle"))).to be(true)
+    end
+  end
+
+  describe ".remove with worktree_root:" do
+    let(:worktree_root) { Pathname.new(sandbox).join(".tentacle-worktrees", "neuramd") }
+
+    it "removes the worktree and branch when placed outside the repo" do
+      path = described_class.ensure(
+        tentacle_id: tentacle_id, repo_root: repo_root, worktree_root: worktree_root
+      )
+      expect(File.directory?(path)).to be(true)
+
+      described_class.remove(
+        tentacle_id: tentacle_id, repo_root: repo_root, worktree_root: worktree_root
+      )
+
+      expect(File.directory?(path)).to be(false)
+      listing = run_git("worktree", "list", "--porcelain")
+      expect(listing).not_to include(path)
+      branches = run_git("branch", "--list", "tentacle/#{tentacle_id}")
+      expect(branches).to be_empty.or eq("\n")
+    end
   end
 end

@@ -10,6 +10,7 @@ type Props = {
   onSelectNote?: (slug: string) => void
   selectedId?: string | null
   aliveTentacleIds?: Set<string>
+  agentNoteIds?: Set<string>
 }
 
 const NODE_COLOR: Record<NodeType, string> = {
@@ -18,6 +19,9 @@ const NODE_COLOR: Record<NodeType, string> = {
   leaf: "#c1c5cc",
   tentacle: "#a6e3a1",
 }
+
+const AGENT_COLOR = "#b4a7d6"
+const AGENT_RADIUS_BUMP = 2
 
 const NODE_RADIUS: Record<NodeType, number> = {
   root: 14,
@@ -28,7 +32,7 @@ const NODE_RADIUS: Record<NodeType, number> = {
 
 const CLICK_THRESHOLD = 4
 
-export function GraphCanvas({ nodes, edges, onSelectNote, selectedId, aliveTentacleIds }: Props) {
+export function GraphCanvas({ nodes, edges, onSelectNote, selectedId, aliveTentacleIds, agentNoteIds }: Props) {
   const {
     transform,
     isPanning,
@@ -150,15 +154,19 @@ export function GraphCanvas({ nodes, edges, onSelectNote, selectedId, aliveTenta
           </g>
           <g>
             {simulatedNodes.map((node) => {
-              const r = NODE_RADIUS[node.type]
+              const isAgent = agentNoteIds?.has(node.id) === true
+              const r = NODE_RADIUS[node.type] + (isAgent ? AGENT_RADIUS_BUMP : 0)
               const isSelected = selectedId === node.id
               const isAliveTentacle = node.type === "tentacle" && aliveTentacleIds?.has(node.id) === true
+              const fillColor = isAgent ? AGENT_COLOR : NODE_COLOR[node.type]
+              const showLabel = isAgent || node.type === "root" || node.type === "structure"
               return (
                 <g
                   key={node.id}
                   transform={`translate(${node.x}, ${node.y})`}
                   onPointerDown={(e) => handleNodePointerDown(e, node.id)}
                   className="nm-graph-canvas__node"
+                  data-agent={isAgent ? "true" : undefined}
                 >
                   {isAliveTentacle ? (
                     <circle
@@ -172,16 +180,16 @@ export function GraphCanvas({ nodes, edges, onSelectNote, selectedId, aliveTenta
                   ) : null}
                   <circle
                     r={r + (isSelected ? 3 : 0)}
-                    fill={NODE_COLOR[node.type]}
-                    stroke={isSelected ? "#ffffff" : "rgba(0,0,0,0.35)"}
-                    strokeWidth={isSelected ? 2 : 1}
+                    fill={fillColor}
+                    stroke={isSelected ? "#ffffff" : isAgent ? "rgba(180,167,214,0.9)" : "rgba(0,0,0,0.35)"}
+                    strokeWidth={isSelected ? 2 : isAgent ? 1.5 : 1}
                   />
                   {isAliveTentacle ? (
                     <circle r={2.5} cx={r - 1} cy={-(r - 1)} fill="#a6e3a1" stroke="#0b0d10" strokeWidth={1}>
                       <title>Tentáculo vivo</title>
                     </circle>
                   ) : null}
-                  {node.type === "root" || node.type === "structure" ? (
+                  {showLabel ? (
                     <text
                       x={r + 4}
                       y={4}

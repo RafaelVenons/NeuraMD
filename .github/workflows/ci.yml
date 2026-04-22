@@ -105,6 +105,24 @@ jobs:
         with:
           bundler-cache: true
 
+      - name: Install dtach (integration specs)
+        # Runner's apt mirror occasionally 5xx's — bounded retry keeps a
+        # transient mirror hiccup from failing the whole rspec job.
+        # --no-install-recommends keeps the install lean (dtach has no
+        # required runtime deps beyond libc).
+        run: |
+          set -euo pipefail
+          for i in 1 2 3; do
+            if sudo apt-get update && \
+               sudo apt-get install -y --no-install-recommends dtach; then
+              exit 0
+            fi
+            echo "apt-get attempt $i failed, retrying in $((i * 5))s..." >&2
+            sleep $((i * 5))
+          done
+          echo "apt-get install dtach failed after 3 attempts" >&2
+          exit 1
+
       - name: Wait for PostgreSQL
         run: |
           for i in {1..30}; do

@@ -42,10 +42,23 @@ RSpec.configure do |config|
   end
 
   # System specs use truncation so the browser thread sees committed rows.
+  # :dtach_integration specs exercise a real reader thread that writes to
+  # TentacleSession on a separate AR connection — truncation makes those
+  # writes visible from the main thread so the assertions can see them.
   # All other specs use the faster transaction rollback strategy.
   config.before(:each) do |example|
-    DatabaseCleaner.strategy = example.metadata[:type] == :system ? :truncation : :transaction
+    DatabaseCleaner.strategy = if example.metadata[:dtach_integration] || example.metadata[:type] == :system
+      :truncation
+    else
+      :transaction
+    end
     DatabaseCleaner.start
+  end
+
+  config.before(:each, :dtach_integration) do
+    unless Tentacles::DtachWrapper.dtach_on_path?
+      skip "dtach binary not installed (run `sudo pacman -S dtach` or `sudo apt-get install -y dtach`)"
+    end
   end
 
   config.after(:each) do |example|
@@ -54,6 +67,20 @@ RSpec.configure do |config|
     clear_performed_jobs
     travel_back
     Warden.test_reset! if example.metadata[:type] == :system && Warden.respond_to?(:test_reset!)
+  end
+
+  # Registered AFTER the generic DatabaseCleaner.clean hook above so that
+  # RSpec's LIFO after-hook ordering runs this FIRST — reader threads
+  # spawned by TentacleRuntime.start write to TentacleSession on separate
+  # AR connections, and truncating the table while those writes are in
+  # flight causes flakes. Tear the runtime down first, let threads drain,
+  # then let the generic hook truncate.
+  config.after(:each, :dtach_integration) do
+    TentacleRuntime.reset!
+    # reset! joins reader threads with a short timeout (<=0.3s). Give
+    # stragglers a final window to land their AR updates before the
+    # truncation hook fires.
+    sleep 0.1
   end
 
   config.before(:each) do

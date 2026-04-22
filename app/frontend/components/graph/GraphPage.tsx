@@ -4,7 +4,13 @@ import { useNavigate } from "react-router-dom"
 import { GraphCanvas } from "~/components/graph/GraphCanvas"
 import { useGraphData } from "~/components/graph/useGraphData"
 import { useTentacleRuntime } from "~/components/graph/useTentacleRuntime"
-import { countByType, filterGraph, tagUsageCounts } from "~/components/graph/graphFilters"
+import {
+  AGENT_TEAM_TAG,
+  agentNoteIds,
+  countByType,
+  filterGraph,
+  tagUsageCounts,
+} from "~/components/graph/graphFilters"
 
 export function GraphPage() {
   const state = useGraphData()
@@ -26,6 +32,24 @@ export function GraphPage() {
     return filterGraph(state.nodes, state.edges, state.dataset.noteTags, selectedTagIds)
   }, [state, selectedTagIds])
 
+  const agents = useMemo(() => {
+    if (state.status !== "ready") return new Set<string>()
+    return agentNoteIds(state.dataset.tags, state.dataset.noteTags)
+  }, [state])
+
+  const agentTagId = useMemo(() => {
+    if (state.status !== "ready") return null
+    return state.dataset.tags.find((t) => t.name === AGENT_TEAM_TAG)?.id ?? null
+  }, [state])
+
+  const isAgentsPresetActive =
+    agentTagId !== null && selectedTagIds.size === 1 && selectedTagIds.has(agentTagId)
+
+  const toggleAgentsPreset = () => {
+    if (!agentTagId) return
+    setSelectedTagIds(isAgentsPresetActive ? new Set() : new Set([agentTagId]))
+  }
+
   if (state.status === "loading") {
     return <div className="nm-graph-page__status">Carregando grafo…</div>
   }
@@ -41,6 +65,7 @@ export function GraphPage() {
   const { dataset } = state
   const { nodes, edges } = filtered ?? { nodes: state.nodes, edges: state.edges }
   const counts = countByType(nodes)
+  const visibleAgentCount = nodes.reduce((n, node) => (agents.has(node.id) ? n + 1 : n), 0)
   const tagCounts = tagUsageCounts(dataset.noteTags, new Set(nodes.map((n) => n.id)))
   const sortedTags = [...dataset.tags].sort((a, b) => (tagCounts.get(b.id) ?? 0) - (tagCounts.get(a.id) ?? 0))
 
@@ -70,7 +95,23 @@ export function GraphPage() {
             <dt>Tentáculo</dt>
             <dd>{counts.tentacle}</dd>
           </div>
+          <div data-type="agent">
+            <dt>Agentes</dt>
+            <dd>{visibleAgentCount}</dd>
+          </div>
         </dl>
+
+        {agentTagId ? (
+          <button
+            type="button"
+            className={`nm-graph-page__preset${isAgentsPresetActive ? " is-active" : ""}`}
+            onClick={toggleAgentsPreset}
+            aria-pressed={isAgentsPresetActive}
+            title="Filtrar grafo por agentes do time"
+          >
+            {isAgentsPresetActive ? "Mostrando só agentes" : "Ver só agentes"}
+          </button>
+        ) : null}
 
         <div className="nm-graph-page__section">
           <h3 className="nm-graph-page__section-title">Tags</h3>
@@ -108,6 +149,7 @@ export function GraphPage() {
           nodes={nodes}
           edges={edges}
           aliveTentacleIds={aliveTentacleIds}
+          agentNoteIds={agents}
           onSelectNote={(slug) => navigate(`/notes/${slug}`)}
         />
       </section>

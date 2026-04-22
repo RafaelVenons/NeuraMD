@@ -53,7 +53,9 @@ NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=full
 ProtectHome=read-only
-ReadWritePaths=/home/rafael/apps/NeuraMD/tmp /home/rafael/apps/NeuraMD/log /home/rafael/apps/NeuraMD/storage /home/rafael/apps/NeuraMD/.git /home/rafael/.claude /home/rafael/.claude.json
+# /home/rafael/.codex: codex CLI needs auth.json, config.toml, sqlite state
+# /home/rafael/workspaces: shared tentacle workspace root (Tentacles::Workspace.DEFAULT_ROOT)
+ReadWritePaths=/home/rafael/apps/NeuraMD/tmp /home/rafael/apps/NeuraMD/log /home/rafael/apps/NeuraMD/storage /home/rafael/apps/NeuraMD/.git /home/rafael/.claude /home/rafael/.claude.json /home/rafael/.codex /home/rafael/workspaces
 
 [Install]
 WantedBy=multi-user.target
