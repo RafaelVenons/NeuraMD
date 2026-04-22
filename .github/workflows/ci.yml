@@ -67,3 +67,79 @@ jobs:
 
       - name: Lint code for consistent style
         run: bin/rubocop -f github
+
+  rspec:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      RAILS_ENV: test
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_HOST: 127.0.0.1
+      POSTGRES_PORT: 5432
+      # Rails needs *something* for secret_key_base even when keys are loaded
+      # from the initializer fallback. Dummy value for CI.
+      SECRET_KEY_BASE_DUMMY: "1"
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Set up Ruby
+        uses: ruby/setup-ruby@v1
+        with:
+          bundler-cache: true
+
+      - name: Wait for PostgreSQL
+        run: |
+          for i in {1..30}; do
+            pg_isready -h 127.0.0.1 -U postgres && exit 0
+            sleep 1
+          done
+          echo "PostgreSQL did not become ready" >&2
+          exit 1
+
+      - name: Prepare databases
+        run: |
+          bundle exec rails db:test:prepare
+          bundle exec rails db:migrate:queue || true
+
+      - name: Run RSpec
+        run: bundle exec rspec --format progress --no-color
+
+  frontend:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: "npm"
+
+      - name: Install JS dependencies
+        run: npm ci
+
+      - name: Type-check (tsc --noEmit)
+        run: npx tsc --noEmit
+
+      - name: Run Vitest
+        run: npm test
