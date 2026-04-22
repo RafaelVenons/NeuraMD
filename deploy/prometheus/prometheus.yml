@@ -1,0 +1,29 @@
+# Prometheus scrape config stub for NeuraMD. Drop this in a Prometheus
+# container's config path (e.g. /etc/prometheus/prometheus.yml) and
+# reload. Adjust targets if the exporter binds somewhere other than
+# the neuramd-metrics-exporter.service default (127.0.0.1:9100).
+
+global:
+  scrape_interval: 15s
+  scrape_timeout: 10s
+  evaluation_interval: 30s
+
+scrape_configs:
+  - job_name: neuramd_exporter
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["127.0.0.1:9100"]
+        labels:
+          app: neuramd
+          env: production
+          host: airch
+
+  # Optional: Postgres exporter, if provisioned alongside.
+  # - job_name: postgres
+  #   static_configs:
+  #     - targets: ["127.0.0.1:9187"]
+
+  # Optional: Prometheus self-scrape for meta-monitoring.
+  - job_name: prometheus
+    static_configs:
+      - targets: ["127.0.0.1:9090"]

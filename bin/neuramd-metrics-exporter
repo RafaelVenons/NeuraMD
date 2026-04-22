@@ -1,0 +1,17 @@
+#!/usr/bin/env ruby
+# frozen_string_literal: true
+
+# Entry point for the Prometheus metrics exporter. Loads a minimal
+# Rails environment (AR + logger + models) via config/environment,
+# then hands off to Neuramd::Exporter.start which binds Puma::Server
+# on 127.0.0.1:9100 by default.
+
+APP_ROOT = File.expand_path("..", __dir__)
+$LOAD_PATH.unshift(File.join(APP_ROOT, "lib"))
+
+ENV["RAILS_ENV"] ||= "production"
+
+require File.join(APP_ROOT, "config", "environment")
+require "neuramd/exporter"
+
+Neuramd::Exporter.start

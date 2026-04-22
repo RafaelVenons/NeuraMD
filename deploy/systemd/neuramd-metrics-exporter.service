@@ -1,0 +1,44 @@
+[Unit]
+Description=NeuraMD Prometheus metrics exporter
+Documentation=https://prometheus.io/docs/instrumenting/exposition_formats/
+After=network.target postgresql.service neuramd-web.service
+Wants=postgresql.service
+
+[Service]
+Type=simple
+User=rafael
+Group=rafael
+WorkingDirectory=/home/rafael/apps/NeuraMD
+ExecStart=/home/rafael/.local/share/mise/shims/ruby /home/rafael/apps/NeuraMD/bin/neuramd-metrics-exporter
+Restart=always
+RestartSec=5
+TimeoutStopSec=15
+KillMode=mixed
+
+# Same Rails prod env as the web/worker units.
+Environment=PATH=/home/rafael/.local/share/mise/shims:/home/rafael/.local/bin:/usr/local/bin:/usr/bin:/bin
+Environment=RAILS_ENV=production
+Environment=POSTGRES_USER=postgres
+Environment=POSTGRES_HOST=127.0.0.1
+Environment=POSTGRES_PORT=5432
+Environment=NEURAMD_DATABASE=neura_md_production
+Environment=NEURAMD_CACHE_DATABASE=neura_md_production_cache
+Environment=NEURAMD_QUEUE_DATABASE=neura_md_production_queue
+Environment=NEURAMD_LEGACY_DATABASE=neura_md_legacy
+# Exporter-specific.
+Environment=NEURAMD_EXPORTER_HOST=127.0.0.1
+Environment=NEURAMD_EXPORTER_PORT=9100
+# Token lookup falls back to the same NEURAMD_DEPLOY_TOKEN/FILE used
+# by the drain endpoint. Drop a drop-in override to set either.
+
+# Hardening (mirrors neuramd-web.service with exporter-specific paths).
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=full
+ProtectHome=read-only
+StateDirectory=neuramd-exporter
+StateDirectoryMode=0750
+ReadWritePaths=/home/rafael/apps/NeuraMD/tmp /home/rafael/apps/NeuraMD/log /var/lib/neuramd-exporter
+
+[Install]
+WantedBy=multi-user.target
