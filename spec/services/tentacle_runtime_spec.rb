@@ -10,6 +10,106 @@ RSpec.describe TentacleRuntime do
 
   after { described_class.reset! }
 
+  describe ".dtach_enabled?" do
+    {
+      nil => false,
+      "" => false,
+      "off" => false,
+      "0" => false,
+      "true" => false,
+      "on" => true,
+      "ON" => true,
+      "On" => true
+    }.each do |env_value, expected|
+      it "returns #{expected} when NEURAMD_FEATURE_DTACH=#{env_value.inspect}" do
+        original = ENV["NEURAMD_FEATURE_DTACH"]
+        env_value.nil? ? ENV.delete("NEURAMD_FEATURE_DTACH") : ENV["NEURAMD_FEATURE_DTACH"] = env_value
+        begin
+          expect(described_class.dtach_enabled?).to eq(expected)
+        ensure
+          original.nil? ? ENV.delete("NEURAMD_FEATURE_DTACH") : ENV["NEURAMD_FEATURE_DTACH"] = original
+        end
+      end
+    end
+  end
+
+  describe "dtach mode (feature flag on)" do
+    let(:note) { create(:note, title: "Dtach Note") }
+    let(:tentacle_id) { note.id }
+
+    around do |example|
+      original = ENV["NEURAMD_FEATURE_DTACH"]
+      ENV["NEURAMD_FEATURE_DTACH"] = "on"
+      example.run
+    ensure
+      original.nil? ? ENV.delete("NEURAMD_FEATURE_DTACH") : ENV["NEURAMD_FEATURE_DTACH"] = original
+    end
+
+    let(:wrapper) do
+      instance_double(
+        Tentacles::DtachWrapper,
+        socket_path: "/run/nm-tentacles/#{tentacle_id}.sock",
+        pid_path: "/run/nm-tentacles/#{tentacle_id}.pid",
+        pid: 7777
+      )
+    end
+
+    before do
+      allow(Tentacles::DtachWrapper).to receive(:new).and_return(wrapper)
+      allow(wrapper).to receive(:alive?).and_return(false, true)
+      allow(wrapper).to receive(:spawn)
+      allow(wrapper).to receive(:stop).and_return(:already_gone)
+      reader, writer = IO.pipe
+      allow(PTY).to receive(:spawn)
+        .with("dtach", "-a", wrapper.socket_path, "-E", "-z")
+        .and_return([reader, writer, 9000])
+      # Skip the background reader thread in these unit tests — the
+      # teardown path would have the reader thread touch AR across the
+      # DatabaseCleaner boundary. Exit-time behaviour has its own
+      # coverage in the PTY-mode specs above.
+      allow_any_instance_of(described_class::Session).to receive(:start_reader)
+    end
+
+    it "spawns via DtachWrapper when the session is not yet alive" do
+      expect(wrapper).to receive(:spawn).with(["sleep", "30"], hash_including(cwd: nil))
+      described_class.start(tentacle_id: tentacle_id, command: ["sleep", "30"])
+    end
+
+    it "creates a TentacleSession record on first spawn" do
+      expect {
+        described_class.start(tentacle_id: tentacle_id, command: ["sleep", "30"])
+      }.to change { TentacleSession.alive.count }.by(1)
+
+      record = TentacleSession.alive.find_by(tentacle_note_id: tentacle_id)
+      expect(record).not_to be_nil
+      expect(record.dtach_socket).to eq(wrapper.socket_path)
+      expect(record.pid).to eq(7777)
+      expect(record.command).to eq("sleep 30")
+    end
+
+    it "attaches via PTY.spawn on dtach -a so resize ioctl propagates" do
+      expect(PTY).to receive(:spawn).with("dtach", "-a", wrapper.socket_path, "-E", "-z")
+      described_class.start(tentacle_id: tentacle_id, command: ["sleep", "30"])
+    end
+
+    it "reuses the existing detached session without re-spawning when wrapper.alive?" do
+      allow(wrapper).to receive(:alive?).and_return(true)
+      expect(wrapper).not_to receive(:spawn)
+      expect { described_class.start(tentacle_id: tentacle_id, command: ["sleep", "30"]) }
+        .not_to change { TentacleSession.count }
+    end
+
+    it "stores the child pid (from wrapper.pid), not the attach proxy pid" do
+      session = described_class.start(tentacle_id: tentacle_id, command: ["sleep", "30"])
+      expect(session.pid).to eq(7777)
+    end
+
+    it "exposes dtach_mode? true" do
+      session = described_class.start(tentacle_id: tentacle_id, command: ["sleep", "30"])
+      expect(session.dtach_mode?).to be true
+    end
+  end
+
   describe ".start" do
     it "spawns a subprocess and streams stdout through the channel" do
       received = []

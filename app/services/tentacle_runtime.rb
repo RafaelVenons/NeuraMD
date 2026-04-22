@@ -7,6 +7,13 @@ class TentacleRuntime
   INITIAL_PROMPT_BOOT_DELAY = 1.5
 
   class << self
+    # Whether the detached (dtach) backend is enabled. When false the
+    # runtime keeps the legacy PTY.spawn path, so flipping this on/off
+    # is a reversible switch with no migration.
+    def dtach_enabled?
+      ENV["NEURAMD_FEATURE_DTACH"].to_s.downcase == "on"
+    end
+
     def start(tentacle_id:, command:, cwd: nil, env: {}, on_exit: nil, initial_prompt: nil,
               context_warning_ratio: nil, context_window_tokens: nil)
       existing = SESSIONS[tentacle_id]
@@ -110,7 +117,7 @@ class TentacleRuntime
     DEFAULT_CONTEXT_WARNING_RATIO = 0.70
     TOKEN_BYTES_RATIO = 4
 
-    attr_reader :tentacle_id, :pid, :started_at
+    attr_reader :tentacle_id, :pid, :started_at, :dtach
 
     def initialize(tentacle_id:, command:, cwd: nil, env: {}, on_exit: nil,
                    context_warning_ratio: nil, context_window_tokens: nil)
@@ -132,8 +139,15 @@ class TentacleRuntime
       @context_warning_fired = false
       @context_warning_mutex = Mutex.new
       @started_at = Time.current
+      @dtach = nil
+      @attach_pid = nil
+      @session_record = nil
       spawn_process
       start_reader
+    end
+
+    def dtach_mode?
+      !@dtach.nil?
     end
 
     def wait_for_first_output(timeout:)
@@ -172,9 +186,16 @@ class TentacleRuntime
     # SIGTERM before escalating to SIGKILL. Default stays fast (0.5s) to
     # preserve existing call-site behaviour; shutdown hooks pass a longer
     # value so the child can flush output and run its own exit handlers.
+    #
+    # In dtach mode `stop` kills the detached child process (not only the
+    # local attach proxy) — the proxy exits naturally once dtach sees its
+    # child gone. Soft detach without killing the child is scheduled for
+    # the next chunk (bootstrap + shutdown-detach path).
     def stop(grace: 0.5)
       exit_status = nil
-      if @pid && process_alive?
+      if dtach_mode?
+        exit_status = stop_dtach_child(grace: grace)
+      elsif @pid && process_alive?
         begin
           Process.kill("TERM", @pid)
           status = reap(timeout: grace)
@@ -197,7 +218,19 @@ class TentacleRuntime
       fire_on_exit(exit_status: exit_status)
     end
 
+    # Kill the detached child via DtachWrapper, then reap our local
+    # attach proxy so no zombie is left behind. Returns the child's
+    # exit_status when dtach propagated it through the attach, else nil.
+    def stop_dtach_child(grace:)
+      result = @dtach.stop(grace: grace)
+      @force_killed = true if result == :forced
+
+      status = reap_attach(timeout: [grace, 1.0].max)
+      status&.exitstatus
+    end
+
     def alive?
+      return @dtach.alive? if dtach_mode?
       @pid ? process_alive? : false
     end
 
@@ -211,11 +244,58 @@ class TentacleRuntime
     end
 
     def spawn_process
+      if ::TentacleRuntime.dtach_enabled?
+        spawn_via_dtach
+      else
+        spawn_via_pty
+      end
+    end
+
+    def spawn_via_pty
       args = [@env, *@command]
       spawn_opts = {}
       spawn_opts[:chdir] = @cwd.to_s if @cwd
       args << spawn_opts unless spawn_opts.empty?
       @reader, @writer, @pid = PTY.spawn(*args)
+    end
+
+    # dtach mode: the command runs under `dtach -n` in its own detached
+    # session. We spawn a local `dtach -a` proxy through PTY.spawn so the
+    # reader/writer streams (and resize ioctl) work exactly like the
+    # legacy path — only the lifecycle of the real child is decoupled
+    # from this Puma process.
+    def spawn_via_dtach
+      runtime_dir = ENV.fetch("NEURAMD_TENTACLE_RUNTIME_DIR", Tentacles::DtachWrapper::DEFAULT_RUNTIME_DIR)
+      @dtach = Tentacles::DtachWrapper.new(session_id: @tentacle_id, runtime_dir: runtime_dir)
+
+      unless @dtach.alive?
+        @dtach.spawn(@command, cwd: @cwd, env: @env)
+        @session_record = persist_tentacle_session_record
+      end
+
+      # Attach via PTY so the TTY winsize ioctl propagates through dtach
+      # to the underlying child. The attach proxy is a short-lived process
+      # local to Puma — killing it detaches the session without killing
+      # the child (ownership transfer handled in a later chunk).
+      attach_cmd = ["dtach", "-a", @dtach.socket_path, "-E", "-z"]
+      @reader, @writer, @attach_pid = PTY.spawn(*attach_cmd)
+      @pid = @dtach.pid
+    end
+
+    def persist_tentacle_session_record
+      TentacleSession.create!(
+        tentacle_note_id: @tentacle_id,
+        pid: @dtach.pid,
+        dtach_socket: @dtach.socket_path,
+        pid_file: @dtach.pid_path,
+        command: Array(@command).join(" "),
+        cwd: @cwd&.to_s,
+        started_at: @started_at,
+        status: "alive"
+      )
+    rescue StandardError => e
+      Rails.logger.error("[tentacle_runtime] failed to persist TentacleSession: #{e.class}: #{e.message}")
+      nil
     end
 
     def start_reader
@@ -236,7 +316,7 @@ class TentacleRuntime
           rescue Errno::EIO, EOFError, IOError
             # Child closed PTY — process exited.
           ensure
-            status = reap(timeout: 0.2)
+            status = session.reap_for_exit(timeout: 0.2)
             TentacleChannel.broadcast_exit(
               tentacle_id: tentacle_id,
               status: status&.exitstatus
@@ -310,6 +390,7 @@ class TentacleRuntime
       return unless should_fire
 
       emit_exit_metric(exit_status)
+      mark_session_record_ended(exit_status)
 
       return unless @on_exit
       @on_exit.call(
@@ -321,6 +402,24 @@ class TentacleRuntime
       )
     rescue StandardError => e
       Rails.logger.error("TentacleRuntime#on_exit failed: #{e.class}: #{e.message}")
+    end
+
+    def mark_session_record_ended(exit_status)
+      return unless dtach_mode?
+      record = @session_record || TentacleSession.alive.find_by(tentacle_note_id: @tentacle_id)
+      return unless record
+
+      reason = exit_reason_for(exit_status)
+      record.mark_ended!(reason: reason, exit_code: exit_status)
+    rescue StandardError => e
+      Rails.logger.error("[tentacle_runtime] failed to mark TentacleSession ended: #{e.class}: #{e.message}")
+    end
+
+    def exit_reason_for(exit_status)
+      return "forced" if @force_killed
+      return "unknown" if exit_status.nil?
+      return "graceful" if exit_status.zero?
+      "crash"
     end
 
     def emit_exit_metric(exit_status)
@@ -340,13 +439,28 @@ class TentacleRuntime
       )
     end
 
+    # In dtach mode only the local attach proxy is our direct child; the
+    # detached session's pid is reaped by PID 1. Exposed so start_reader
+    # can ask for the right thing without knowing the mode.
+    def reap_for_exit(timeout: 0.2)
+      dtach_mode? ? reap_attach(timeout: timeout) : reap(timeout: timeout)
+    end
+
     private
 
     def reap(timeout: 0.5)
-      return nil unless @pid
+      wait_and_reap(@pid, timeout: timeout)
+    end
+
+    def reap_attach(timeout: 0.5)
+      wait_and_reap(@attach_pid, timeout: timeout)
+    end
+
+    def wait_and_reap(pid_to_wait, timeout:)
+      return nil unless pid_to_wait
       deadline = Time.current + timeout
       loop do
-        pid, status = Process.waitpid2(@pid, Process::WNOHANG)
+        pid, status = Process.waitpid2(pid_to_wait, Process::WNOHANG)
         return status if pid
         break if Time.current > deadline
         sleep(0.02)
