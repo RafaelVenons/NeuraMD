@@ -88,9 +88,101 @@ class TentacleRuntime
       stopped
     end
 
-    def reset!
-      SESSIONS.each_value(&:stop)
+    # Soft shutdown path for dtach mode — disconnects every live
+    # attach proxy without killing the detached children. The children
+    # keep running under their dtach sessions; bootstrap_sessions! will
+    # reattach them on the next boot.
+    #
+    # Returns the list of tentacle_ids that were detached, as strings.
+    def detach_all_for_shutdown
+      detached = []
+      SESSIONS.each_pair do |id, session|
+        next unless session
+        begin
+          session.stop(detach_only: true)
+        rescue StandardError => e
+          Rails.logger.error("TentacleRuntime#detach_all_for_shutdown failed for #{id}: #{e.class}: #{e.message}")
+        end
+        detached << id.to_s
+      end
       SESSIONS.clear
+      detached
+    end
+
+    # Route shutdown requests to the right path. Puma's `on_restart`
+    # and the `at_exit` initializer both call this; it picks detach
+    # when the dtach backend is live so deploys stop killing sessions.
+    def shutdown!(grace: 10)
+      if dtach_enabled?
+        detach_all_for_shutdown
+      else
+        graceful_stop_all(grace: grace)
+      end
+    end
+
+    # Scan TentacleSession records and reattach to each detached child
+    # that is still alive. Sessions whose socket or pid have gone are
+    # transitioned to `unknown` so the reap job can finish cleanup.
+    #
+    # Called from config/initializers/tentacle_runtime_bootstrap.rb on
+    # Rails boot. No-op unless dtach is enabled.
+    def bootstrap_sessions!
+      return 0 unless dtach_enabled?
+
+      reattached = 0
+      TentacleSession.alive.find_each do |record|
+        begin
+          if reattach_record(record)
+            reattached += 1
+          else
+            record.mark_unknown!
+          end
+        rescue StandardError => e
+          Rails.logger.error("[tentacle_runtime] reattach failed for #{record.tentacle_note_id}: #{e.class}: #{e.message}")
+          begin
+            record.mark_unknown!
+          rescue StandardError
+            # best effort
+          end
+        end
+      end
+      reattached
+    end
+
+    def reset!
+      SESSIONS.each_value do |session|
+        session.stop
+      rescue StandardError
+        # best-effort teardown for specs
+      end
+      SESSIONS.clear
+    end
+
+    private
+
+    # Returns the reattached Session on success, nil when the record is
+    # stale (dead pid or missing socket). Caller handles the stale path.
+    def reattach_record(record)
+      runtime_dir = File.dirname(record.dtach_socket)
+      wrapper = Tentacles::DtachWrapper.new(
+        session_id: record.tentacle_note_id,
+        runtime_dir: runtime_dir
+      )
+      return nil unless wrapper.socket_exists?
+      return nil unless wrapper.alive?
+
+      command = Shellwords.split(record.command.to_s)
+      command = [record.command.to_s] if command.empty?
+
+      session = Session.new(
+        tentacle_id: record.tentacle_note_id,
+        command: command,
+        cwd: record.cwd,
+        session_record: record
+      )
+      SESSIONS[record.tentacle_note_id] = session
+      record.touch_seen!
+      session
     end
   end
 
@@ -120,7 +212,8 @@ class TentacleRuntime
     attr_reader :tentacle_id, :pid, :started_at, :dtach
 
     def initialize(tentacle_id:, command:, cwd: nil, env: {}, on_exit: nil,
-                   context_warning_ratio: nil, context_window_tokens: nil)
+                   context_warning_ratio: nil, context_window_tokens: nil,
+                   session_record: nil)
       @tentacle_id = tentacle_id
       @command = command
       @cwd = cwd
@@ -138,10 +231,10 @@ class TentacleRuntime
       @context_window_tokens = (context_window_tokens || DEFAULT_CONTEXT_WINDOW_TOKENS).to_i
       @context_warning_fired = false
       @context_warning_mutex = Mutex.new
-      @started_at = Time.current
+      @started_at = session_record&.started_at || Time.current
       @dtach = nil
       @attach_pid = nil
-      @session_record = nil
+      @session_record = session_record
       spawn_process
       start_reader
     end
@@ -187,11 +280,19 @@ class TentacleRuntime
     # preserve existing call-site behaviour; shutdown hooks pass a longer
     # value so the child can flush output and run its own exit handlers.
     #
-    # In dtach mode `stop` kills the detached child process (not only the
-    # local attach proxy) — the proxy exits naturally once dtach sees its
-    # child gone. Soft detach without killing the child is scheduled for
-    # the next chunk (bootstrap + shutdown-detach path).
-    def stop(grace: 0.5)
+    # `detach_only: true` (dtach mode only) closes the local attach proxy
+    # without killing the detached child. Used by Puma shutdown hooks so
+    # a deploy does not terminate live tentacle sessions — the child
+    # keeps running under its dtach session until bootstrap_sessions!
+    # reattaches on the next boot. In PTY mode this flag is a no-op
+    # safeguard (there is no decoupled child), so we fall through to the
+    # regular kill path for backward compatibility.
+    def stop(grace: 0.5, detach_only: false)
+      if detach_only && dtach_mode?
+        detach_without_killing
+        return
+      end
+
       exit_status = nil
       if dtach_mode?
         exit_status = stop_dtach_child(grace: grace)
@@ -216,6 +317,19 @@ class TentacleRuntime
       @reader_thread&.kill if @reader_thread&.alive?
       close_streams
       fire_on_exit(exit_status: exit_status)
+    end
+
+    # Disconnect from the dtach session without killing the child.
+    # The child keeps running under its dtach process; our local attach
+    # proxy dies when we close its streams, and the next boot's
+    # bootstrap_sessions! reattaches. Intentionally does NOT fire
+    # on_exit — the session is still alive.
+    def detach_without_killing
+      close_streams
+      @reader_thread&.kill if @reader_thread&.alive?
+      # reap the local attach proxy so no zombie is left behind
+      reap_attach(timeout: 1.0)
+      @session_record&.touch_seen!
     end
 
     # Kill the detached child via DtachWrapper, then reap our local

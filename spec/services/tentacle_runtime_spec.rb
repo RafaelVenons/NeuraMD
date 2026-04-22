@@ -108,6 +108,177 @@ RSpec.describe TentacleRuntime do
       session = described_class.start(tentacle_id: tentacle_id, command: ["sleep", "30"])
       expect(session.dtach_mode?).to be true
     end
+
+    describe "#stop(detach_only: true)" do
+      # Clear SESSIONS at the end of each detach_only example so the
+      # top-level `after { reset! }` does not try to kill (via
+      # wrapper.stop) the session we intentionally left alive.
+      after { described_class::SESSIONS.clear }
+
+      it "closes streams without calling wrapper.stop and without firing on_exit" do
+        on_exit_called = false
+        session = described_class.start(
+          tentacle_id: tentacle_id,
+          command: ["sleep", "30"],
+          on_exit: ->(**) { on_exit_called = true }
+        )
+
+        session.stop(detach_only: true)
+
+        expect(wrapper).not_to have_received(:stop)
+        expect(on_exit_called).to be false
+        expect(session.instance_variable_get(:@reader).closed?).to be true
+      end
+
+      it "does not mark the TentacleSession record as ended" do
+        session = described_class.start(tentacle_id: tentacle_id, command: ["sleep", "30"])
+        record = TentacleSession.alive.find_by(tentacle_note_id: tentacle_id)
+        expect(record).not_to be_nil
+
+        session.stop(detach_only: true)
+
+        expect(record.reload.status).to eq("alive")
+        expect(record.ended_at).to be_nil
+      end
+
+      it "touches last_seen_at on the record" do
+        session = described_class.start(tentacle_id: tentacle_id, command: ["sleep", "30"])
+        record = TentacleSession.alive.find_by(tentacle_note_id: tentacle_id)
+        record.update_column(:last_seen_at, 1.hour.ago)
+
+        session.stop(detach_only: true)
+        expect(record.reload.last_seen_at).to be_within(5.seconds).of(Time.current)
+      end
+    end
+  end
+
+  describe ".detach_all_for_shutdown" do
+    before { described_class::SESSIONS.clear }
+
+    it "calls stop(detach_only: true) on each live session and clears SESSIONS" do
+      session1 = instance_double(described_class::Session, stop: true)
+      session2 = instance_double(described_class::Session, stop: true)
+      described_class::SESSIONS["a"] = session1
+      described_class::SESSIONS["b"] = session2
+
+      expect(session1).to receive(:stop).with(detach_only: true)
+      expect(session2).to receive(:stop).with(detach_only: true)
+
+      result = described_class.detach_all_for_shutdown
+      expect(result).to match_array(%w[a b])
+      expect(described_class::SESSIONS).to be_empty
+    end
+
+    it "continues when a session raises" do
+      good = instance_double(described_class::Session, stop: true)
+      bad = instance_double(described_class::Session)
+      allow(bad).to receive(:stop).and_raise("boom")
+      described_class::SESSIONS["good"] = good
+      described_class::SESSIONS["bad"] = bad
+
+      expect { described_class.detach_all_for_shutdown }.not_to raise_error
+      expect(described_class::SESSIONS).to be_empty
+    end
+  end
+
+  describe ".shutdown!" do
+    it "routes to detach_all_for_shutdown when dtach is enabled" do
+      allow(described_class).to receive(:dtach_enabled?).and_return(true)
+      expect(described_class).to receive(:detach_all_for_shutdown).and_return([])
+      expect(described_class).not_to receive(:graceful_stop_all)
+      described_class.shutdown!(grace: 7)
+    end
+
+    it "routes to graceful_stop_all when dtach is disabled" do
+      allow(described_class).to receive(:dtach_enabled?).and_return(false)
+      expect(described_class).to receive(:graceful_stop_all).with(grace: 7).and_return([])
+      expect(described_class).not_to receive(:detach_all_for_shutdown)
+      described_class.shutdown!(grace: 7)
+    end
+  end
+
+  describe ".bootstrap_sessions!" do
+    let(:note) { create(:note, title: "Bootstrap Note") }
+
+    it "returns 0 and does nothing when dtach is disabled" do
+      allow(described_class).to receive(:dtach_enabled?).and_return(false)
+      create(:tentacle_session, tentacle_note_id: note.id)
+      expect(described_class.bootstrap_sessions!).to eq(0)
+      expect(described_class::SESSIONS).to be_empty
+    end
+
+    context "with dtach enabled" do
+      around do |example|
+        original = ENV["NEURAMD_FEATURE_DTACH"]
+        ENV["NEURAMD_FEATURE_DTACH"] = "on"
+        example.run
+      ensure
+        original.nil? ? ENV.delete("NEURAMD_FEATURE_DTACH") : ENV["NEURAMD_FEATURE_DTACH"] = original
+      end
+
+      let(:wrapper) do
+        instance_double(
+          Tentacles::DtachWrapper,
+          socket_path: "/run/nm-tentacles/#{note.id}.sock",
+          pid_path: "/run/nm-tentacles/#{note.id}.pid",
+          pid: 8888
+        )
+      end
+
+      before do
+        allow(Tentacles::DtachWrapper).to receive(:new).and_return(wrapper)
+        allow(wrapper).to receive(:stop).and_return(:already_gone)
+        reader, writer = IO.pipe
+        allow(PTY).to receive(:spawn).and_return([reader, writer, 9100])
+        allow_any_instance_of(described_class::Session).to receive(:start_reader)
+      end
+
+      it "reattaches sessions whose child is still alive" do
+        record = create(:tentacle_session,
+          tentacle_note_id: note.id,
+          dtach_socket: wrapper.socket_path,
+          command: "bash -l")
+        allow(wrapper).to receive(:socket_exists?).and_return(true)
+        allow(wrapper).to receive(:alive?).and_return(true)
+
+        reattached = described_class.bootstrap_sessions!
+
+        expect(reattached).to eq(1)
+        expect(described_class::SESSIONS[note.id]).to be_a(described_class::Session)
+        expect(record.reload.last_seen_at).to be_within(5.seconds).of(Time.current)
+      end
+
+      it "marks a session unknown when the socket is missing" do
+        record = create(:tentacle_session,
+          tentacle_note_id: note.id,
+          dtach_socket: wrapper.socket_path)
+        allow(wrapper).to receive(:socket_exists?).and_return(false)
+        allow(wrapper).to receive(:alive?).and_return(false)
+
+        described_class.bootstrap_sessions!
+
+        expect(record.reload.status).to eq("unknown")
+        expect(described_class::SESSIONS).to be_empty
+      end
+
+      it "marks a session unknown when the pid is dead" do
+        record = create(:tentacle_session,
+          tentacle_note_id: note.id,
+          dtach_socket: wrapper.socket_path)
+        allow(wrapper).to receive(:socket_exists?).and_return(true)
+        allow(wrapper).to receive(:alive?).and_return(false)
+
+        described_class.bootstrap_sessions!
+
+        expect(record.reload.status).to eq("unknown")
+      end
+
+      it "ignores records that are already marked exited" do
+        create(:tentacle_session, :exited, tentacle_note_id: note.id, dtach_socket: wrapper.socket_path)
+        expect(wrapper).not_to receive(:socket_exists?)
+        expect(described_class.bootstrap_sessions!).to eq(0)
+      end
+    end
   end
 
   describe ".start" do

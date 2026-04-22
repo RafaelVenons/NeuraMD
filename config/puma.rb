@@ -34,17 +34,20 @@ port ENV.fetch("PORT", 3000)
 # Allow puma to be restarted by `bin/rails restart` command.
 plugin :tmp_restart
 
-# Drain live tentacle PTY sessions before Puma re-execs on `bin/rails restart`
-# or `pumactl restart`. This fires the on_exit callback once per session so
-# transcripts are persisted via Tentacles::TranscriptService. The primary
-# drain path for systemctl-triggered SIGTERM is the at_exit hook installed
-# by config/initializers/tentacle_graceful_shutdown.rb.
+# Disconnect from live tentacle sessions before Puma re-execs on
+# `bin/rails restart` or `pumactl restart`. When NEURAMD_FEATURE_DTACH=on,
+# the shutdown path detaches without killing so children keep running
+# and the next boot's bootstrap_sessions! reattaches. With the flag off,
+# we fall back to the legacy graceful_stop_all (fires on_exit + persists
+# transcripts + kills the PTY children). The systemctl-triggered SIGTERM
+# path is covered by the at_exit hook in
+# config/initializers/tentacle_graceful_shutdown.rb.
 on_restart do
   if defined?(::TentacleRuntime)
     begin
-      ::TentacleRuntime.graceful_stop_all(grace: 10)
+      ::TentacleRuntime.shutdown!(grace: 10)
     rescue StandardError => e
-      warn "[puma on_restart] tentacle drain failed: #{e.class}: #{e.message}"
+      warn "[puma on_restart] tentacle shutdown failed: #{e.class}: #{e.message}"
     end
   end
 end
