@@ -5,6 +5,7 @@ import { AgentStateBadge } from "~/components/tentacles/AgentStateBadge"
 import { selectDashboardLayout } from "~/components/tentacles/dashboardLayout"
 import { TentacleMiniPanel } from "~/components/tentacles/TentacleMiniPanel"
 import type { TentacleSession, TentacleSessionsIndex } from "~/components/tentacles/types"
+import { useTentacleRuntimeWatcher } from "~/components/tentacles/useTentacleRuntimeWatcher"
 import { GraphCanvas } from "~/components/graph/GraphCanvas"
 import { agentNoteIds } from "~/components/graph/graphFilters"
 import { useGraphData } from "~/components/graph/useGraphData"
@@ -124,6 +125,7 @@ type RestItemProps = {
 }
 
 function RestItem({ session, onFocus }: RestItemProps) {
+  useTentacleRuntimeWatcher(session.alive ? session.tentacle_id : null)
   const title = session.title || session.tentacle_id
   return (
     <article className="nm-tentacles-dashboard__rest-item">
