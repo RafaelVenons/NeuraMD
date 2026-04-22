@@ -28,10 +28,6 @@ export function selectDashboardLayout<S extends SessionLike>(input: {
 }): DashboardLayout<S> {
   const { sessions, focusedId, runtimeStates } = input
 
-  if (sessions.length === 0) {
-    return { focused: null, rest: [], needsAttention: [] }
-  }
-
   const needsAttention = sessions.filter(
     (session) => stateFor(runtimeStates, session.tentacle_id) === "needs_input"
   )
@@ -40,7 +36,11 @@ export function selectDashboardLayout<S extends SessionLike>(input: {
     ? sessions.find((s) => s.tentacle_id === focusedId) ?? null
     : null
 
-  const focused = explicitlyFocused ?? needsAttention[0] ?? sessions[0]
+  const focused: S | null = explicitlyFocused ?? needsAttention[0] ?? sessions[0] ?? null
+
+  if (focused === null) {
+    return { focused: null, rest: [], needsAttention: [] }
+  }
 
   const rest = sessions
     .filter((session) => session.tentacle_id !== focused.tentacle_id)
