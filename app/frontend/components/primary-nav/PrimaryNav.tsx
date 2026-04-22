@@ -4,6 +4,7 @@ import { NavLink } from "react-router-dom"
 import { deriveSessionTabs, type SessionTab } from "~/components/primary-nav/sessionTabs"
 import type { TentacleSession, TentacleSessionsIndex } from "~/components/tentacles/types"
 import { TentacleRuntimeWatcherMount } from "~/components/tentacles/useTentacleRuntimeWatcher"
+import { ApiError } from "~/runtime/errors"
 import { fetchJson } from "~/runtime/fetchJson"
 import { runtimeStateStore } from "~/runtime/runtimeStateStore"
 
@@ -127,26 +128,39 @@ function SessionTabLink({ tab }: { tab: SessionTab }) {
   )
 }
 
+const DISABLED_STATUSES = new Set([401, 403, 404])
+
 function useLiveSessions(): TentacleSession[] {
   const [sessions, setSessions] = useState<TentacleSession[]>([])
 
   useEffect(() => {
     let cancelled = false
+    let interval: number | null = null
+
+    const clearInterval = () => {
+      if (interval != null) {
+        window.clearInterval(interval)
+        interval = null
+      }
+    }
 
     const fetchOnce = async () => {
       try {
         const res = await fetchJson<TentacleSessionsIndex>("/api/tentacles/sessions")
         if (!cancelled) setSessions(res.sessions)
-      } catch {
-        // Silent — nav stays with last known list, dashboard surfaces the error.
+      } catch (error) {
+        if (error instanceof ApiError && DISABLED_STATUSES.has(error.status)) {
+          clearInterval()
+        }
+        // Otherwise keep polling — the dashboard surfaces transient errors.
       }
     }
 
     void fetchOnce()
-    const interval = window.setInterval(fetchOnce, SESSIONS_POLL_INTERVAL_MS)
+    interval = window.setInterval(fetchOnce, SESSIONS_POLL_INTERVAL_MS)
     return () => {
       cancelled = true
-      window.clearInterval(interval)
+      clearInterval()
     }
   }, [])
 
