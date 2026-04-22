@@ -58,6 +58,27 @@ class TentacleRuntime
       SESSIONS[tentacle_id]
     end
 
+    # Graceful group stop used by shutdown hooks and the drain endpoint.
+    # Each session fires its on_exit callback exactly once (persisting the
+    # transcript) before the PTY is closed. If a child ignores SIGTERM, we
+    # escalate to SIGKILL after the grace window.
+    #
+    # Returns the list of tentacle_ids that were stopped, as strings.
+    def graceful_stop_all(grace: 10)
+      stopped = []
+      SESSIONS.each_pair do |id, session|
+        next unless session
+        begin
+          session.stop(grace: grace)
+        rescue StandardError => e
+          Rails.logger.error("TentacleRuntime#graceful_stop_all failed for #{id}: #{e.class}: #{e.message}")
+        end
+        stopped << id.to_s
+      end
+      SESSIONS.clear
+      stopped
+    end
+
     def reset!
       SESSIONS.each_value(&:stop)
       SESSIONS.clear
@@ -145,17 +166,29 @@ class TentacleRuntime
       nil
     end
 
-    def stop
+    # `grace` is the maximum seconds to wait for the child to exit after
+    # SIGTERM before escalating to SIGKILL. Default stays fast (0.5s) to
+    # preserve existing call-site behaviour; shutdown hooks pass a longer
+    # value so the child can flush output and run its own exit handlers.
+    def stop(grace: 0.5)
       exit_status = nil
       if @pid && process_alive?
         begin
           Process.kill("TERM", @pid)
-          status = reap(timeout: 0.5)
+          status = reap(timeout: grace)
+          if status.nil?
+            begin
+              Process.kill("KILL", @pid)
+            rescue Errno::ESRCH, Errno::ECHILD
+            end
+            status = reap(timeout: 2)
+          end
           exit_status = status&.exitstatus
         rescue Errno::ESRCH, Errno::ECHILD
         end
       end
-      @reader_thread&.join(0.3)
+      reader_join_timeout = [grace, 0.3].min
+      @reader_thread&.join(reader_join_timeout)
       @reader_thread&.kill if @reader_thread&.alive?
       close_streams
       fire_on_exit(exit_status: exit_status)

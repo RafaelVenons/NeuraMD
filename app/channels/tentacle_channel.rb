@@ -55,4 +55,12 @@ class TentacleChannel < ApplicationCable::Channel
       rationale: rationale
     )
   end
+
+  def self.broadcast_deploy_notice(tentacle_id:, deadline_at:)
+    broadcast_to(
+      tentacle_id,
+      type: "deploy-notice",
+      deadline_at: deadline_at
+    )
+  end
 end

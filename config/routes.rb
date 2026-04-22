@@ -25,6 +25,7 @@ Rails.application.routes.draw do
 
   get    "api/tentacles/runtime",  to: "api/tentacles/runtime#index",  as: :api_tentacles_runtime
   get    "api/tentacles/sessions", to: "api/tentacles/sessions#index", as: :api_tentacles_sessions
+  post   "api/tentacles/drain",    to: "api/tentacles/drain#create",   as: :api_tentacles_drain
 
   scope "api" do
     constraints slug: /[^\/]+/ do

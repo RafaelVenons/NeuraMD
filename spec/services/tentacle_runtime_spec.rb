@@ -196,6 +196,59 @@ RSpec.describe TentacleRuntime do
     end
   end
 
+  describe ".graceful_stop_all" do
+    it "returns an empty list when there are no sessions" do
+      expect(described_class.graceful_stop_all(grace: 1)).to eq([])
+    end
+
+    it "stops each alive session, fires on_exit once per session, and clears SESSIONS" do
+      transcripts = Concurrent::Array.new
+      id1 = SecureRandom.uuid
+      id2 = SecureRandom.uuid
+
+      described_class.start(
+        tentacle_id: id1,
+        command: ["sh", "-c", "printf one; sleep 30"],
+        on_exit: ->(transcript:, **) { transcripts << [id1, transcript] }
+      )
+      described_class.start(
+        tentacle_id: id2,
+        command: ["sh", "-c", "printf two; sleep 30"],
+        on_exit: ->(transcript:, **) { transcripts << [id2, transcript] }
+      )
+
+      expect(wait_until { described_class.get(id1) && described_class.get(id2) }).to be_truthy
+      sleep(0.1)
+
+      stopped = described_class.graceful_stop_all(grace: 2)
+
+      expect(stopped).to match_array([id1.to_s, id2.to_s])
+      expect(TentacleRuntime::SESSIONS).to be_empty
+      expect(wait_until { transcripts.size >= 2 }).to be_truthy
+      expect(transcripts.map(&:first)).to match_array([id1, id2])
+    end
+
+    it "escalates to SIGKILL when the child ignores SIGTERM" do
+      id = SecureRandom.uuid
+      exits = Concurrent::Array.new
+
+      described_class.start(
+        tentacle_id: id,
+        command: ["sh", "-c", "trap '' TERM; sleep 30"],
+        on_exit: ->(**meta) { exits << meta }
+      )
+      expect(wait_until { described_class.get(id) }).to be_truthy
+      sleep(0.2)
+      pid = described_class.get(id).pid
+
+      stopped = described_class.graceful_stop_all(grace: 1)
+
+      expect(stopped).to eq([id.to_s])
+      expect(wait_until { !process_alive?(pid) }).to be_truthy
+      expect(exits.size).to eq(1)
+    end
+  end
+
   describe "live transcript cap" do
     it "keeps only the tail when the buffer exceeds LIVE_TRANSCRIPT_CAP" do
       session = described_class.start(tentacle_id: tentacle_id, command: ["sleep", "5"])

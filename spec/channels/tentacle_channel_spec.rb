@@ -71,4 +71,15 @@ RSpec.describe TentacleChannel, type: :channel do
       described_class.broadcast_exit(tentacle_id: tentacle_id, status: 0)
     end
   end
+
+  describe ".broadcast_deploy_notice" do
+    it "publishes a deploy-notice payload with the deadline" do
+      stream = described_class.broadcasting_for(tentacle_id)
+      deadline = "2026-04-21T23:00:00Z"
+      expect(ActionCable.server).to receive(:broadcast)
+        .with(stream, hash_including(type: "deploy-notice", deadline_at: deadline))
+
+      described_class.broadcast_deploy_notice(tentacle_id: tentacle_id, deadline_at: deadline)
+    end
+  end
 end
