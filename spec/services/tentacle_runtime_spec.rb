@@ -209,18 +209,27 @@ RSpec.describe TentacleRuntime do
 
     context "with dtach enabled" do
       around do |example|
-        original = ENV["NEURAMD_FEATURE_DTACH"]
-        ENV["NEURAMD_FEATURE_DTACH"] = "on"
-        example.run
-      ensure
-        original.nil? ? ENV.delete("NEURAMD_FEATURE_DTACH") : ENV["NEURAMD_FEATURE_DTACH"] = original
+        Dir.mktmpdir do |dir|
+          @runtime_dir = dir
+          original = ENV["NEURAMD_FEATURE_DTACH"]
+          original_runtime = ENV["NEURAMD_TENTACLE_RUNTIME_DIR"]
+          ENV["NEURAMD_FEATURE_DTACH"] = "on"
+          ENV["NEURAMD_TENTACLE_RUNTIME_DIR"] = dir
+          example.run
+        ensure
+          original.nil? ? ENV.delete("NEURAMD_FEATURE_DTACH") : ENV["NEURAMD_FEATURE_DTACH"] = original
+          original_runtime.nil? ? ENV.delete("NEURAMD_TENTACLE_RUNTIME_DIR") : ENV["NEURAMD_TENTACLE_RUNTIME_DIR"] = original_runtime
+        end
       end
+
+      let(:socket_path) { File.join(@runtime_dir, "#{note.id}.sock") }
+      let(:pid_path) { File.join(@runtime_dir, "#{note.id}.pid") }
 
       let(:wrapper) do
         instance_double(
           Tentacles::DtachWrapper,
-          socket_path: "/run/nm-tentacles/#{note.id}.sock",
-          pid_path: "/run/nm-tentacles/#{note.id}.pid",
+          socket_path: socket_path,
+          pid_path: pid_path,
           pid: 8888
         )
       end
@@ -228,6 +237,7 @@ RSpec.describe TentacleRuntime do
       before do
         allow(Tentacles::DtachWrapper).to receive(:new).and_return(wrapper)
         allow(wrapper).to receive(:stop).and_return(:already_gone)
+        allow(wrapper).to receive(:cleanup)
         reader, writer = IO.pipe
         allow(PTY).to receive(:spawn).and_return([reader, writer, 9100])
         allow_any_instance_of(described_class::Session).to receive(:start_reader)
@@ -248,29 +258,53 @@ RSpec.describe TentacleRuntime do
         expect(record.reload.last_seen_at).to be_within(5.seconds).of(Time.current)
       end
 
-      it "marks a session unknown when the socket is missing" do
+      it "finalizes a known-dead record with reason=missing_pid when the socket is gone" do
         record = create(:tentacle_session,
           tentacle_note_id: note.id,
           dtach_socket: wrapper.socket_path)
         allow(wrapper).to receive(:socket_exists?).and_return(false)
         allow(wrapper).to receive(:alive?).and_return(false)
+        expect(wrapper).to receive(:cleanup)
 
         described_class.bootstrap_sessions!
 
-        expect(record.reload.status).to eq("unknown")
+        record.reload
+        expect(record.status).to eq("exited")
+        expect(record.exit_reason).to eq("missing_pid")
+        expect(record.ended_at).to be_within(5.seconds).of(Time.current)
         expect(described_class::SESSIONS).to be_empty
       end
 
-      it "marks a session unknown when the pid is dead" do
+      it "finalizes a known-dead record with reason=crash when socket survives but pid is gone" do
         record = create(:tentacle_session,
           tentacle_note_id: note.id,
           dtach_socket: wrapper.socket_path)
         allow(wrapper).to receive(:socket_exists?).and_return(true)
         allow(wrapper).to receive(:alive?).and_return(false)
+        expect(wrapper).to receive(:cleanup)
+
+        described_class.bootstrap_sessions!
+
+        record.reload
+        expect(record.status).to eq("exited")
+        expect(record.exit_reason).to eq("crash")
+      end
+
+      it "falls back to mark_unknown! when reattach raises unexpectedly" do
+        record = create(:tentacle_session,
+          tentacle_note_id: note.id,
+          dtach_socket: wrapper.socket_path)
+        allow(wrapper).to receive(:socket_exists?).and_raise(StandardError, "io boom")
 
         described_class.bootstrap_sessions!
 
         expect(record.reload.status).to eq("unknown")
+      end
+
+      it "writes the bootstrap sentinel to the runtime dir when complete" do
+        described_class.bootstrap_sessions!
+        sentinel = File.join(@runtime_dir, TentacleRuntime::BOOTSTRAP_SENTINEL)
+        expect(File.exist?(sentinel)).to be true
       end
 
       it "ignores records that are already marked exited" do

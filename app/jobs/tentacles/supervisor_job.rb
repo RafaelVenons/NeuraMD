@@ -70,22 +70,63 @@ module Tentacles
     end
 
     # Sweeps the dtach runtime directory for `.sock` files that do not
-    # correspond to a live TentacleSession record. Orphans come from
-    # crashes where the record was never persisted, or manual testing
-    # outside the normal spawn path. Leaving them around would let a
-    # future spawn with the same session_id collide with a stale socket.
+    # correspond to a reachable TentacleSession record. Orphans come
+    # from crashes where the record was never persisted, or manual
+    # testing outside the normal spawn path.
+    #
+    # Guarded on three fronts so the sweep does not ever wipe a socket
+    # whose child is still live:
+    #   1. Skip until bootstrap_sessions! has stamped the sentinel — a
+    #      tick that fires before reattach has no idea which records
+    #      belong to the incoming process tree.
+    #   2. Protect sockets for records in `alive` AND `unknown` (the
+    #      latter come from an exception in bootstrap; the child may
+    #      still be running and we want the next pass to retry before
+    #      we drop its socket on the floor).
+    #   3. Inspect the companion `.pid` before rm — if the pid is still
+    #      alive, refuse to remove even when the DB has no matching
+    #      record (covers spawn→persist races and manual test sockets
+    #      belonging to live shells).
     def cleanup_orphaned_sockets
       runtime_dir = ENV.fetch("NEURAMD_TENTACLE_RUNTIME_DIR", Tentacles::DtachWrapper::DEFAULT_RUNTIME_DIR)
       return unless File.directory?(runtime_dir)
+      return unless bootstrap_complete?(runtime_dir)
 
-      known_sockets = TentacleSession.alive.pluck(:dtach_socket).to_set
+      protected_sockets = TentacleSession
+        .where(status: %w[alive unknown])
+        .pluck(:dtach_socket)
+        .to_set
       Dir.glob(File.join(runtime_dir, "*.sock")).each do |socket_path|
-        next if known_sockets.include?(socket_path)
+        next if protected_sockets.include?(socket_path)
+        next if pid_still_alive?(socket_path)
 
         remove_orphan(socket_path)
       rescue StandardError => e
         Rails.logger.error("Tentacles::SupervisorJob#cleanup_orphaned_sockets failed for #{socket_path}: #{e.class}: #{e.message}")
       end
+    end
+
+    def bootstrap_complete?(runtime_dir)
+      File.exist?(File.join(runtime_dir, TentacleRuntime::BOOTSTRAP_SENTINEL))
+    end
+
+    def pid_still_alive?(socket_path)
+      pid_path = socket_path.sub(/\.sock\z/, ".pid")
+      return false unless File.exist?(pid_path)
+
+      raw = File.read(pid_path).strip
+      return false if raw.empty?
+      pid = Integer(raw)
+      Process.kill(0, pid)
+      true
+    rescue Errno::ESRCH
+      false
+    rescue Errno::EPERM
+      # pid exists but is owned by another user — treat as alive so we
+      # never delete a socket belonging to a live process we cannot probe.
+      true
+    rescue ArgumentError, Errno::ENOENT
+      false
     end
 
     def remove_orphan(socket_path)

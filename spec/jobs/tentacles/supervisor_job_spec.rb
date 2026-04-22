@@ -137,11 +137,18 @@ RSpec.describe Tentacles::SupervisorJob, type: :job do
     end
 
     describe "cleanup_orphaned_sockets" do
+      def write_bootstrap_sentinel!
+        FileUtils.touch(File.join(runtime_dir, TentacleRuntime::BOOTSTRAP_SENTINEL))
+      end
+
       it "removes socket + pidfile pairs that have no matching alive record" do
+        write_bootstrap_sentinel!
         orphan = File.join(runtime_dir, "orphan.sock")
         pidfile = File.join(runtime_dir, "orphan.pid")
         File.write(orphan, "")
-        File.write(pidfile, "0")
+        dead_pid = spawn("/bin/true")
+        Process.wait(dead_pid)
+        File.write(pidfile, dead_pid.to_s)
 
         described_class.perform_now
 
@@ -150,6 +157,7 @@ RSpec.describe Tentacles::SupervisorJob, type: :job do
       end
 
       it "leaves sockets listed by alive records intact" do
+        write_bootstrap_sentinel!
         kept = File.join(runtime_dir, "#{note.id}.sock")
         File.write(kept, "")
         make_record(note_id: note.id, last_seen: 1.second.ago)
@@ -157,6 +165,55 @@ RSpec.describe Tentacles::SupervisorJob, type: :job do
         described_class.perform_now
 
         expect(File.exist?(kept)).to be true
+      end
+
+      it "does not sweep until the bootstrap sentinel exists" do
+        orphan = File.join(runtime_dir, "orphan.sock")
+        File.write(orphan, "")
+
+        described_class.perform_now
+
+        expect(File.exist?(orphan)).to be true
+      end
+
+      it "protects sockets of records marked unknown by bootstrap" do
+        write_bootstrap_sentinel!
+        kept = File.join(runtime_dir, "#{note.id}.sock")
+        File.write(kept, "")
+        record = make_record(note_id: note.id, last_seen: 1.hour.ago)
+        record.mark_unknown!
+
+        described_class.perform_now
+
+        expect(File.exist?(kept)).to be true
+      end
+
+      it "skips sockets whose companion pidfile points to a live pid" do
+        write_bootstrap_sentinel!
+        orphan = File.join(runtime_dir, "live-orphan.sock")
+        pidfile = File.join(runtime_dir, "live-orphan.pid")
+        File.write(orphan, "")
+        File.write(pidfile, Process.pid.to_s)
+
+        described_class.perform_now
+
+        expect(File.exist?(orphan)).to be true
+        expect(File.exist?(pidfile)).to be true
+      end
+
+      it "removes sockets whose companion pidfile points to a dead pid" do
+        write_bootstrap_sentinel!
+        orphan = File.join(runtime_dir, "dead-orphan.sock")
+        pidfile = File.join(runtime_dir, "dead-orphan.pid")
+        File.write(orphan, "")
+        dead_pid = spawn("/bin/true")
+        Process.wait(dead_pid)
+        File.write(pidfile, dead_pid.to_s)
+
+        described_class.perform_now
+
+        expect(File.exist?(orphan)).to be false
+        expect(File.exist?(pidfile)).to be false
       end
 
       it "is a no-op when the runtime dir does not exist" do

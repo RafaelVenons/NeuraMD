@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_04_21_200000) do
+ActiveRecord::Schema[8.1].define(version: 2026_04_22_020000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
   enable_extension "pg_trgm"
@@ -324,6 +324,30 @@ ActiveRecord::Schema[8.1].define(version: 2026_04_21_200000) do
     t.datetime "updated_at", null: false
   end
 
+  create_table "tentacle_sessions", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.string "command", null: false
+    t.datetime "created_at", null: false
+    t.string "cwd"
+    t.string "dtach_socket", null: false
+    t.datetime "ended_at"
+    t.integer "exit_code"
+    t.string "exit_reason"
+    t.datetime "last_seen_at"
+    t.jsonb "metadata", default: {}, null: false
+    t.integer "pid"
+    t.string "pid_file"
+    t.datetime "started_at", null: false
+    t.string "status", default: "alive", null: false
+    t.uuid "tentacle_note_id", null: false
+    t.string "transcript_tail_path"
+    t.datetime "updated_at", null: false
+    t.index ["dtach_socket"], name: "index_tentacle_sessions_on_dtach_socket", unique: true
+    t.index ["pid"], name: "index_tentacle_sessions_on_pid"
+    t.index ["status"], name: "index_tentacle_sessions_on_status"
+    t.index ["tentacle_note_id", "status"], name: "index_tentacle_sessions_on_tentacle_note_id_and_status"
+    t.index ["tentacle_note_id"], name: "index_tentacle_sessions_on_tentacle_note_id"
+  end
+
   create_table "users", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
     t.datetime "created_at", null: false
     t.datetime "current_sign_in_at"
@@ -366,4 +390,5 @@ ActiveRecord::Schema[8.1].define(version: 2026_04_21_200000) do
   add_foreign_key "notes", "note_revisions", column: "head_revision_id", on_delete: :nullify
   add_foreign_key "slug_redirects", "notes"
   add_foreign_key "tentacle_cron_states", "notes", on_delete: :cascade
+  add_foreign_key "tentacle_sessions", "notes", column: "tentacle_note_id", on_delete: :cascade
 end

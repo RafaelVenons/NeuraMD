@@ -5,6 +5,11 @@ require "neuramd/metrics"
 class TentacleRuntime
   SESSIONS = Concurrent::Map.new
   INITIAL_PROMPT_BOOT_DELAY = 1.5
+  # Marker file written under NEURAMD_TENTACLE_RUNTIME_DIR once
+  # bootstrap_sessions! has finished a pass. SupervisorJob only sweeps
+  # orphan sockets after this file exists so a tick that fires before
+  # reattach cannot wipe live sockets.
+  BOOTSTRAP_SENTINEL = ".bootstrap_complete".freeze
 
   class << self
     # Whether the detached (dtach) backend is enabled. When false the
@@ -121,8 +126,14 @@ class TentacleRuntime
     end
 
     # Scan TentacleSession records and reattach to each detached child
-    # that is still alive. Sessions whose socket or pid have gone are
-    # transitioned to `unknown` so the reap job can finish cleanup.
+    # that is still alive. Records whose child is provably dead are
+    # finalized to `exited` with the right reason (missing_pid/crash)
+    # and their dtach socket/pidfile are cleaned up in the same pass.
+    # Records whose reattach raised unexpectedly stay in `unknown` so
+    # the next SupervisorJob tick can retry.
+    #
+    # Writes BOOTSTRAP_SENTINEL under the runtime dir at the end so
+    # SupervisorJob#cleanup_orphaned_sockets knows it can safely sweep.
     #
     # Called from config/initializers/tentacle_runtime_bootstrap.rb on
     # Rails boot. No-op unless dtach is enabled.
@@ -135,7 +146,7 @@ class TentacleRuntime
           if reattach_record(record)
             reattached += 1
           else
-            record.mark_unknown!
+            finalize_dead_record(record)
           end
         rescue StandardError => e
           Rails.logger.error("[tentacle_runtime] reattach failed for #{record.tentacle_note_id}: #{e.class}: #{e.message}")
@@ -146,7 +157,19 @@ class TentacleRuntime
           end
         end
       end
+      mark_bootstrap_complete!
       reattached
+    end
+
+    # Writes a sentinel file so SupervisorJob can tell that bootstrap
+    # finished at least one pass. Stored under the runtime dir (tmpfs
+    # in production) so it wipes on reboot along with the sockets.
+    def mark_bootstrap_complete!
+      runtime_dir = ENV.fetch("NEURAMD_TENTACLE_RUNTIME_DIR", Tentacles::DtachWrapper::DEFAULT_RUNTIME_DIR)
+      FileUtils.mkdir_p(runtime_dir)
+      FileUtils.touch(File.join(runtime_dir, BOOTSTRAP_SENTINEL))
+    rescue StandardError => e
+      Rails.logger.error("[tentacle_runtime] failed to write bootstrap sentinel: #{e.class}: #{e.message}")
     end
 
     def reset!
@@ -159,6 +182,19 @@ class TentacleRuntime
     end
 
     private
+
+    # Transition a known-dead session record out of `alive`: stamp
+    # status=exited with the matching reason (socket_exists → "crash",
+    # otherwise "missing_pid") and drop the socket/pidfile from disk.
+    def finalize_dead_record(record)
+      wrapper = Tentacles::DtachWrapper.new(
+        session_id: record.tentacle_note_id,
+        runtime_dir: File.dirname(record.dtach_socket)
+      )
+      reason = wrapper.socket_exists? ? "crash" : "missing_pid"
+      record.mark_ended!(reason: reason)
+      wrapper.cleanup
+    end
 
     # Returns the reattached Session on success, nil when the record is
     # stale (dead pid or missing socket). Caller handles the stale path.
