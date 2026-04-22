@@ -6,6 +6,7 @@ import "@xterm/xterm/css/xterm.css"
 
 import { ContextLinks } from "~/components/tentacles/ContextLinks"
 import { InboxPanel } from "~/components/tentacles/InboxPanel"
+import { keyEventToInputBytes } from "~/components/tentacles/keyEvents"
 import { RouteSuggestionCard } from "~/components/tentacles/RouteSuggestionCard"
 import { SpawnChildForm } from "~/components/tentacles/SpawnChildForm"
 import type {
@@ -69,6 +70,13 @@ export function TentaclePage() {
     requestAnimationFrame(() => fit.fit())
     term.onData((data) => {
       subscriptionRef.current?.perform("input", { data })
+    })
+    term.attachCustomKeyEventHandler((event) => {
+      if (event.type !== "keydown") return true
+      const bytes = keyEventToInputBytes(event)
+      if (bytes === null) return true
+      subscriptionRef.current?.perform("input", { data: bytes })
+      return false
     })
     terminalRef.current = term
     fitRef.current = fit

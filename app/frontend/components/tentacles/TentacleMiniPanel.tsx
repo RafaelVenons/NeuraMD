@@ -4,6 +4,7 @@ import { FitAddon } from "@xterm/addon-fit"
 import { Terminal } from "@xterm/xterm"
 import "@xterm/xterm/css/xterm.css"
 
+import { keyEventToInputBytes } from "~/components/tentacles/keyEvents"
 import type { TentacleCableMessage, TentacleSession } from "~/components/tentacles/types"
 import { getCableConsumer } from "~/runtime/cable"
 import { fetchJson } from "~/runtime/fetchJson"
@@ -40,6 +41,13 @@ export function TentacleMiniPanel({ session, onRemoved }: Props) {
     term.open(host.current)
     requestAnimationFrame(() => fit.fit())
     term.onData((data) => subRef.current?.perform("input", { data }))
+    term.attachCustomKeyEventHandler((event) => {
+      if (event.type !== "keydown") return true
+      const bytes = keyEventToInputBytes(event)
+      if (bytes === null) return true
+      subRef.current?.perform("input", { data: bytes })
+      return false
+    })
     termRef.current = term
     fitRef.current = fit
 
