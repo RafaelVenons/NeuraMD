@@ -26,7 +26,10 @@ module Api
         stopped_ids = []
 
         if alive_ids.any?
-          broadcast_notice(alive_ids, deadline) unless mode == "force" && notice_seconds.zero?
+          # notice_seconds == 0 acts as a probe regardless of mode — returns
+          # alive_ids without broadcasting. Used by the deploy gate to poll
+          # liveness before and after a warn window.
+          broadcast_notice(alive_ids, deadline) unless notice_seconds.zero?
           stopped_ids = ::TentacleRuntime.graceful_stop_all(grace: DEFAULT_FORCE_GRACE) if mode == "force"
         end
 

@@ -1,10 +1,25 @@
 #!/usr/bin/env bash
 # Git post-receive hook for NeuraMD bare repo on AIrch.
 # On push to refs/heads/main, update the working tree, install deps,
-# run migrations + asset precompile, and restart systemd services.
+# run migrations + asset precompile, optionally drain live tentacle
+# sessions (deploy gate), and restart systemd services.
 #
 # Install: symlink to /home/rafael/git-mirrors/NeuraMD.git/hooks/post-receive
 # Blue-green not implemented — single working tree restarted in place.
+#
+# Environment flags:
+#   NEURAMD_FEATURE_DEPLOY_GATE=on
+#     Enables the drain gate. Default: off (no gate, preserves previous behavior).
+#   NEURAMD_DEPLOY_TOKEN=<secret>
+#     Bearer token for POST /api/tentacles/drain. Overrides file if set.
+#   NEURAMD_DEPLOY_TOKEN_FILE=/path/to/token   (default: /home/rafael/.config/neuramd/deploy.token)
+#     Path to a file containing the bearer token (single line, whitespace-stripped).
+#   NEURAMD_DEPLOY_FORCE=1
+#     Skips the warn+wait window and hard-drains any live tentacles.
+#   NEURAMD_DEPLOY_GATE_HOST=http://127.0.0.1:3000   (default)
+#     Override the URL when the app listens elsewhere.
+#   NEURAMD_DEPLOY_GATE_NOTICE_SECONDS=30   (default)
+#     Warn window before recheck. Clamped server-side to [0, 600].
 
 set -euo pipefail
 
@@ -12,10 +27,110 @@ APP_DIR=/home/rafael/apps/NeuraMD
 BRANCH=main
 MISE_SHIMS=/home/rafael/.local/share/mise/shims
 
+DEPLOY_LOG=/var/log/neuramd-deploy.log
+DEPLOY_GATE_HOST="${NEURAMD_DEPLOY_GATE_HOST:-http://127.0.0.1:3000}"
+DEPLOY_GATE_NOTICE="${NEURAMD_DEPLOY_GATE_NOTICE_SECONDS:-30}"
+DEPLOY_TOKEN_FILE="${NEURAMD_DEPLOY_TOKEN_FILE:-/home/rafael/.config/neuramd/deploy.token}"
+
+log_deploy_event() {
+	# best-effort structured log; ignore write failures (no sudo, dir may be missing)
+	local payload="$1"
+	local ts
+	ts="$(date --iso-8601=seconds)"
+	printf '{"ts":"%s",%s}\n' "$ts" "$payload" >> "$DEPLOY_LOG" 2>/dev/null || true
+}
+
+resolve_deploy_token() {
+	if [[ -n "${NEURAMD_DEPLOY_TOKEN:-}" ]]; then
+		printf '%s' "$NEURAMD_DEPLOY_TOKEN"
+		return 0
+	fi
+	if [[ -r "$DEPLOY_TOKEN_FILE" ]]; then
+		tr -d '[:space:]' < "$DEPLOY_TOKEN_FILE"
+		return 0
+	fi
+	return 1
+}
+
+# Echoes the JSON body from POST /api/tentacles/drain or returns non-zero on
+# network failure. Callers parse alive_ids via jq.
+curl_drain() {
+	local token="$1" mode="$2" notice_seconds="$3"
+	curl --silent --show-error --fail --max-time 10 \
+		-X POST \
+		-H "Authorization: Bearer $token" \
+		-H "Content-Type: application/json" \
+		-d "{\"mode\":\"$mode\",\"notice_seconds\":$notice_seconds}" \
+		"$DEPLOY_GATE_HOST/api/tentacles/drain"
+}
+
+count_alive_tentacles() {
+	# notice_seconds=0 is a probe — returns alive_ids with no broadcast, no stop.
+	local token="$1" response
+	response="$(curl_drain "$token" warn 0 2>/dev/null)" || return 1
+	printf '%s' "$response" | jq -r '.alive_ids | length // 0'
+}
+
+deploy_gate() {
+	if [[ "${NEURAMD_FEATURE_DEPLOY_GATE:-off}" != "on" ]]; then
+		log_deploy_event '"phase":"gate","outcome":"disabled"'
+		return 0
+	fi
+
+	local token
+	if ! token="$(resolve_deploy_token)"; then
+		echo "autodeploy: DEPLOY_GATE=on but no token configured; proceeding WITHOUT gate" >&2
+		log_deploy_event '"phase":"gate","outcome":"no_token"'
+		return 0
+	fi
+
+	local alive_count
+	if ! alive_count="$(count_alive_tentacles "$token")"; then
+		echo "autodeploy: drain endpoint unreachable at $DEPLOY_GATE_HOST; proceeding WITHOUT gate" >&2
+		log_deploy_event '"phase":"gate","outcome":"endpoint_unreachable"'
+		return 0
+	fi
+
+	if [[ "$alive_count" -eq 0 ]]; then
+		echo "autodeploy: 0 live tentacle(s) — proceeding"
+		log_deploy_event '"phase":"gate","outcome":"clear","alive_count":0'
+		return 0
+	fi
+
+	if [[ "${NEURAMD_DEPLOY_FORCE:-}" == "1" ]]; then
+		echo "autodeploy: $alive_count live tentacle(s); FORCE=1 — force-draining"
+		curl_drain "$token" force 5 > /dev/null || true
+		sleep 6
+		log_deploy_event "\"phase\":\"gate\",\"outcome\":\"forced\",\"alive_count\":$alive_count"
+		return 0
+	fi
+
+	echo "autodeploy: $alive_count live tentacle(s) — broadcasting ${DEPLOY_GATE_NOTICE}s deploy-notice"
+	curl_drain "$token" warn "$DEPLOY_GATE_NOTICE" > /dev/null
+	sleep $((DEPLOY_GATE_NOTICE + 5))
+
+	if ! alive_count="$(count_alive_tentacles "$token")"; then
+		echo "autodeploy: recheck failed after warn window; proceeding (shutdown hooks will drain)" >&2
+		log_deploy_event '"phase":"gate","outcome":"recheck_failed"'
+		return 0
+	fi
+
+	if [[ "$alive_count" -gt 0 ]]; then
+		echo "autodeploy aborted: $alive_count tentacle(s) still alive after warning" >&2
+		echo "                    set NEURAMD_DEPLOY_FORCE=1 to override" >&2
+		log_deploy_event "\"phase\":\"gate\",\"outcome\":\"aborted\",\"alive_count\":$alive_count"
+		exit 1
+	fi
+
+	echo "autodeploy: all tentacles drained after warn window — proceeding"
+	log_deploy_event '"phase":"gate","outcome":"drained"'
+}
+
 while read -r oldrev newrev refname; do
 	[[ "$refname" == "refs/heads/$BRANCH" ]] || continue
 
 	echo "[$(date --iso-8601=seconds)] autodeploy: $oldrev -> $newrev ($refname)"
+	log_deploy_event "\"phase\":\"start\",\"oldrev\":\"$oldrev\",\"newrev\":\"$newrev\""
 
 	cd "$APP_DIR"
 	export PATH="$MISE_SHIMS:/home/rafael/.local/bin:$PATH"
@@ -35,6 +150,7 @@ while read -r oldrev newrev refname; do
 	git reset --hard HEAD
 	if ! git checkout -B "$BRANCH" "origin/$BRANCH"; then
 		echo "autodeploy aborted: checkout conflicts with untracked files — resolve manually"
+		log_deploy_event '"phase":"checkout","outcome":"conflict"'
 		exit 1
 	fi
 	git reset --hard "$newrev"
@@ -43,6 +159,9 @@ while read -r oldrev newrev refname; do
 	bundle exec rails db:migrate
 	bundle exec rails assets:precompile
 
+	deploy_gate
+
 	sudo -n systemctl restart neuramd-web.service neuramd-worker.service
 	echo "[$(date --iso-8601=seconds)] autodeploy complete"
+	log_deploy_event "\"phase\":\"complete\",\"newrev\":\"$newrev\""
 done

@@ -196,5 +196,28 @@ RSpec.describe "API tentacle drain", type: :request do
         expect(response).to have_http_status(:ok)
       end
     end
+
+    context "probe mode (notice_seconds=0, mode=warn)" do
+      let(:ids) { Array.new(3) { SecureRandom.uuid } }
+
+      before do
+        ids.each { |id| TentacleRuntime::SESSIONS[id] = alive_session_double(id) }
+      end
+
+      it "returns alive_ids without broadcasting or stopping" do
+        expect(TentacleChannel).not_to receive(:broadcast_deploy_notice)
+        expect(TentacleRuntime).not_to receive(:graceful_stop_all)
+
+        post "/api/tentacles/drain",
+          params: {mode: "warn", notice_seconds: 0}.to_json,
+          headers: auth_headers
+
+        expect(response).to have_http_status(:ok)
+        body = response.parsed_body
+        expect(body["alive_ids"]).to match_array(ids)
+        expect(body["stopped_ids"]).to eq([])
+        expect(body["notice_seconds"]).to eq(0)
+      end
+    end
   end
 end
