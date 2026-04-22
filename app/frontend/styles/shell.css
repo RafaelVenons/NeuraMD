@@ -1326,10 +1326,129 @@ body.nm-app-shell #app-root {
   font-size: 12px;
 }
 
-.nm-tentacles-dashboard__grid {
+.nm-tentacles-dashboard__layout {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(360px, 1fr));
+  grid-template-columns: minmax(0, 1fr) 320px;
+  gap: 16px;
+  flex: 1;
+  min-height: 0;
+}
+
+@media (max-width: 1024px) {
+  .nm-tentacles-dashboard__layout {
+    grid-template-columns: 1fr;
+  }
+}
+
+.nm-tentacles-dashboard__main {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.nm-tentacles-dashboard__main .nm-tentacle-mini {
+  flex: 1;
+  min-height: 0;
+}
+
+.nm-tentacles-dashboard__main .nm-tentacle-mini__terminal {
+  flex: 1;
+  min-height: 420px;
+  height: auto;
+}
+
+.nm-tentacles-dashboard__side {
+  display: flex;
+  flex-direction: column;
   gap: 12px;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.nm-tentacles-dashboard__rest {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  overflow-y: auto;
+  flex: 1;
+  min-height: 0;
+}
+
+.nm-tentacles-dashboard__rest-item {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 12px;
+  border: 1px solid var(--nm-shell-border);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.nm-tentacles-dashboard__rest-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+}
+
+.nm-tentacles-dashboard__rest-head h3 {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.nm-tentacles-dashboard__rest-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.nm-tentacles-dashboard__rest-link {
+  font-size: 12px;
+  color: #5cc8ff;
+  text-decoration: none;
+}
+
+.nm-tentacles-dashboard__rest-link:hover {
+  text-decoration: underline;
+}
+
+.nm-tentacles-dashboard__minigraph {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--nm-shell-border);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.02);
+  overflow: hidden;
+  min-height: 220px;
+}
+
+.nm-tentacles-dashboard__minigraph-header {
+  display: flex;
+  justify-content: space-between;
+  padding: 6px 10px;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--nm-shell-muted);
+  border-bottom: 1px solid var(--nm-shell-border);
+}
+
+.nm-tentacles-dashboard__minigraph-count {
+  font-variant-numeric: tabular-nums;
+  color: #b4a7d6;
+}
+
+.nm-tentacles-dashboard__minigraph-canvas {
+  flex: 1;
+  min-height: 0;
+  position: relative;
 }
 
 .nm-tentacle-mini {
