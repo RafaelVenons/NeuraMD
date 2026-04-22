@@ -10,7 +10,6 @@ export function deriveStateFromEvent(
   prev: RuntimeState | null,
   event: RuntimeEvent
 ): RuntimeState {
-  if (prev === "exited") return "exited"
   switch (event.type) {
     case "exit":
       return "exited"

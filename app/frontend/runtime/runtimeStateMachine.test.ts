@@ -49,14 +49,16 @@ describe("deriveStateFromEvent", () => {
     expect(step(null, { type: "exit" })).toBe("exited")
   })
 
-  it("keeps exited terminal exited no matter what comes next", () => {
-    for (const event of [
-      { type: "input" as const },
-      { type: "output" as const },
-      { type: "silence" as const },
-      { type: "exit" as const },
-    ]) {
-      expect(step("exited", event)).toBe("exited")
-    }
+  it("leaves exited on activity so a restarted session can recover its badge", () => {
+    expect(step("exited", { type: "input" })).toBe("processing")
+    expect(step("exited", { type: "output" })).toBe("processing")
+  })
+
+  it("keeps exited on silence so a dead session does not flicker back to life", () => {
+    expect(step("exited", { type: "silence" })).toBe("exited")
+  })
+
+  it("keeps exited on repeated exit events", () => {
+    expect(step("exited", { type: "exit" })).toBe("exited")
   })
 })
