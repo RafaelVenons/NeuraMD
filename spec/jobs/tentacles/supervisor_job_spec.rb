@@ -50,4 +50,120 @@ RSpec.describe Tentacles::SupervisorJob, type: :job do
       expect { described_class.perform_now }.not_to raise_error
     end
   end
+
+  describe "dtach mode paths" do
+    let(:note) { create(:note, title: "SupervisorNote") }
+    let(:runtime_dir) { @tmpdir }
+
+    around do |example|
+      Dir.mktmpdir do |dir|
+        @tmpdir = dir
+        original_env = ENV["NEURAMD_FEATURE_DTACH"]
+        original_runtime = ENV["NEURAMD_TENTACLE_RUNTIME_DIR"]
+        ENV["NEURAMD_FEATURE_DTACH"] = "on"
+        ENV["NEURAMD_TENTACLE_RUNTIME_DIR"] = dir
+        example.run
+      ensure
+        original_env.nil? ? ENV.delete("NEURAMD_FEATURE_DTACH") : ENV["NEURAMD_FEATURE_DTACH"] = original_env
+        original_runtime.nil? ? ENV.delete("NEURAMD_TENTACLE_RUNTIME_DIR") : ENV["NEURAMD_TENTACLE_RUNTIME_DIR"] = original_runtime
+      end
+    end
+
+    def make_record(note_id:, last_seen: nil)
+      socket = File.join(runtime_dir, "#{note_id}.sock")
+      create(:tentacle_session,
+        tentacle_note_id: note_id,
+        dtach_socket: socket,
+        pid_file: socket.sub(/\.sock\z/, ".pid"),
+        last_seen_at: last_seen)
+    end
+
+    def stub_wrapper(alive:, socket_exists:)
+      wrapper = instance_double(Tentacles::DtachWrapper,
+        alive?: alive,
+        socket_exists?: socket_exists)
+      allow(wrapper).to receive(:cleanup)
+      allow(Tentacles::DtachWrapper).to receive(:new).and_return(wrapper)
+      wrapper
+    end
+
+    describe "reap_stale_db_sessions" do
+      it "does not run when dtach is disabled" do
+        ENV["NEURAMD_FEATURE_DTACH"] = "off"
+        record = make_record(note_id: note.id, last_seen: 1.hour.ago)
+        expect(Tentacles::DtachWrapper).not_to receive(:new)
+        described_class.perform_now
+        expect(record.reload.status).to eq("alive")
+      end
+
+      it "skips records whose last_seen_at is recent" do
+        make_record(note_id: note.id, last_seen: 1.second.ago)
+        expect(Tentacles::DtachWrapper).not_to receive(:new)
+        described_class.perform_now
+      end
+
+      it "touches last_seen_at when the wrapper is alive" do
+        record = make_record(note_id: note.id, last_seen: 1.hour.ago)
+        stub_wrapper(alive: true, socket_exists: true)
+
+        described_class.perform_now
+        expect(record.reload.last_seen_at).to be_within(5.seconds).of(Time.current)
+        expect(record.status).to eq("alive")
+      end
+
+      it "marks the record ended with reason=missing_pid when the socket is gone" do
+        record = make_record(note_id: note.id, last_seen: 1.hour.ago)
+        wrapper = stub_wrapper(alive: false, socket_exists: false)
+        expect(wrapper).to receive(:cleanup)
+
+        described_class.perform_now
+
+        record.reload
+        expect(record.status).to eq("exited")
+        expect(record.exit_reason).to eq("missing_pid")
+      end
+
+      it "marks the record ended with reason=crash when the socket is stale but pid dead" do
+        record = make_record(note_id: note.id, last_seen: 1.hour.ago)
+        wrapper = stub_wrapper(alive: false, socket_exists: true)
+        expect(wrapper).to receive(:cleanup)
+
+        described_class.perform_now
+
+        record.reload
+        expect(record.status).to eq("exited")
+        expect(record.exit_reason).to eq("crash")
+      end
+    end
+
+    describe "cleanup_orphaned_sockets" do
+      it "removes socket + pidfile pairs that have no matching alive record" do
+        orphan = File.join(runtime_dir, "orphan.sock")
+        pidfile = File.join(runtime_dir, "orphan.pid")
+        File.write(orphan, "")
+        File.write(pidfile, "0")
+
+        described_class.perform_now
+
+        expect(File.exist?(orphan)).to be false
+        expect(File.exist?(pidfile)).to be false
+      end
+
+      it "leaves sockets listed by alive records intact" do
+        kept = File.join(runtime_dir, "#{note.id}.sock")
+        File.write(kept, "")
+        make_record(note_id: note.id, last_seen: 1.second.ago)
+
+        described_class.perform_now
+
+        expect(File.exist?(kept)).to be true
+      end
+
+      it "is a no-op when the runtime dir does not exist" do
+        missing_dir = File.join(runtime_dir, "does-not-exist-#{SecureRandom.hex(4)}")
+        ENV["NEURAMD_TENTACLE_RUNTIME_DIR"] = missing_dir
+        expect { described_class.perform_now }.not_to raise_error
+      end
+    end
+  end
 end

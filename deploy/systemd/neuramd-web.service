@@ -39,6 +39,15 @@ SyslogIdentifier=neuramd-web
 # the compiled default in Tentacles::BootConfig::DEFAULT_CWD_ALLOWED_PREFIXES.
 # Environment=NEURAMD_TENTACLE_CWD_ROOTS=/home/rafael/projects/
 
+# Dtach runtime directory — detached tentacle sessions store their
+# Unix socket and pidfile under /run/nm-tentacles. RuntimeDirectoryPreserve
+# keeps the directory across `systemctl restart` so the next boot's
+# bootstrap_sessions! can reattach. systemd wipes it on reboot (tmpfs),
+# which is fine — processes die on reboot anyway.
+RuntimeDirectory=nm-tentacles
+RuntimeDirectoryMode=0750
+RuntimeDirectoryPreserve=yes
+
 # Hardening
 NoNewPrivileges=true
 PrivateTmp=true

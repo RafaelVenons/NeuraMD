@@ -34,6 +34,14 @@ SyslogIdentifier=neuramd-worker
 # unset falls back to Tentacles::BootConfig::DEFAULT_CWD_ALLOWED_PREFIXES.
 # Environment=NEURAMD_TENTACLE_CWD_ROOTS=/home/rafael/projects/
 
+# Shared dtach runtime directory. The web unit owns this directory
+# (RuntimeDirectoryPreserve=yes), but the supervisor job running here
+# needs write access to sweep orphaned sockets. Declaring the same
+# RuntimeDirectory entry mounts the path with matching ownership.
+RuntimeDirectory=nm-tentacles
+RuntimeDirectoryMode=0750
+RuntimeDirectoryPreserve=yes
+
 # Hardening
 NoNewPrivileges=true
 PrivateTmp=true
