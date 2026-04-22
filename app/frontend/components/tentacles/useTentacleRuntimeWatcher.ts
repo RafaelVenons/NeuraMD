@@ -37,8 +37,11 @@ export function useTentacleRuntimeWatcher(tentacleId: string | null | undefined)
         silenceTimer = null
       }
       if (event.type === "input" || event.type === "output") {
+        const scheduledFor = runtimeStateStore.getActivityAt(tentacleId)
         silenceTimer = window.setTimeout(() => {
           silenceTimer = null
+          const latest = runtimeStateStore.getActivityAt(tentacleId)
+          if (latest !== scheduledFor) return
           push({ type: "silence" })
         }, SILENCE_THRESHOLD_MS)
       }

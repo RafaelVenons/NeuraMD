@@ -12,10 +12,12 @@ export type RuntimeStateStore = {
   subscribe: (listener: () => void) => () => void
   setState: (id: string, state: RuntimeState, now?: number) => void
   remove: (id: string) => void
+  getActivityAt: (id: string) => number | undefined
 }
 
 export function createRuntimeStateStore(): RuntimeStateStore {
   let snapshot: RuntimeStateSnapshot = {}
+  const activity = new Map<string, number>()
   const listeners = new Set<() => void>()
 
   const emit = () => {
@@ -31,19 +33,22 @@ export function createRuntimeStateStore(): RuntimeStateStore {
       }
     },
     setState(id, state, now) {
+      const at = now ?? Date.now()
+      activity.set(id, at)
       const existing = snapshot[id]
       if (existing && existing.state === state) return
-      const at = now ?? Date.now()
       snapshot = { ...snapshot, [id]: { state, at } }
       emit()
     },
     remove(id) {
+      activity.delete(id)
       if (!(id in snapshot)) return
       const next = { ...snapshot }
       delete next[id]
       snapshot = next
       emit()
     },
+    getActivityAt: (id) => activity.get(id),
   }
 }
 

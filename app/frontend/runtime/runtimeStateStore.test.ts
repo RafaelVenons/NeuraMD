@@ -73,4 +73,19 @@ describe("createRuntimeStateStore", () => {
     store.remove("t-missing")
     expect(listener).not.toHaveBeenCalled()
   })
+
+  it("records activity timestamp on every setState, including no-op transitions", () => {
+    const store = createRuntimeStateStore()
+    store.setState("t1", "processing", 100)
+    expect(store.getActivityAt("t1")).toBe(100)
+    store.setState("t1", "processing", 250)
+    expect(store.getActivityAt("t1")).toBe(250)
+  })
+
+  it("clears activity timestamp on remove", () => {
+    const store = createRuntimeStateStore()
+    store.setState("t1", "processing", 1)
+    store.remove("t1")
+    expect(store.getActivityAt("t1")).toBeUndefined()
+  })
 })
