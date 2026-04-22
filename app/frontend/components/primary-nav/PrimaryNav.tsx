@@ -3,6 +3,7 @@ import { NavLink } from "react-router-dom"
 
 import { deriveSessionTabs, type SessionTab } from "~/components/primary-nav/sessionTabs"
 import type { TentacleSession, TentacleSessionsIndex } from "~/components/tentacles/types"
+import { TentacleRuntimeWatcherMount } from "~/components/tentacles/useTentacleRuntimeWatcher"
 import { fetchJson } from "~/runtime/fetchJson"
 import { runtimeStateStore } from "~/runtime/runtimeStateStore"
 
@@ -80,6 +81,12 @@ export function PrimaryNav() {
           </ul>
         </>
       ) : null}
+
+      {sessions
+        .filter((session) => session.alive)
+        .map((session) => (
+          <TentacleRuntimeWatcherMount key={session.tentacle_id} tentacleId={session.tentacle_id} />
+        ))}
     </nav>
   )
 }

@@ -1,4 +1,4 @@
-import { useEffect } from "react"
+import { type ReactElement, useEffect } from "react"
 
 import type { TentacleCableMessage } from "~/components/tentacles/types"
 import { getCableConsumer } from "~/runtime/cable"
@@ -12,6 +12,15 @@ const SILENCE_THRESHOLD_MS = 2000
 
 type CableSubscription = {
   unsubscribe: () => void
+}
+
+export function TentacleRuntimeWatcherMount({
+  tentacleId,
+}: {
+  tentacleId: string
+}): ReactElement | null {
+  useTentacleRuntimeWatcher(tentacleId)
+  return null
 }
 
 export function useTentacleRuntimeWatcher(tentacleId: string | null | undefined): void {
