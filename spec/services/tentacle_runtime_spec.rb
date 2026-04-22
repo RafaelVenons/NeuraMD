@@ -177,15 +177,29 @@ RSpec.describe TentacleRuntime do
         expect(TentacleSession.where(tentacle_note_id: tentacle_id).count).to eq(0)
       end
 
-      it "persists a TentacleSession record when attaching to a pre-existing dtach socket that has no record" do
+      it "refuses to adopt a pre-existing dtach socket when no TentacleSession record vouches for it" do
         allow(wrapper).to receive(:alive?).and_return(true)
-        allow(Rails.logger).to receive(:warn)
 
         expect {
           described_class.start(tentacle_id: tentacle_id, command: ["sleep", "30"])
-        }.to change { TentacleSession.alive.where(tentacle_note_id: tentacle_id).count }.by(1)
+        }.to raise_error(TentacleRuntime::OrphanSocketError)
 
-        expect(wrapper).not_to have_received(:spawn) if wrapper.respond_to?(:spawn)
+        expect(TentacleSession.where(tentacle_note_id: tentacle_id).count).to eq(0)
+      end
+
+      it "refuses to adopt when the vouching record's command does not match the requested command" do
+        create(:tentacle_session,
+          tentacle_note_id: tentacle_id,
+          dtach_socket: wrapper.socket_path,
+          pid_file: wrapper.pid_path,
+          pid: 7777,
+          command: "sleep 60",
+          status: "alive")
+        allow(wrapper).to receive(:alive?).and_return(true)
+
+        expect {
+          described_class.start(tentacle_id: tentacle_id, command: ["sleep", "30"])
+        }.to raise_error(TentacleRuntime::OwnershipMismatchError)
       end
 
       it "does not create a duplicate record when attaching to a pre-existing dtach socket whose record already exists" do
@@ -201,6 +215,48 @@ RSpec.describe TentacleRuntime do
         expect {
           described_class.start(tentacle_id: tentacle_id, command: ["sleep", "30"])
         }.not_to change { TentacleSession.where(tentacle_note_id: tentacle_id).count }
+      end
+    end
+
+    describe "concurrent start for the same tentacle_id" do
+      after { described_class::SESSIONS.clear }
+
+      it "serializes starts so only one child spawns and every caller receives the same Session" do
+        # Stub AR completely: multiple threads cannot share a transactional
+        # connection cleanly in specs, and this test is about the start()
+        # mutex, not persistence. With the mutex in place, only one thread
+        # reaches spawn/create!/PTY.spawn — the others find the SESSIONS
+        # entry on their post-mutex re-check and return it unchanged.
+        record_stub = instance_double(TentacleSession,
+          tentacle_note_id: tentacle_id, mark_ended!: true, touch_seen!: true)
+        relation_stub = instance_double("ActiveRecord::Relation", find_by: nil)
+        allow(TentacleSession).to receive(:alive).and_return(relation_stub)
+        create_calls = Concurrent::AtomicFixnum.new(0)
+        allow(TentacleSession).to receive(:create!) { create_calls.increment; record_stub }
+
+        spawn_calls = Concurrent::AtomicFixnum.new(0)
+        spawned = Concurrent::AtomicBoolean.new(false)
+        allow(wrapper).to receive(:alive?) { spawned.value }
+        allow(wrapper).to receive(:spawn) do
+          spawn_calls.increment
+          sleep 0.02 # widen the race window so the mutex matters
+          spawned.make_true
+        end
+        allow(wrapper).to receive(:cleanup)
+
+        barrier = Concurrent::CyclicBarrier.new(5)
+        threads = 5.times.map do
+          Thread.new do
+            barrier.wait
+            described_class.start(tentacle_id: tentacle_id, command: ["sleep", "30"])
+          end
+        end
+        sessions = threads.map(&:value)
+
+        expect(sessions.uniq(&:object_id).size).to eq(1)
+        expect(spawn_calls.value).to eq(1)
+        expect(create_calls.value).to eq(1)
+        expect(wrapper).not_to have_received(:cleanup)
       end
     end
 

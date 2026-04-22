@@ -4,12 +4,30 @@ require "neuramd/metrics"
 
 class TentacleRuntime
   SESSIONS = Concurrent::Map.new
+  # Per-tentacle-id mutex table. Serializes start() for the same id so
+  # two concurrent callers cannot both race past the SESSIONS liveness
+  # check, double-spawn a dtach child, and have one clobber the other
+  # through the persist-failure cleanup path.
+  START_MUTEXES = Concurrent::Map.new
   INITIAL_PROMPT_BOOT_DELAY = 1.5
   # Marker file written under NEURAMD_TENTACLE_RUNTIME_DIR once
   # bootstrap_sessions! has finished a pass. SupervisorJob only sweeps
   # orphan sockets after this file exists so a tick that fires before
   # reattach cannot wipe live sockets.
   BOOTSTRAP_SENTINEL = ".bootstrap_complete".freeze
+
+  # Raised when spawn_via_dtach finds a live dtach socket/pidfile on
+  # disk but no TentacleSession record vouches for it. We refuse to
+  # attach because a later stop/drain would signal whatever pid the
+  # stale pidfile points at — potentially an unrelated process.
+  class OrphanSocketError < StandardError; end
+
+  # Raised when an alive TentacleSession record exists but its stored
+  # identity (dtach_socket path or command) does not match what the
+  # current start() call is requesting. Refuses to attach so a caller
+  # asking for command B does not end up steering (and later killing)
+  # a process that was spawned for command A.
+  class OwnershipMismatchError < StandardError; end
 
   class << self
     # Whether the detached (dtach) backend is enabled. When false the
@@ -24,29 +42,34 @@ class TentacleRuntime
       existing = SESSIONS[tentacle_id]
       return existing if existing&.alive?
 
-      FileUtils.mkdir_p(cwd) if cwd
-      descriptor = Persistence.validate!(persistence)
-      effective_on_exit =
-        if descriptor
-          Persistence.build_on_exit(descriptor, tentacle_id: tentacle_id)
-        else
-          on_exit
-        end
+      START_MUTEXES.compute_if_absent(tentacle_id) { Mutex.new }.synchronize do
+        existing = SESSIONS[tentacle_id]
+        return existing if existing&.alive?
 
-      session = Session.new(
-        tentacle_id: tentacle_id,
-        command: Array(command),
-        cwd: cwd,
-        env: env,
-        on_exit: effective_on_exit,
-        persistence_descriptor: descriptor,
-        context_warning_ratio: context_warning_ratio,
-        context_window_tokens: context_window_tokens
-      )
-      SESSIONS[tentacle_id] = session
-      schedule_initial_prompt(session, initial_prompt) if initial_prompt.present?
-      Neuramd::Metrics.emit("tentacle_spawn", {tentacle_id: tentacle_id.to_s, command: Array(command).first})
-      session
+        FileUtils.mkdir_p(cwd) if cwd
+        descriptor = Persistence.validate!(persistence)
+        effective_on_exit =
+          if descriptor
+            Persistence.build_on_exit(descriptor, tentacle_id: tentacle_id)
+          else
+            on_exit
+          end
+
+        session = Session.new(
+          tentacle_id: tentacle_id,
+          command: Array(command),
+          cwd: cwd,
+          env: env,
+          on_exit: effective_on_exit,
+          persistence_descriptor: descriptor,
+          context_warning_ratio: context_warning_ratio,
+          context_window_tokens: context_window_tokens
+        )
+        SESSIONS[tentacle_id] = session
+        schedule_initial_prompt(session, initial_prompt) if initial_prompt.present?
+        Neuramd::Metrics.emit("tentacle_spawn", {tentacle_id: tentacle_id.to_s, command: Array(command).first})
+        session
+      end
     end
 
     private
@@ -188,6 +211,7 @@ class TentacleRuntime
         # best-effort teardown for specs
       end
       SESSIONS.clear
+      START_MUTEXES.clear
     end
 
     private
@@ -460,12 +484,13 @@ class TentacleRuntime
       @dtach = Tentacles::DtachWrapper.new(session_id: @tentacle_id, runtime_dir: runtime_dir)
 
       if @dtach.alive?
-        # Adoption path: a detached child exists on disk but no in-memory
-        # Session entry covers it. If no DB record exists either (e.g. a
-        # prior persist failure left the child orphaned), create one so
-        # bootstrap/reap paths can track it. An existing record is left
-        # alone to avoid dtach_socket uniqueness collisions.
-        @session_record = ensure_session_record
+        # Adoption only when a vouching DB record matches the requested
+        # identity. Attaching to an unowned socket would let later
+        # stop/drain paths signal whatever pid the stale pidfile holds —
+        # potentially an unrelated process. Verified identity: an alive
+        # TentacleSession record for this note with the same dtach_socket
+        # and the same command string as what the caller is requesting.
+        @session_record = authorize_adoption!
       else
         @dtach.spawn(@command, cwd: @cwd, env: @env)
         begin
@@ -489,14 +514,28 @@ class TentacleRuntime
       @pid = @dtach.pid
     end
 
-    def ensure_session_record
-      existing = TentacleSession.alive.find_by(tentacle_note_id: @tentacle_id)
-      return existing if existing
+    def authorize_adoption!
+      record = TentacleSession.alive.find_by(tentacle_note_id: @tentacle_id)
+      unless record
+        raise OrphanSocketError,
+          "refusing to adopt orphan dtach socket #{@dtach.socket_path} for tentacle " \
+          "#{@tentacle_id}: no TentacleSession record vouches for this process"
+      end
 
-      Rails.logger.warn(
-        "[tentacle_runtime] adopting orphan dtach socket for #{@tentacle_id} (no prior TentacleSession record); persisting now"
-      )
-      persist_tentacle_session_record!
+      if record.dtach_socket != @dtach.socket_path
+        raise OwnershipMismatchError,
+          "TentacleSession record socket mismatch for #{@tentacle_id}: " \
+          "record=#{record.dtach_socket.inspect} wrapper=#{@dtach.socket_path.inspect}"
+      end
+
+      expected_command = Array(@command).join(" ")
+      if record.command.to_s != expected_command
+        raise OwnershipMismatchError,
+          "TentacleSession record command mismatch for #{@tentacle_id}: " \
+          "record=#{record.command.inspect} requested=#{expected_command.inspect}"
+      end
+
+      record
     end
 
     def persist_tentacle_session_record!

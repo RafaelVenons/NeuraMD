@@ -13,14 +13,14 @@
       "note": "MFA RemoteExecutor: host command is built from asset id + trusted ENV, not user input"
     },
     {
-      "fingerprint": "cf74f65ea2ddd8b0319156a88dbfd4494700438c52be056a3b55fe40c87c0bed",
-      "note": "PropertiesController: permit! is intentional — property keys are dynamic and validated by Properties::SetService"
-    },
-    {
       "fingerprint": "29ac645dda753da5cfda38ec7b040275c1b214b5e4db81aa2b264f3e72310099",
       "note": "Api::NotesController: permit! is intentional — property keys are dynamic and validated by Properties::SetService"
+    },
+    {
+      "fingerprint": "a1615ee3a3baa02839d71b6f200f3f912228a6ef0d0c41b88556b8883a079e51",
+      "note": "Tentacles::DtachWrapper: command tokens are all Shellwords.escape'd in build_stub before reaching /bin/sh -c; socket_path/pid_path are derived from server-side session_id (not user input) and pass as argv, not through the shell"
     }
   ],
-  "updated": "2026-04-20",
+  "updated": "2026-04-22",
   "brakeman_version": "8.0.4"
 }

@@ -36,7 +36,7 @@ module Neuramd
       def self.format_labels(labels)
         return "" if labels.nil? || labels.empty?
         parts = labels.sort_by { |k, _| k.to_s }.map do |k, v|
-          %{#{k}="#{escape_label_value(v.to_s)}"}
+          %(#{k}="#{escape_label_value(v.to_s)}")
         end
         "{#{parts.join(",")}}"
       end
