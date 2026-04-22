@@ -95,6 +95,113 @@ body.nm-app-shell #app-root {
   text-align: center;
 }
 
+.nm-primary-nav__link {
+  position: relative;
+}
+
+.nm-primary-nav__attention-dot {
+  position: absolute;
+  top: 4px;
+  right: 6px;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #f5c451;
+  box-shadow: 0 0 0 0 rgba(245, 196, 81, 0.7);
+  animation: nm-primary-nav-attention 1.4s ease-out infinite;
+}
+
+@keyframes nm-primary-nav-attention {
+  0% { box-shadow: 0 0 0 0 rgba(245, 196, 81, 0.7); }
+  70% { box-shadow: 0 0 0 6px rgba(245, 196, 81, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(245, 196, 81, 0); }
+}
+
+.nm-primary-nav__divider {
+  width: 60%;
+  height: 1px;
+  background: var(--nm-shell-border);
+  margin: 8px 0 4px;
+}
+
+.nm-primary-nav__section-title {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  color: var(--nm-shell-muted);
+  text-transform: uppercase;
+  margin: 0 0 4px;
+}
+
+.nm-primary-nav__list--sessions {
+  gap: 2px;
+}
+
+.nm-primary-nav__session {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 6px;
+  color: var(--nm-shell-muted);
+  text-decoration: none;
+  font-size: 10px;
+  line-height: 1.2;
+  border-left: 2px solid transparent;
+}
+
+.nm-primary-nav__session:hover {
+  color: var(--nm-shell-text);
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.nm-primary-nav__session.is-active {
+  color: var(--nm-shell-text);
+  border-left-color: var(--nm-shell-accent);
+  background: rgba(92, 200, 255, 0.08);
+}
+
+.nm-primary-nav__session.is-disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.nm-primary-nav__session-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+  flex: none;
+}
+
+.nm-primary-nav__session--processing .nm-primary-nav__session-dot {
+  color: #5cc8ff;
+  animation: nm-primary-nav-spin 1.2s ease-in-out infinite;
+}
+
+.nm-primary-nav__session--needs_input {
+  color: #f5c451;
+  font-weight: 600;
+}
+.nm-primary-nav__session--needs_input .nm-primary-nav__session-dot {
+  box-shadow: 0 0 0 0 rgba(245, 196, 81, 0.7);
+  animation: nm-primary-nav-attention 1.4s ease-out infinite;
+}
+
+.nm-primary-nav__session--exited {
+  opacity: 0.55;
+}
+
+.nm-primary-nav__session-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@keyframes nm-primary-nav-spin {
+  0%, 100% { transform: scale(0.85); opacity: 0.7; }
+  50% { transform: scale(1.15); opacity: 1; }
+}
+
 .nm-shell__main {
   padding: 0;
   overflow: hidden;
