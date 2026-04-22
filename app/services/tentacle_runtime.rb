@@ -365,6 +365,26 @@ class TentacleRuntime
         rescue Errno::ESRCH, Errno::ECHILD
         end
       end
+
+      if @stop_unconfirmed
+        # SIGKILL did not confirm death. Leave the record as `unknown` so
+        # SupervisorJob / next bootstrap can retry — do NOT fire on_exit
+        # (which would mark the session ended and persist a transcript
+        # while the child is still running). Suppress any late on_exit
+        # from the reader thread's ensure block for the same reason.
+        Rails.logger.error(
+          "[tentacle_runtime] dtach child for #{@tentacle_id} survived SIGKILL; " \
+          "leaving record as 'unknown' for supervisor retry"
+        )
+        @suppress_on_exit = true
+        reader_join_timeout = [grace, 0.3].min
+        @reader_thread&.join(reader_join_timeout)
+        @reader_thread&.kill if @reader_thread&.alive?
+        close_streams
+        mark_session_record_unknown
+        return
+      end
+
       reader_join_timeout = [grace, 0.3].min
       @reader_thread&.join(reader_join_timeout)
       @reader_thread&.kill if @reader_thread&.alive?
@@ -388,9 +408,13 @@ class TentacleRuntime
     # Kill the detached child via DtachWrapper, then reap our local
     # attach proxy so no zombie is left behind. Returns the child's
     # exit_status when dtach propagated it through the attach, else nil.
+    # Sets @stop_unconfirmed when the wrapper could not confirm death
+    # (returned :still_alive) so Session#stop can skip fire_on_exit and
+    # leave the record in `unknown` for supervisor retry.
     def stop_dtach_child(grace:)
       result = @dtach.stop(grace: grace)
       @force_killed = true if result == :forced
+      @stop_unconfirmed = (result == :still_alive)
 
       status = reap_attach(timeout: [grace, 1.0].max)
       status&.exitstatus
@@ -435,21 +459,47 @@ class TentacleRuntime
       runtime_dir = ENV.fetch("NEURAMD_TENTACLE_RUNTIME_DIR", Tentacles::DtachWrapper::DEFAULT_RUNTIME_DIR)
       @dtach = Tentacles::DtachWrapper.new(session_id: @tentacle_id, runtime_dir: runtime_dir)
 
-      unless @dtach.alive?
+      if @dtach.alive?
+        # Adoption path: a detached child exists on disk but no in-memory
+        # Session entry covers it. If no DB record exists either (e.g. a
+        # prior persist failure left the child orphaned), create one so
+        # bootstrap/reap paths can track it. An existing record is left
+        # alone to avoid dtach_socket uniqueness collisions.
+        @session_record = ensure_session_record
+      else
         @dtach.spawn(@command, cwd: @cwd, env: @env)
-        @session_record = persist_tentacle_session_record
+        begin
+          @session_record = persist_tentacle_session_record!
+        rescue StandardError
+          # Post-spawn persistence failed. Do not leave a detached child
+          # untracked — kill it, clean up the socket/pidfile, and raise so
+          # the caller sees the failure instead of receiving a half-spawned
+          # session masquerading as healthy.
+          cleanup_orphan_after_persist_failure
+          raise
+        end
       end
 
       # Attach via PTY so the TTY winsize ioctl propagates through dtach
       # to the underlying child. The attach proxy is a short-lived process
       # local to Puma — killing it detaches the session without killing
-      # the child (ownership transfer handled in a later chunk).
+      # the child.
       attach_cmd = ["dtach", "-a", @dtach.socket_path, "-E", "-z"]
       @reader, @writer, @attach_pid = PTY.spawn(*attach_cmd)
       @pid = @dtach.pid
     end
 
-    def persist_tentacle_session_record
+    def ensure_session_record
+      existing = TentacleSession.alive.find_by(tentacle_note_id: @tentacle_id)
+      return existing if existing
+
+      Rails.logger.warn(
+        "[tentacle_runtime] adopting orphan dtach socket for #{@tentacle_id} (no prior TentacleSession record); persisting now"
+      )
+      persist_tentacle_session_record!
+    end
+
+    def persist_tentacle_session_record!
       metadata = @persistence_descriptor ? {"persistence" => @persistence_descriptor} : {}
       TentacleSession.create!(
         tentacle_note_id: @tentacle_id,
@@ -462,9 +512,22 @@ class TentacleRuntime
         status: "alive",
         metadata: metadata
       )
-    rescue StandardError => e
-      Rails.logger.error("[tentacle_runtime] failed to persist TentacleSession: #{e.class}: #{e.message}")
-      nil
+    end
+
+    def cleanup_orphan_after_persist_failure
+      begin
+        @dtach.stop(grace: 1.0)
+      rescue StandardError => stop_err
+        Rails.logger.error(
+          "[tentacle_runtime] failed to stop orphan dtach child after persist failure: " \
+          "#{stop_err.class}: #{stop_err.message}"
+        )
+      end
+      begin
+        @dtach.cleanup
+      rescue StandardError
+        # socket/pidfile removal is best-effort; supervisor sweep is the backstop
+      end
     end
 
     def start_reader
@@ -551,6 +614,8 @@ class TentacleRuntime
     end
 
     def fire_on_exit(exit_status:)
+      return if @suppress_on_exit
+
       should_fire = @on_exit_mutex.synchronize do
         next false if @on_exit_fired
         @on_exit_fired = true
@@ -582,6 +647,15 @@ class TentacleRuntime
       record.mark_ended!(reason: reason, exit_code: exit_status)
     rescue StandardError => e
       Rails.logger.error("[tentacle_runtime] failed to mark TentacleSession ended: #{e.class}: #{e.message}")
+    end
+
+    def mark_session_record_unknown
+      return unless dtach_mode?
+      record = @session_record || TentacleSession.alive.find_by(tentacle_note_id: @tentacle_id)
+      return unless record
+      record.mark_unknown!
+    rescue StandardError => e
+      Rails.logger.error("[tentacle_runtime] failed to mark TentacleSession unknown: #{e.class}: #{e.message}")
     end
 
     def exit_reason_for(exit_status)

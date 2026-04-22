@@ -93,6 +93,13 @@ RSpec.describe TentacleRuntime do
     end
 
     it "reuses the existing detached session without re-spawning when wrapper.alive?" do
+      create(:tentacle_session,
+        tentacle_note_id: tentacle_id,
+        dtach_socket: wrapper.socket_path,
+        pid_file: wrapper.pid_path,
+        pid: 7777,
+        command: "sleep 30",
+        status: "alive")
       allow(wrapper).to receive(:alive?).and_return(true)
       expect(wrapper).not_to receive(:spawn)
       expect { described_class.start(tentacle_id: tentacle_id, command: ["sleep", "30"]) }
@@ -148,6 +155,76 @@ RSpec.describe TentacleRuntime do
 
         session.stop(detach_only: true)
         expect(record.reload.last_seen_at).to be_within(5.seconds).of(Time.current)
+      end
+    end
+
+    describe "spawn/persist atomicity" do
+      it "stops the just-spawned dtach child and re-raises when persisting the TentacleSession fails" do
+        allow(wrapper).to receive(:alive?).and_return(false)
+        allow(wrapper).to receive(:spawn)
+        allow(wrapper).to receive(:cleanup)
+        allow(TentacleSession).to receive(:create!).and_raise(
+          ActiveRecord::RecordInvalid.new(TentacleSession.new)
+        )
+
+        expect(wrapper).to receive(:stop).with(hash_including(:grace)).and_return(:stopped)
+
+        expect {
+          described_class.start(tentacle_id: tentacle_id, command: ["sleep", "30"])
+        }.to raise_error(ActiveRecord::RecordInvalid)
+
+        expect(described_class::SESSIONS[tentacle_id]).to be_nil
+        expect(TentacleSession.where(tentacle_note_id: tentacle_id).count).to eq(0)
+      end
+
+      it "persists a TentacleSession record when attaching to a pre-existing dtach socket that has no record" do
+        allow(wrapper).to receive(:alive?).and_return(true)
+        allow(Rails.logger).to receive(:warn)
+
+        expect {
+          described_class.start(tentacle_id: tentacle_id, command: ["sleep", "30"])
+        }.to change { TentacleSession.alive.where(tentacle_note_id: tentacle_id).count }.by(1)
+
+        expect(wrapper).not_to have_received(:spawn) if wrapper.respond_to?(:spawn)
+      end
+
+      it "does not create a duplicate record when attaching to a pre-existing dtach socket whose record already exists" do
+        create(:tentacle_session,
+          tentacle_note_id: tentacle_id,
+          dtach_socket: wrapper.socket_path,
+          pid_file: wrapper.pid_path,
+          pid: 7777,
+          command: "sleep 30",
+          status: "alive")
+        allow(wrapper).to receive(:alive?).and_return(true)
+
+        expect {
+          described_class.start(tentacle_id: tentacle_id, command: ["sleep", "30"])
+        }.not_to change { TentacleSession.where(tentacle_note_id: tentacle_id).count }
+      end
+    end
+
+    describe "#stop when the child survives SIGKILL" do
+      after { described_class::SESSIONS.clear }
+
+      it "does not fire on_exit and marks the TentacleSession unknown when wrapper.stop returns :still_alive" do
+        on_exit_called = false
+        session = described_class.start(
+          tentacle_id: tentacle_id,
+          command: ["sleep", "30"],
+          on_exit: ->(**) { on_exit_called = true }
+        )
+        record = TentacleSession.alive.find_by(tentacle_note_id: tentacle_id)
+        expect(record).not_to be_nil
+
+        allow(wrapper).to receive(:stop).and_return(:still_alive)
+        allow(Rails.logger).to receive(:error)
+
+        session.stop(grace: 0.05)
+
+        expect(on_exit_called).to be false
+        expect(record.reload.status).to eq("unknown")
+        expect(record.reload.ended_at).to be_nil
       end
     end
   end

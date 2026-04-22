@@ -126,6 +126,23 @@ RSpec.describe Tentacles::DtachWrapper do
     end
   end
 
+  describe "#stop when the child survives SIGKILL" do
+    it "returns :still_alive when alive? remains true after SIGKILL + SIGKILL_REAP_WAIT" do
+      File.write(wrapper.pid_path, Process.pid.to_s)
+
+      original_kill = Process.method(:kill)
+      allow(Process).to receive(:kill) do |sig, pid|
+        if sig == "TERM" || sig == "KILL"
+          1
+        else
+          original_kill.call(sig, pid)
+        end
+      end
+
+      expect(wrapper.stop(grace: 0.05)).to eq(:still_alive)
+    end
+  end
+
   # End-to-end: actually spawns dtach, confirms pid tracking and stop
   # flow. Skipped automatically when the binary is not installed.
   describe "integration (requires dtach installed)", if: described_class.dtach_on_path? do

@@ -81,7 +81,11 @@ module Tentacles
     end
 
     # SIGTERM the child, wait grace seconds, escalate to SIGKILL if
-    # still alive. Returns :stopped | :forced | :already_gone.
+    # still alive. Returns :stopped | :forced | :already_gone | :still_alive.
+    # :still_alive means SIGKILL was sent but the pid remained alive after
+    # SIGKILL_REAP_WAIT (uninterruptible wait, permission error under a pid
+    # owned by another uid, pid reuse window). Callers must not treat that
+    # as confirmed death.
     def stop(grace: DEFAULT_STOP_GRACE)
       current_pid = pid
       return :already_gone unless current_pid
@@ -102,6 +106,7 @@ module Tentacles
         return :stopped
       end
       wait_until_dead(SIGKILL_REAP_WAIT)
+      return :still_alive if alive?
       :forced
     end
 
