@@ -112,7 +112,7 @@ RSpec.describe TentacleRuntime, "dtach chain", :dtach_integration do
   end
 
   describe "crash during downtime" do
-    it "marks the session as unknown and does not reattach when the child died" do
+    it "finalizes the session as exited and does not reattach when the child died" do
       spawned = TentacleRuntime.start(tentacle_id: tentacle_id, command: ["cat"])
       child_pid = spawned.pid
 
@@ -127,12 +127,26 @@ RSpec.describe TentacleRuntime, "dtach chain", :dtach_integration do
       expect(TentacleRuntime.get(tentacle_id)).to be_nil
       expect(TentacleSession.alive.where(tentacle_note_id: tentacle_id)).to be_empty
 
+      # bootstrap_sessions! → reattach_record returns false for dead pid →
+      # finalize_dead_record → mark_ended!(reason: "missing_pid"|"crash") →
+      # status "exited". "unknown" is reserved for reattach that raised.
       record = TentacleSession.where(tentacle_note_id: tentacle_id).order(:created_at).last
-      expect(record.status).to eq("unknown")
+      expect(record.status).to eq("exited")
+      expect(record.exit_reason).to be_in(%w[missing_pid crash])
+      expect(record.ended_at).to be_present
     end
   end
 
   describe "orphan socket sweep" do
+    # cleanup_orphaned_sockets refuses to sweep until BOOTSTRAP_SENTINEL
+    # exists (guard against a tick firing before reattach knows which
+    # records belong to this process tree). The real path writes it at
+    # the end of bootstrap_sessions!; in the specs we touch it directly
+    # to isolate the sweep from the reattach flow.
+    before do
+      FileUtils.touch(File.join(@runtime_dir, TentacleRuntime::BOOTSTRAP_SENTINEL))
+    end
+
     it "removes socket + pidfile pairs with no matching alive record" do
       orphan_name = "orphan-#{SecureRandom.hex(4)}"
       orphan_sock = File.join(@runtime_dir, "#{orphan_name}.sock")
