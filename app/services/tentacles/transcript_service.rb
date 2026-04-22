@@ -1,3 +1,5 @@
+require "neuramd/metrics"
+
 module Tentacles
   class TranscriptService
     MAX_TRANSCRIPT_BYTES = 200_000
@@ -15,6 +17,13 @@ module Tentacles
       new_content = current.empty? ? section : "#{current.rstrip}\n\n#{section}"
 
       Notes::CheckpointService.call(note: note, content: new_content, author: author)
+      Neuramd::Metrics.emit("transcript_persist", {tentacle_id: note.id.to_s, outcome: "ok"})
+    rescue StandardError => e
+      Neuramd::Metrics.emit(
+        "transcript_persist",
+        {tentacle_id: note.id.to_s, outcome: "error", error_class: e.class.name}
+      )
+      raise
     end
 
     def self.format_header(command:, started_at:, ended_at:)

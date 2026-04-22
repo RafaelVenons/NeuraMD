@@ -196,6 +196,57 @@ RSpec.describe TentacleRuntime do
     end
   end
 
+  describe "metric emission" do
+    let(:emissions) { Concurrent::Array.new }
+
+    before do
+      allow(Neuramd::Metrics).to receive(:emit) do |type, payload|
+        emissions << [type, payload]
+        nil
+      end
+    end
+
+    def emitted_reasons
+      emissions.select { |type, _| type == "tentacle_exit" }.map { |_, p| p[:reason] }
+    end
+
+    it "emits tentacle_spawn when a new session starts" do
+      described_class.start(tentacle_id: tentacle_id, command: ["sleep", "5"])
+      spawn_calls = emissions.select { |type, _| type == "tentacle_spawn" }
+      expect(spawn_calls.size).to eq(1)
+      expect(spawn_calls.first[1]).to include(tentacle_id: tentacle_id.to_s, command: "sleep")
+    end
+
+    it "does not emit tentacle_spawn when an existing live session is reused" do
+      described_class.start(tentacle_id: tentacle_id, command: ["sleep", "30"])
+      described_class.start(tentacle_id: tentacle_id, command: ["sleep", "30"])
+      expect(emissions.count { |type, _| type == "tentacle_spawn" }).to eq(1)
+    end
+
+    it "emits tentacle_exit with reason=graceful on a clean exit" do
+      described_class.start(tentacle_id: tentacle_id, command: ["sh", "-c", "exit 0"])
+      expect(wait_until { emitted_reasons.include?("graceful") }).to be_truthy
+    end
+
+    it "emits tentacle_exit with reason=crash on non-zero exit" do
+      described_class.start(tentacle_id: tentacle_id, command: ["sh", "-c", "exit 42"])
+      expect(wait_until { emitted_reasons.include?("crash") }).to be_truthy
+    end
+
+    it "emits tentacle_exit with reason=forced when stop escalates to SIGKILL" do
+      described_class.start(
+        tentacle_id: tentacle_id,
+        command: ["sh", "-c", "trap '' TERM; sleep 30"]
+      )
+      expect(wait_until { described_class.get(tentacle_id) }).to be_truthy
+      sleep(0.1)
+
+      described_class.graceful_stop_all(grace: 1)
+
+      expect(wait_until { emitted_reasons.include?("forced") }).to be_truthy
+    end
+  end
+
   describe ".graceful_stop_all" do
     it "returns an empty list when there are no sessions" do
       expect(described_class.graceful_stop_all(grace: 1)).to eq([])

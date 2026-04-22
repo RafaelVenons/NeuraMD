@@ -1,5 +1,6 @@
 require "pty"
 require "concurrent/map"
+require "neuramd/metrics"
 
 class TentacleRuntime
   SESSIONS = Concurrent::Map.new
@@ -23,6 +24,7 @@ class TentacleRuntime
       )
       SESSIONS[tentacle_id] = session
       schedule_initial_prompt(session, initial_prompt) if initial_prompt.present?
+      Neuramd::Metrics.emit("tentacle_spawn", {tentacle_id: tentacle_id.to_s, command: Array(command).first})
       session
     end
 
@@ -179,6 +181,7 @@ class TentacleRuntime
           if status.nil?
             begin
               Process.kill("KILL", @pid)
+              @force_killed = true
             rescue Errno::ESRCH, Errno::ECHILD
             end
             status = reap(timeout: 2)
@@ -299,13 +302,16 @@ class TentacleRuntime
     end
 
     def fire_on_exit(exit_status:)
-      return unless @on_exit
       should_fire = @on_exit_mutex.synchronize do
         next false if @on_exit_fired
         @on_exit_fired = true
         true
       end
       return unless should_fire
+
+      emit_exit_metric(exit_status)
+
+      return unless @on_exit
       @on_exit.call(
         transcript: transcript,
         command: @command,
@@ -315,6 +321,23 @@ class TentacleRuntime
       )
     rescue StandardError => e
       Rails.logger.error("TentacleRuntime#on_exit failed: #{e.class}: #{e.message}")
+    end
+
+    def emit_exit_metric(exit_status)
+      reason =
+        if @force_killed
+          "forced"
+        elsif exit_status.nil?
+          "unknown"
+        elsif exit_status.zero?
+          "graceful"
+        else
+          "crash"
+        end
+      Neuramd::Metrics.emit(
+        "tentacle_exit",
+        {tentacle_id: @tentacle_id.to_s, reason: reason, exit_status: exit_status}
+      )
     end
 
     private

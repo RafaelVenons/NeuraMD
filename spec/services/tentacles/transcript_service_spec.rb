@@ -12,7 +12,38 @@ RSpec.describe Tentacles::TranscriptService do
   let(:ended_at) { Time.utc(2026, 4, 19, 12, 5, 30) }
   let(:command) { ["bash", "-l"] }
 
+  before { allow(Neuramd::Metrics).to receive(:emit) }
+
   describe ".persist" do
+    it "emits transcript_persist with outcome=ok on success" do
+      described_class.persist(
+        note: note,
+        transcript: "hello\n",
+        command: command,
+        started_at: started_at,
+        ended_at: ended_at
+      )
+      expect(Neuramd::Metrics).to have_received(:emit)
+        .with("transcript_persist", hash_including(tentacle_id: note.id.to_s, outcome: "ok"))
+    end
+
+    it "emits transcript_persist with outcome=error and re-raises on failure" do
+      allow(Notes::CheckpointService).to receive(:call).and_raise(StandardError, "boom")
+
+      expect {
+        described_class.persist(
+          note: note,
+          transcript: "hello\n",
+          command: command,
+          started_at: started_at,
+          ended_at: ended_at
+        )
+      }.to raise_error(StandardError, "boom")
+
+      expect(Neuramd::Metrics).to have_received(:emit)
+        .with("transcript_persist", hash_including(tentacle_id: note.id.to_s, outcome: "error"))
+    end
+
     it "appends a transcript section to the note content and creates a checkpoint" do
       expect {
         described_class.persist(

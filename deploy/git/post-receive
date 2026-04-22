@@ -31,6 +31,7 @@ DEPLOY_LOG=/var/log/neuramd-deploy.log
 DEPLOY_GATE_HOST="${NEURAMD_DEPLOY_GATE_HOST:-http://127.0.0.1:3000}"
 DEPLOY_GATE_NOTICE="${NEURAMD_DEPLOY_GATE_NOTICE_SECONDS:-30}"
 DEPLOY_TOKEN_FILE="${NEURAMD_DEPLOY_TOKEN_FILE:-/home/rafael/.config/neuramd/deploy.token}"
+METRICS_URL="${NEURAMD_METRICS_URL:-http://127.0.0.1:9100}"
 
 log_deploy_event() {
 	# best-effort structured log; ignore write failures (no sudo, dir may be missing)
@@ -38,6 +39,36 @@ log_deploy_event() {
 	local ts
 	ts="$(date --iso-8601=seconds)"
 	printf '{"ts":"%s",%s}\n' "$ts" "$payload" >> "$DEPLOY_LOG" 2>/dev/null || true
+}
+
+# Best-effort POST to the metrics exporter. Silent on failure — if the
+# exporter is down or the token is missing the deploy still proceeds.
+emit_metric_event() {
+	local type="$1"
+	local body="$2"
+	local token=""
+	if [[ -n "${NEURAMD_DEPLOY_TOKEN:-}" ]]; then
+		token="$NEURAMD_DEPLOY_TOKEN"
+	elif [[ -r "$DEPLOY_TOKEN_FILE" ]]; then
+		token="$(tr -d '[:space:]' < "$DEPLOY_TOKEN_FILE")"
+	fi
+	[[ -z "$token" ]] && return 0
+
+	curl --silent --show-error --fail --max-time 3 \
+		-X POST \
+		-H "Authorization: Bearer $token" \
+		-H "Content-Type: application/json" \
+		-d "$body" \
+		"$METRICS_URL/event/$type" > /dev/null 2>&1 || true
+}
+
+# Wrapper that both appends to the local JSON log and fires a metric
+# event to the exporter. Outcomes are mirrored between the two so the
+# Grafana dashboard and the filesystem log agree.
+record_deploy_event() {
+	local outcome="$1"
+	log_deploy_event "\"phase\":\"gate\",\"outcome\":\"$outcome\""
+	emit_metric_event deploy "{\"outcome\":\"$outcome\"}"
 }
 
 resolve_deploy_token() {
@@ -73,27 +104,27 @@ count_alive_tentacles() {
 
 deploy_gate() {
 	if [[ "${NEURAMD_FEATURE_DEPLOY_GATE:-off}" != "on" ]]; then
-		log_deploy_event '"phase":"gate","outcome":"disabled"'
+		record_deploy_event disabled
 		return 0
 	fi
 
 	local token
 	if ! token="$(resolve_deploy_token)"; then
 		echo "autodeploy: DEPLOY_GATE=on but no token configured; proceeding WITHOUT gate" >&2
-		log_deploy_event '"phase":"gate","outcome":"no_token"'
+		record_deploy_event no_token
 		return 0
 	fi
 
 	local alive_count
 	if ! alive_count="$(count_alive_tentacles "$token")"; then
 		echo "autodeploy: drain endpoint unreachable at $DEPLOY_GATE_HOST; proceeding WITHOUT gate" >&2
-		log_deploy_event '"phase":"gate","outcome":"endpoint_unreachable"'
+		record_deploy_event endpoint_unreachable
 		return 0
 	fi
 
 	if [[ "$alive_count" -eq 0 ]]; then
 		echo "autodeploy: 0 live tentacle(s) — proceeding"
-		log_deploy_event '"phase":"gate","outcome":"clear","alive_count":0'
+		record_deploy_event clear
 		return 0
 	fi
 
@@ -101,7 +132,7 @@ deploy_gate() {
 		echo "autodeploy: $alive_count live tentacle(s); FORCE=1 — force-draining"
 		curl_drain "$token" force 5 > /dev/null || true
 		sleep 6
-		log_deploy_event "\"phase\":\"gate\",\"outcome\":\"forced\",\"alive_count\":$alive_count"
+		record_deploy_event forced
 		return 0
 	fi
 
@@ -111,19 +142,19 @@ deploy_gate() {
 
 	if ! alive_count="$(count_alive_tentacles "$token")"; then
 		echo "autodeploy: recheck failed after warn window; proceeding (shutdown hooks will drain)" >&2
-		log_deploy_event '"phase":"gate","outcome":"recheck_failed"'
+		record_deploy_event recheck_failed
 		return 0
 	fi
 
 	if [[ "$alive_count" -gt 0 ]]; then
 		echo "autodeploy aborted: $alive_count tentacle(s) still alive after warning" >&2
 		echo "                    set NEURAMD_DEPLOY_FORCE=1 to override" >&2
-		log_deploy_event "\"phase\":\"gate\",\"outcome\":\"aborted\",\"alive_count\":$alive_count"
+		record_deploy_event aborted
 		exit 1
 	fi
 
 	echo "autodeploy: all tentacles drained after warn window — proceeding"
-	log_deploy_event '"phase":"gate","outcome":"drained"'
+	record_deploy_event drained
 }
 
 while read -r oldrev newrev refname; do
