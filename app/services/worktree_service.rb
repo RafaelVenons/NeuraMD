@@ -7,9 +7,9 @@ class WorktreeService
   BRANCH_PREFIX = "tentacle/".freeze
 
   class << self
-    def ensure(tentacle_id:, repo_root: Rails.root)
+    def ensure(tentacle_id:, repo_root: Rails.root, worktree_root: nil, link_shared: true)
       repo_root = Pathname.new(repo_root)
-      path = Pathname.new(path_for(tentacle_id: tentacle_id, repo_root: repo_root))
+      path = Pathname.new(path_for(tentacle_id: tentacle_id, repo_root: repo_root, worktree_root: worktree_root))
       branch = branch_for(tentacle_id)
 
       return path.to_s if registered?(path.to_s, repo_root: repo_root)
@@ -20,13 +20,13 @@ class WorktreeService
       args = ["worktree", "add"]
       args.concat(branch_exists?(branch, repo_root: repo_root) ? [path.to_s, branch] : ["-b", branch, path.to_s])
       run_git!(args, repo_root: repo_root)
-      link_shared_paths(path: path, repo_root: repo_root)
+      link_shared_paths(path: path, repo_root: repo_root) if link_shared
       path.to_s
     end
 
-    def remove(tentacle_id:, repo_root: Rails.root)
+    def remove(tentacle_id:, repo_root: Rails.root, worktree_root: nil)
       repo_root = Pathname.new(repo_root)
-      path = path_for(tentacle_id: tentacle_id, repo_root: repo_root)
+      path = path_for(tentacle_id: tentacle_id, repo_root: repo_root, worktree_root: worktree_root)
       branch = branch_for(tentacle_id)
 
       if registered?(path, repo_root: repo_root)
@@ -37,8 +37,9 @@ class WorktreeService
       nil
     end
 
-    def path_for(tentacle_id:, repo_root: Rails.root)
-      Pathname.new(repo_root).join("tmp/tentacles", tentacle_id.to_s).to_s
+    def path_for(tentacle_id:, repo_root: Rails.root, worktree_root: nil)
+      base = worktree_root ? Pathname.new(worktree_root) : Pathname.new(repo_root).join("tmp/tentacles")
+      base.join(tentacle_id.to_s).to_s
     end
 
     private

@@ -379,6 +379,106 @@ RSpec.describe "API tentacle sessions", type: :request do
         expect(response).to have_http_status(:created)
       end
     end
+
+    context "when the note points at a shared workspace" do
+      let(:workspace_root) { Dir.mktmpdir("neuramd-sessions-ws-") }
+      let(:workspace_path) { File.join(workspace_root, "neuramd") }
+
+      around do |example|
+        original = ENV["NEURAMD_TENTACLE_WORKSPACE_ROOT"]
+        ENV["NEURAMD_TENTACLE_WORKSPACE_ROOT"] = workspace_root
+        FileUtils.mkdir_p(workspace_path)
+        out, status = Open3.capture2e(
+          {"GIT_CONFIG_GLOBAL" => "/dev/null", "GIT_CONFIG_SYSTEM" => "/dev/null"},
+          "git", "init", "--quiet", "--initial-branch=main", chdir: workspace_path
+        )
+        raise "git init failed: #{out}" unless status.success?
+        example.run
+      ensure
+        ENV["NEURAMD_TENTACLE_WORKSPACE_ROOT"] = original
+        FileUtils.remove_entry(workspace_root) if File.directory?(workspace_root)
+      end
+
+      before do
+        PropertyDefinition.find_or_create_by!(key: "tentacle_workspace") do |d|
+          d.value_type = "text"
+          d.system = true
+        end
+        PropertyDefinition.find_or_create_by!(key: "tentacle_cwd") do |d|
+          d.value_type = "text"
+          d.system = true
+        end
+      end
+
+      it "routes WorktreeService through the resolved workspace with link_shared: false" do
+        sign_in user
+        note = make_note("InWorkspace")
+        Properties::SetService.call(note: note, changes: {"tentacle_workspace" => "neuramd"})
+
+        fake = instance_double(TentacleRuntime::Session, alive?: true, pid: 1, started_at: Time.current)
+        expect(WorktreeService).to receive(:ensure) do |**kwargs|
+          expect(kwargs[:tentacle_id]).to eq(note.id)
+          expect(kwargs[:repo_root]).to eq(workspace_path)
+          expect(kwargs[:worktree_root]).to eq(File.join(workspace_root, ".tentacle-worktrees", "neuramd"))
+          expect(kwargs[:link_shared]).to eq(false)
+          "/stub/workspace-worktree"
+        end
+        expect(TentacleRuntime).to receive(:start) do |**kwargs|
+          expect(kwargs[:cwd]).to eq("/stub/workspace-worktree")
+          fake
+        end
+
+        post "/api/notes/#{note.reload.slug}/tentacle", params: {command: "claude"}.to_json,
+          headers: {"CONTENT_TYPE" => "application/json"}
+
+        expect(response).to have_http_status(:created)
+      end
+
+      it "prefers tentacle_workspace over tentacle_cwd when both are set" do
+        sign_in user
+        note = make_note("PreferWs")
+        Properties::SetService.call(
+          note: note,
+          changes: {
+            "tentacle_workspace" => "neuramd",
+            "tentacle_cwd" => "/home/venom/projects/NeuraMD"
+          }
+        )
+
+        fake = instance_double(TentacleRuntime::Session, alive?: true, pid: 1, started_at: Time.current)
+        expect(WorktreeService).to receive(:ensure) do |**kwargs|
+          expect(kwargs[:repo_root]).to eq(workspace_path)
+          expect(kwargs[:worktree_root]).to include(".tentacle-worktrees/neuramd")
+          "/stub/worktree"
+        end
+        allow(TentacleRuntime).to receive(:start).and_return(fake)
+
+        post "/api/notes/#{note.reload.slug}/tentacle", params: {command: "claude"}.to_json,
+          headers: {"CONTENT_TYPE" => "application/json"}
+
+        expect(response).to have_http_status(:created)
+      end
+
+      it "falls back to tentacle_cwd / Rails.root when workspace is invalid" do
+        sign_in user
+        note = make_note("BadWs")
+        Properties::SetService.call(note: note, changes: {"tentacle_workspace" => "missing-one"})
+
+        fake = instance_double(TentacleRuntime::Session, alive?: true, pid: 1, started_at: Time.current)
+        expect(WorktreeService).to receive(:ensure) do |**kwargs|
+          expect(kwargs[:repo_root]).to eq(Rails.root)
+          expect(kwargs[:worktree_root]).to be_nil
+          expect(kwargs[:link_shared]).to eq(true).or be_nil
+          "/stub/worktree"
+        end
+        allow(TentacleRuntime).to receive(:start).and_return(fake)
+
+        post "/api/notes/#{note.reload.slug}/tentacle", params: {command: "claude"}.to_json,
+          headers: {"CONTENT_TYPE" => "application/json"}
+
+        expect(response).to have_http_status(:created)
+      end
+    end
   end
 
   describe "DELETE /api/notes/:slug/tentacle" do

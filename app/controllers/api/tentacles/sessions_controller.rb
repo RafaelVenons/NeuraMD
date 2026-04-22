@@ -44,9 +44,14 @@ module Api
           return
         end
 
-        repo_root, boot_prompt = sanitized_boot_config(@note)
+        repo_root, worktree_root, link_shared, boot_prompt = sanitized_boot_config(@note)
         initial_prompt = merge_prompts(boot_prompt, routed_prompt)
-        cwd = WorktreeService.ensure(tentacle_id: @note.id, repo_root: repo_root)
+        cwd = WorktreeService.ensure(
+          tentacle_id: @note.id,
+          repo_root: repo_root,
+          worktree_root: worktree_root,
+          link_shared: link_shared
+        )
         session = ::TentacleRuntime.start(
           tentacle_id: @note.id,
           command: command,
@@ -84,9 +89,19 @@ module Api
 
       def sanitized_boot_config(note)
         props = note.current_properties
-        canonical_cwd, cwd_err = ::Tentacles::BootConfig.canonicalize_cwd(props["tentacle_cwd"])
-        if cwd_err && props["tentacle_cwd"].present?
-          Rails.logger.warn("Tentacle #{note.id} tentacle_cwd rejected at session start: #{cwd_err}")
+
+        workspace_name = props["tentacle_workspace"]
+        workspace_path, workspace_err = ::Tentacles::Workspace.resolve(workspace_name)
+        if workspace_err && workspace_name.present?
+          Rails.logger.warn("Tentacle #{note.id} tentacle_workspace rejected at session start: #{workspace_err}")
+        end
+
+        canonical_cwd = nil
+        unless workspace_path
+          canonical_cwd, cwd_err = ::Tentacles::BootConfig.canonicalize_cwd(props["tentacle_cwd"])
+          if cwd_err && props["tentacle_cwd"].present?
+            Rails.logger.warn("Tentacle #{note.id} tentacle_cwd rejected at session start: #{cwd_err}")
+          end
         end
 
         validated_prompt, prompt_err = ::Tentacles::BootConfig.validate_initial_prompt(props["tentacle_initial_prompt"])
@@ -94,7 +109,11 @@ module Api
           Rails.logger.warn("Tentacle #{note.id} tentacle_initial_prompt rejected at session start: #{prompt_err}")
         end
 
-        [canonical_cwd || Rails.root, validated_prompt]
+        repo_root = workspace_path || canonical_cwd || Rails.root
+        worktree_root = workspace_path ? ::Tentacles::Workspace.worktree_root_for(workspace_name) : nil
+        link_shared = workspace_path.nil?
+
+        [repo_root, worktree_root, link_shared, validated_prompt]
       end
 
       def resolve_command(raw)

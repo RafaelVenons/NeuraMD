@@ -1,4 +1,7 @@
 require "rails_helper"
+require "fileutils"
+require "tmpdir"
+require "open3"
 
 RSpec.describe Tentacles::CronTickJob, type: :job do
   before do
@@ -11,8 +14,8 @@ RSpec.describe Tentacles::CronTickJob, type: :job do
       d.system = true
     end
     TentacleRuntime::SESSIONS.clear
-    allow(WorktreeService).to receive(:ensure) do |tentacle_id:, repo_root: Rails.root|
-      WorktreeService.path_for(tentacle_id: tentacle_id, repo_root: repo_root)
+    allow(WorktreeService).to receive(:ensure) do |tentacle_id:, repo_root: Rails.root, worktree_root: nil, link_shared: true|
+      WorktreeService.path_for(tentacle_id: tentacle_id, repo_root: repo_root, worktree_root: worktree_root)
     end
   end
 
@@ -113,7 +116,9 @@ RSpec.describe Tentacles::CronTickJob, type: :job do
 
       expect(WorktreeService).to receive(:ensure).with(
         tentacle_id: note.id,
-        repo_root: Pathname.new("/home/venom/projects/NeuraMD")
+        repo_root: Pathname.new("/home/venom/projects/NeuraMD"),
+        worktree_root: nil,
+        link_shared: true
       ).and_return(expected_path)
       expect(TentacleRuntime).to receive(:start) do |**kwargs|
         expect(kwargs[:tentacle_id]).to eq(note.id)
@@ -130,11 +135,52 @@ RSpec.describe Tentacles::CronTickJob, type: :job do
 
       expect(WorktreeService).to receive(:ensure).with(
         tentacle_id: note.id,
-        repo_root: Rails.root
+        repo_root: Rails.root,
+        worktree_root: nil,
+        link_shared: true
       ).and_call_original
       allow(TentacleRuntime).to receive(:start).and_return(fake)
 
       described_class.perform_now
+    end
+
+    it "routes through a shared workspace when tentacle_workspace property is set" do
+      PropertyDefinition.find_or_create_by!(key: "tentacle_workspace") do |d|
+        d.value_type = "text"
+        d.system = true
+      end
+
+      workspace_root = Dir.mktmpdir("neuramd-cron-ws-")
+      workspace_path = File.join(workspace_root, "neuramd")
+      FileUtils.mkdir_p(workspace_path)
+      out, status = Open3.capture2e(
+        {"GIT_CONFIG_GLOBAL" => "/dev/null", "GIT_CONFIG_SYSTEM" => "/dev/null"},
+        "git", "init", "--quiet", "--initial-branch=main", chdir: workspace_path
+      )
+      raise "git init failed: #{out}" unless status.success?
+
+      original_env = ENV["NEURAMD_TENTACLE_WORKSPACE_ROOT"]
+      ENV["NEURAMD_TENTACLE_WORKSPACE_ROOT"] = workspace_root
+
+      note = make_cron_note(expr: "* * * * *")
+      Properties::SetService.call(note: note, changes: {"tentacle_workspace" => "neuramd"})
+
+      fake = instance_double(TentacleRuntime::Session, alive?: true, pid: 1, started_at: Time.current)
+      expect(WorktreeService).to receive(:ensure) do |**kwargs|
+        expect(kwargs[:repo_root].to_s).to eq(workspace_path)
+        expect(kwargs[:worktree_root]).to eq(File.join(workspace_root, ".tentacle-worktrees", "neuramd"))
+        expect(kwargs[:link_shared]).to eq(false)
+        "/stub/cron-worktree"
+      end
+      expect(TentacleRuntime).to receive(:start) do |**kwargs|
+        expect(kwargs[:cwd]).to eq("/stub/cron-worktree")
+        fake
+      end
+
+      described_class.perform_now
+    ensure
+      ENV["NEURAMD_TENTACLE_WORKSPACE_ROOT"] = original_env
+      FileUtils.remove_entry(workspace_root) if workspace_root && File.directory?(workspace_root)
     end
 
     it "registers an on_exit callback that enqueues a CronLeaseReleaseJob with the run payload" do

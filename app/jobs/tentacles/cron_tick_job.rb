@@ -53,10 +53,20 @@ module Tentacles
         end
       end
 
-      canonical_cwd, cwd_err = Tentacles::BootConfig.canonicalize_cwd(props["tentacle_cwd"])
-      if cwd_err
-        Rails.logger.warn("Tentacles::CronTickJob note #{note.id} has invalid tentacle_cwd: #{cwd_err}")
+      workspace_name = props["tentacle_workspace"]
+      workspace_path, workspace_err = Tentacles::Workspace.resolve(workspace_name)
+      if workspace_err && workspace_name.present?
+        Rails.logger.warn("Tentacles::CronTickJob note #{note.id} has invalid tentacle_workspace: #{workspace_err}")
         return
+      end
+
+      canonical_cwd = nil
+      unless workspace_path
+        canonical_cwd, cwd_err = Tentacles::BootConfig.canonicalize_cwd(props["tentacle_cwd"])
+        if cwd_err
+          Rails.logger.warn("Tentacles::CronTickJob note #{note.id} has invalid tentacle_cwd: #{cwd_err}")
+          return
+        end
       end
 
       body = note.head_revision&.content_markdown.to_s
@@ -71,8 +81,16 @@ module Tentacles
 
       session = nil
       begin
-        repo_root = canonical_cwd ? Pathname.new(canonical_cwd) : Rails.root
-        worktree = WorktreeService.ensure(tentacle_id: note.id, repo_root: repo_root)
+        repo_root = workspace_path || canonical_cwd || Rails.root
+        worktree_root = workspace_path ? Tentacles::Workspace.worktree_root_for(workspace_name) : nil
+        link_shared = workspace_path.nil?
+
+        worktree = WorktreeService.ensure(
+          tentacle_id: note.id,
+          repo_root: Pathname.new(repo_root),
+          worktree_root: worktree_root,
+          link_shared: link_shared
+        )
 
         session = TentacleRuntime.start(
           tentacle_id: note.id,
