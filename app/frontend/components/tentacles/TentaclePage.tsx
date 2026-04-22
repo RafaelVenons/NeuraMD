@@ -4,6 +4,7 @@ import { FitAddon } from "@xterm/addon-fit"
 import { Terminal } from "@xterm/xterm"
 import "@xterm/xterm/css/xterm.css"
 
+import { AgentStateBadge } from "~/components/tentacles/AgentStateBadge"
 import { ContextLinks } from "~/components/tentacles/ContextLinks"
 import { InboxPanel } from "~/components/tentacles/InboxPanel"
 import { keyEventToInputBytes } from "~/components/tentacles/keyEvents"
@@ -17,6 +18,13 @@ import type {
 } from "~/components/tentacles/types"
 import { getCableConsumer } from "~/runtime/cable"
 import { fetchJson } from "~/runtime/fetchJson"
+import {
+  type RuntimeEvent,
+  deriveStateFromEvent,
+} from "~/runtime/runtimeStateMachine"
+import { runtimeStateStore } from "~/runtime/runtimeStateStore"
+
+const SILENCE_THRESHOLD_MS = 2000
 
 type LifecycleState =
   | { kind: "loading" }
@@ -52,6 +60,25 @@ export function TentaclePage() {
   const fitRef = useRef<FitAddon | null>(null)
   const schedulerRef = useRef<ResizeScheduler | null>(null)
   const subscriptionRef = useRef<CableSubscription | null>(null)
+  const silenceTimerRef = useRef<number | null>(null)
+  const runtimeIdRef = useRef<string | null>(null)
+
+  const pushRuntimeEvent = useCallback((event: RuntimeEvent) => {
+    const id = runtimeIdRef.current
+    if (!id) return
+    const prev = runtimeStateStore.getSnapshot()[id]?.state ?? null
+    runtimeStateStore.setState(id, deriveStateFromEvent(prev, event))
+    if (silenceTimerRef.current != null) {
+      window.clearTimeout(silenceTimerRef.current)
+      silenceTimerRef.current = null
+    }
+    if (event.type === "input" || event.type === "output") {
+      silenceTimerRef.current = window.setTimeout(() => {
+        silenceTimerRef.current = null
+        pushRuntimeEvent({ type: "silence" })
+      }, SILENCE_THRESHOLD_MS)
+    }
+  }, [])
   const subscribedTentacleIdRef = useRef<string | null>(null)
   const routedDeliveryRef = useRef<string | null>(null)
   const stateRef = useRef(state)
@@ -71,12 +98,14 @@ export function TentaclePage() {
     term.open(terminalHost.current)
     term.onData((data) => {
       subscriptionRef.current?.perform("input", { data })
+      pushRuntimeEvent({ type: "input" })
     })
     term.attachCustomKeyEventHandler((event) => {
       if (event.type !== "keydown") return true
       const bytes = keyEventToInputBytes(event)
       if (bytes === null) return true
       subscriptionRef.current?.perform("input", { data: bytes })
+      pushRuntimeEvent({ type: "input" })
       return false
     })
     terminalRef.current = term
@@ -107,13 +136,17 @@ export function TentaclePage() {
       observer.disconnect()
       scheduler.dispose()
       schedulerRef.current = null
+      if (silenceTimerRef.current != null) {
+        window.clearTimeout(silenceTimerRef.current)
+        silenceTimerRef.current = null
+      }
       subscriptionRef.current?.unsubscribe()
       subscriptionRef.current = null
       term.dispose()
       terminalRef.current = null
       fitRef.current = null
     }
-  }, [])
+  }, [pushRuntimeEvent])
 
   const subscribe = useCallback((tentacleId: string) => {
     if (
@@ -125,6 +158,7 @@ export function TentaclePage() {
     subscriptionRef.current?.unsubscribe()
     subscriptionRef.current = null
     subscribedTentacleIdRef.current = tentacleId
+    runtimeIdRef.current = tentacleId
 
     const consumer = getCableConsumer()
     const sub = consumer.subscriptions.create(
@@ -149,6 +183,7 @@ export function TentaclePage() {
     subscriptionRef.current?.unsubscribe()
     subscriptionRef.current = null
     subscribedTentacleIdRef.current = null
+    runtimeIdRef.current = null
   }, [])
 
   const handleCable = useCallback((msg: TentacleCableMessage | null) => {
@@ -156,11 +191,13 @@ export function TentaclePage() {
     if (!term || !msg) return
     if (msg.type === "output") {
       term.write(msg.data)
+      pushRuntimeEvent({ type: "output" })
       return
     }
     if (msg.type === "exit") {
       const tail = msg.status == null ? "closed" : `exit ${msg.status}`
       term.writeln(`\r\n\x1b[90m[${tail}]\x1b[0m`)
+      pushRuntimeEvent({ type: "exit" })
       setStatus("encerrado")
       unsubscribe()
       const previous = stateRef.current
@@ -191,7 +228,7 @@ export function TentaclePage() {
         `\r\n\x1b[36m[encaminhamento → ${msg.target.title}]\x1b[0m`
       )
     }
-  }, [unsubscribe])
+  }, [unsubscribe, pushRuntimeEvent])
 
   const dismissSuggestion = useCallback((id: string) => {
     setSuggestions((prev) => prev.filter((s) => s.id !== id))
@@ -364,6 +401,10 @@ export function TentaclePage() {
               <span className="nm-tentacle-page__muted"> — pid {state.session.pid}</span>
             ) : null}
           </p>
+          <AgentStateBadge
+            tentacleId={state.kind === "running" ? state.session.tentacle_id : null}
+            fallback={state.kind === "running" ? "processing" : "idle"}
+          />
         </div>
         <div className="nm-tentacle-page__controls">
           <label>
