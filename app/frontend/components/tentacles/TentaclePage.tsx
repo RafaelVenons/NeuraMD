@@ -7,6 +7,7 @@ import "@xterm/xterm/css/xterm.css"
 import { ContextLinks } from "~/components/tentacles/ContextLinks"
 import { InboxPanel } from "~/components/tentacles/InboxPanel"
 import { keyEventToInputBytes } from "~/components/tentacles/keyEvents"
+import { createResizeScheduler, type ResizeScheduler } from "~/components/tentacles/resizeScheduler"
 import { RouteSuggestionCard } from "~/components/tentacles/RouteSuggestionCard"
 import { SpawnChildForm } from "~/components/tentacles/SpawnChildForm"
 import type {
@@ -49,6 +50,7 @@ export function TentaclePage() {
   const terminalHost = useRef<HTMLDivElement | null>(null)
   const terminalRef = useRef<Terminal | null>(null)
   const fitRef = useRef<FitAddon | null>(null)
+  const schedulerRef = useRef<ResizeScheduler | null>(null)
   const subscriptionRef = useRef<CableSubscription | null>(null)
   const subscribedTentacleIdRef = useRef<string | null>(null)
   const routedDeliveryRef = useRef<string | null>(null)
@@ -67,7 +69,6 @@ export function TentaclePage() {
     const fit = new FitAddon()
     term.loadAddon(fit)
     term.open(terminalHost.current)
-    requestAnimationFrame(() => fit.fit())
     term.onData((data) => {
       subscriptionRef.current?.perform("input", { data })
     })
@@ -81,11 +82,31 @@ export function TentaclePage() {
     terminalRef.current = term
     fitRef.current = fit
 
-    const observer = new ResizeObserver(() => handleResize())
+    const scheduler = createResizeScheduler({
+      onFit: () => {
+        fit.fit()
+        subscriptionRef.current?.perform("resize", { cols: term.cols, rows: term.rows })
+      },
+      debounceMs: 150,
+    })
+    schedulerRef.current = scheduler
+    requestAnimationFrame(() => scheduler.flush())
+
+    const observer = new ResizeObserver(() => scheduler.schedule())
     observer.observe(terminalHost.current)
 
+    const onVisibility = () => {
+      if (document.visibilityState !== "visible") return
+      scheduler.flush()
+      term.refresh(0, Math.max(term.rows - 1, 0))
+    }
+    document.addEventListener("visibilitychange", onVisibility)
+
     return () => {
+      document.removeEventListener("visibilitychange", onVisibility)
       observer.disconnect()
+      scheduler.dispose()
+      schedulerRef.current = null
       subscriptionRef.current?.unsubscribe()
       subscriptionRef.current = null
       term.dispose()
@@ -113,7 +134,9 @@ export function TentaclePage() {
           queueMicrotask(() => {
             if (subscribedTentacleIdRef.current !== tentacleId) return
             if (!subscriptionRef.current) return
-            handleResize()
+            schedulerRef.current?.flush()
+            const term = terminalRef.current
+            if (term) term.refresh(0, Math.max(term.rows - 1, 0))
           })
         },
         received: (msg: TentacleCableMessage | null) => handleCable(msg),
@@ -126,16 +149,6 @@ export function TentaclePage() {
     subscriptionRef.current?.unsubscribe()
     subscriptionRef.current = null
     subscribedTentacleIdRef.current = null
-  }, [])
-
-  const handleResize = useCallback(() => {
-    const term = terminalRef.current
-    const fit = fitRef.current
-    if (!term || !fit) return
-    fit.fit()
-    if (subscriptionRef.current) {
-      subscriptionRef.current.perform("resize", { cols: term.cols, rows: term.rows })
-    }
   }, [])
 
   const handleCable = useCallback((msg: TentacleCableMessage | null) => {
