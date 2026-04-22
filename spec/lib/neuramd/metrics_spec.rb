@@ -2,6 +2,9 @@ require "rails_helper"
 require "neuramd/metrics"
 
 RSpec.describe Neuramd::Metrics do
+  before { described_class.reset_for_tests! }
+  after { described_class.reset_for_tests! }
+
   def with_env(values)
     originals = values.keys.to_h { |k| [k, ENV[k]] }
     values.each { |k, v| v.nil? ? ENV.delete(k) : ENV[k] = v }
@@ -110,6 +113,75 @@ RSpec.describe Neuramd::Metrics do
 
         expect { described_class.emit("deploy")&.join }.not_to raise_error
         expect(Rails.logger).to have_received(:warn).with(/emit\(deploy\) failed/)
+      end
+    end
+
+    it "uses a single persistent worker thread across many emits instead of one per call" do
+      with_env(
+        "NEURAMD_METRICS_URL" => "http://127.0.0.1:9100",
+        "NEURAMD_DEPLOY_TOKEN" => "secret",
+        "NEURAMD_DEPLOY_TOKEN_FILE" => nil
+      ) do
+        http = instance_double(Net::HTTP)
+        allow(http).to receive(:request).and_return(double(code: "204"))
+        allow(Net::HTTP).to receive(:start).and_yield(http)
+
+        handles = 20.times.map { described_class.emit("deploy", i: _1) }
+        handles.each { |h| h&.join(2) }
+
+        expect(described_class.worker_count).to eq(1)
+      end
+    end
+
+    it "drops events and increments drop_count when the bounded queue is full" do
+      with_env(
+        "NEURAMD_METRICS_URL" => "http://127.0.0.1:9100",
+        "NEURAMD_DEPLOY_TOKEN" => "secret",
+        "NEURAMD_DEPLOY_TOKEN_FILE" => nil
+      ) do
+        stub_const("Neuramd::Metrics::QUEUE_CAPACITY", 2)
+        allow(Rails.logger).to receive(:warn)
+
+        gate = Queue.new
+        http = instance_double(Net::HTTP)
+        allow(http).to receive(:request) do
+          gate.pop
+          double(code: "204")
+        end
+        allow(Net::HTTP).to receive(:start).and_yield(http)
+
+        first = described_class.emit("deploy", n: 1)
+        # Give worker time to pop the first job so it sits blocked on gate.pop.
+        sleep 0.05
+        full1 = described_class.emit("deploy", n: 2)
+        full2 = described_class.emit("deploy", n: 3)
+        dropped_a = described_class.emit("deploy", n: 4)
+        dropped_b = described_class.emit("deploy", n: 5)
+
+        expect(described_class.drop_count).to eq(2)
+        # Dropped handles should be pre-signaled so callers never hang.
+        expect(dropped_a.join(0.1)).not_to be_nil
+        expect(dropped_b.join(0.1)).not_to be_nil
+
+        # Drain: release the gate and let the worker finish the queued jobs.
+        5.times { gate.push(:go) }
+        [first, full1, full2].each { |h| h&.join(2) }
+        expect(Rails.logger).to have_received(:warn).with(/dropped/).at_least(:once)
+      end
+    end
+
+    it "reset_for_tests! tears down the worker and resets drop_count" do
+      with_env("NEURAMD_METRICS_URL" => "http://127.0.0.1:9100") do
+        http = instance_double(Net::HTTP)
+        allow(http).to receive(:request).and_return(double(code: "204"))
+        allow(Net::HTTP).to receive(:start).and_yield(http)
+
+        described_class.emit("deploy")&.join(2)
+        expect(described_class.worker_count).to eq(1)
+
+        described_class.reset_for_tests!
+        expect(described_class.worker_count).to eq(0)
+        expect(described_class.drop_count).to eq(0)
       end
     end
   end

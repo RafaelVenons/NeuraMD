@@ -47,23 +47,12 @@ module Api
         repo_root, boot_prompt = sanitized_boot_config(@note)
         initial_prompt = merge_prompts(boot_prompt, routed_prompt)
         cwd = WorktreeService.ensure(tentacle_id: @note.id, repo_root: repo_root)
-        note = @note
-        author = current_user
         session = ::TentacleRuntime.start(
           tentacle_id: @note.id,
           command: command,
           cwd: cwd,
           initial_prompt: initial_prompt,
-          on_exit: ->(transcript:, command:, started_at:, ended_at:, **) do
-            ::Tentacles::TranscriptService.persist(
-              note: note,
-              transcript: transcript,
-              command: command,
-              started_at: started_at,
-              ended_at: ended_at,
-              author: author
-            )
-          end
+          persistence: {kind: "web", author_id: current_user&.id}
         )
         render json: serialize_session(@note, session, command_override: command, reused: false, boot_config_applied: true), status: :created
       end

@@ -142,7 +142,7 @@ RSpec.describe Tentacles::CronTickJob, type: :job do
       fake = instance_double(TentacleRuntime::Session, alive?: true, pid: 1, started_at: Time.current)
       captured_on_exit = nil
       allow(TentacleRuntime).to receive(:start) do |**kwargs|
-        captured_on_exit = kwargs[:on_exit]
+        captured_on_exit = TentacleRuntime::Persistence.build_on_exit(kwargs[:persistence], tentacle_id: note.id)
         fake
       end
 
@@ -177,7 +177,7 @@ RSpec.describe Tentacles::CronTickJob, type: :job do
       fake = instance_double(TentacleRuntime::Session, alive?: true, pid: 1, started_at: Time.current)
       captured_on_exit = nil
       allow(TentacleRuntime).to receive(:start) do |**kwargs|
-        captured_on_exit = kwargs[:on_exit]
+        captured_on_exit = TentacleRuntime::Persistence.build_on_exit(kwargs[:persistence], tentacle_id: note.id)
         fake
       end
 
@@ -212,7 +212,7 @@ RSpec.describe Tentacles::CronTickJob, type: :job do
       fake = instance_double(TentacleRuntime::Session, alive?: true, pid: 1, started_at: Time.current)
       captured_on_exit = nil
       allow(TentacleRuntime).to receive(:start) do |**kwargs|
-        captured_on_exit = kwargs[:on_exit]
+        captured_on_exit = TentacleRuntime::Persistence.build_on_exit(kwargs[:persistence], tentacle_id: note.id)
         fake
       end
 
@@ -245,7 +245,7 @@ RSpec.describe Tentacles::CronTickJob, type: :job do
       fake = instance_double(TentacleRuntime::Session, alive?: true, pid: 1, started_at: Time.current)
       captured_on_exit = nil
       allow(TentacleRuntime).to receive(:start) do |**kwargs|
-        captured_on_exit = kwargs[:on_exit]
+        captured_on_exit = TentacleRuntime::Persistence.build_on_exit(kwargs[:persistence], tentacle_id: note.id)
         fake
       end
 
@@ -281,7 +281,7 @@ RSpec.describe Tentacles::CronTickJob, type: :job do
         snapshot = TentacleCronState.find_by(note_id: note.id)
         observed_attempt = snapshot&.last_attempted_at
         observed_fire = snapshot&.last_fired_at
-        captured_on_exit = kwargs[:on_exit]
+        captured_on_exit = TentacleRuntime::Persistence.build_on_exit(kwargs[:persistence], tentacle_id: note.id)
         fake
       end
 
@@ -338,7 +338,7 @@ RSpec.describe Tentacles::CronTickJob, type: :job do
       fake = instance_double(TentacleRuntime::Session, alive?: true, pid: 1, started_at: Time.current)
       captured_on_exit = nil
       allow(TentacleRuntime).to receive(:start) do |**kwargs|
-        captured_on_exit = kwargs[:on_exit]
+        captured_on_exit = TentacleRuntime::Persistence.build_on_exit(kwargs[:persistence], tentacle_id: note.id)
         fake
       end
 
@@ -369,7 +369,7 @@ RSpec.describe Tentacles::CronTickJob, type: :job do
       fake = instance_double(TentacleRuntime::Session, alive?: true, pid: 1, started_at: Time.current)
       captured_on_exit = nil
       allow(TentacleRuntime).to receive(:start) do |**kwargs|
-        captured_on_exit = kwargs[:on_exit]
+        captured_on_exit = TentacleRuntime::Persistence.build_on_exit(kwargs[:persistence], tentacle_id: note.id)
         fake
       end
 
@@ -397,7 +397,7 @@ RSpec.describe Tentacles::CronTickJob, type: :job do
       fake = instance_double(TentacleRuntime::Session, alive?: true, pid: 1, started_at: Time.current)
       captured_on_exit = nil
       allow(TentacleRuntime).to receive(:start) do |**kwargs|
-        captured_on_exit = kwargs[:on_exit]
+        captured_on_exit = TentacleRuntime::Persistence.build_on_exit(kwargs[:persistence], tentacle_id: note.id)
         fake
       end
 
@@ -425,7 +425,7 @@ RSpec.describe Tentacles::CronTickJob, type: :job do
       fake = instance_double(TentacleRuntime::Session, alive?: true, pid: 1, started_at: Time.current)
       captured_on_exit = nil
       allow(TentacleRuntime).to receive(:start) do |**kwargs|
-        captured_on_exit = kwargs[:on_exit]
+        captured_on_exit = TentacleRuntime::Persistence.build_on_exit(kwargs[:persistence], tentacle_id: note.id)
         fake
       end
 
@@ -460,7 +460,7 @@ RSpec.describe Tentacles::CronTickJob, type: :job do
       fake = instance_double(TentacleRuntime::Session, alive?: true, pid: 1, started_at: Time.current)
       captured_on_exit = nil
       allow(TentacleRuntime).to receive(:start) do |**kwargs|
-        captured_on_exit = kwargs[:on_exit]
+        captured_on_exit = TentacleRuntime::Persistence.build_on_exit(kwargs[:persistence], tentacle_id: note.id)
         fake
       end
 
@@ -507,7 +507,7 @@ RSpec.describe Tentacles::CronTickJob, type: :job do
         first_on_exit = nil
         fake1 = instance_double(TentacleRuntime::Session, alive?: true, pid: 1, started_at: Time.current)
         allow(TentacleRuntime).to receive(:start) do |**kwargs|
-          first_on_exit = kwargs[:on_exit]
+          first_on_exit = TentacleRuntime::Persistence.build_on_exit(kwargs[:persistence], tentacle_id: note.id)
           fake1
         end
 

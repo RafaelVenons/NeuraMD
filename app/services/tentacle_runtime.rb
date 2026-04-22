@@ -19,18 +19,27 @@ class TentacleRuntime
       ENV["NEURAMD_FEATURE_DTACH"].to_s.downcase == "on"
     end
 
-    def start(tentacle_id:, command:, cwd: nil, env: {}, on_exit: nil, initial_prompt: nil,
-              context_warning_ratio: nil, context_window_tokens: nil)
+    def start(tentacle_id:, command:, cwd: nil, env: {}, on_exit: nil, persistence: nil,
+              initial_prompt: nil, context_warning_ratio: nil, context_window_tokens: nil)
       existing = SESSIONS[tentacle_id]
       return existing if existing&.alive?
 
       FileUtils.mkdir_p(cwd) if cwd
+      descriptor = Persistence.validate!(persistence)
+      effective_on_exit =
+        if descriptor
+          Persistence.build_on_exit(descriptor, tentacle_id: tentacle_id)
+        else
+          on_exit
+        end
+
       session = Session.new(
         tentacle_id: tentacle_id,
         command: Array(command),
         cwd: cwd,
         env: env,
-        on_exit: on_exit,
+        on_exit: effective_on_exit,
+        persistence_descriptor: descriptor,
         context_warning_ratio: context_warning_ratio,
         context_window_tokens: context_window_tokens
       )
@@ -210,11 +219,18 @@ class TentacleRuntime
       command = Shellwords.split(record.command.to_s)
       command = [record.command.to_s] if command.empty?
 
+      descriptor = record.metadata.is_a?(Hash) ? record.metadata["persistence"] : nil
+      reconstructed_on_exit =
+        if descriptor
+          Persistence.build_on_exit(descriptor, tentacle_id: record.tentacle_note_id)
+        end
+
       session = Session.new(
         tentacle_id: record.tentacle_note_id,
         command: command,
         cwd: record.cwd,
-        session_record: record
+        session_record: record,
+        on_exit: reconstructed_on_exit
       )
       SESSIONS[record.tentacle_note_id] = session
       record.touch_seen!
@@ -249,12 +265,13 @@ class TentacleRuntime
 
     def initialize(tentacle_id:, command:, cwd: nil, env: {}, on_exit: nil,
                    context_warning_ratio: nil, context_window_tokens: nil,
-                   session_record: nil)
+                   session_record: nil, persistence_descriptor: nil)
       @tentacle_id = tentacle_id
       @command = command
       @cwd = cwd
       @env = self.class.default_env.merge(env).merge("NEURAMD_TENTACLE_ID" => tentacle_id.to_s)
       @on_exit = on_exit
+      @persistence_descriptor = persistence_descriptor
       @transcript = +""
       @transcript_mutex = Mutex.new
       @transcript_dropped_bytes = 0
@@ -433,6 +450,7 @@ class TentacleRuntime
     end
 
     def persist_tentacle_session_record
+      metadata = @persistence_descriptor ? {"persistence" => @persistence_descriptor} : {}
       TentacleSession.create!(
         tentacle_note_id: @tentacle_id,
         pid: @dtach.pid,
@@ -441,7 +459,8 @@ class TentacleRuntime
         command: Array(@command).join(" "),
         cwd: @cwd&.to_s,
         started_at: @started_at,
-        status: "alive"
+        status: "alive",
+        metadata: metadata
       )
     rescue StandardError => e
       Rails.logger.error("[tentacle_runtime] failed to persist TentacleSession: #{e.class}: #{e.message}")

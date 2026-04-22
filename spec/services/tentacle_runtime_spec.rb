@@ -312,6 +312,33 @@ RSpec.describe TentacleRuntime do
         expect(wrapper).not_to receive(:socket_exists?)
         expect(described_class.bootstrap_sessions!).to eq(0)
       end
+
+      it "reconstructs an on_exit callback from the stored persistence descriptor so a natural exit after reattach still persists the transcript" do
+        user = create(:user)
+        create(:tentacle_session,
+          tentacle_note_id: note.id,
+          dtach_socket: wrapper.socket_path,
+          command: "bash -l",
+          metadata: {"persistence" => {"kind" => "web", "author_id" => user.id}})
+        allow(wrapper).to receive(:socket_exists?).and_return(true)
+        allow(wrapper).to receive(:alive?).and_return(true)
+
+        described_class.bootstrap_sessions!
+
+        session = described_class::SESSIONS[note.id]
+        expect(session).not_to be_nil
+        session.append_to_transcript("reattached transcript")
+
+        expect(Tentacles::TranscriptService).to receive(:persist).with(
+          hash_including(
+            note: note,
+            transcript: "reattached transcript",
+            author: user
+          )
+        )
+
+        session.fire_on_exit(exit_status: 0)
+      end
     end
   end
 

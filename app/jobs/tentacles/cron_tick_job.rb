@@ -79,7 +79,7 @@ module Tentacles
           command: %w[claude],
           cwd: worktree,
           initial_prompt: prompt,
-          on_exit: build_on_exit(note, lease_token: state.lease_token)
+          persistence: {kind: "cron", lease_token: state.lease_token}
         )
       rescue StandardError
         state.update_columns(last_attempted_at: nil, lease_pid: nil, lease_host: nil, lease_token: nil)
@@ -141,31 +141,6 @@ module Tentacles
       TentacleCronState.create!(note_id: note_id)
     rescue ActiveRecord::RecordNotUnique
       nil
-    end
-
-    def build_on_exit(note, lease_token:)
-      note_id = note.id
-      tick_job = self
-      ->(transcript:, command:, started_at:, ended_at:, exit_status: nil, **) do
-        Tentacles::CronLeaseReleaseJob.perform_later(
-          note_id: note_id,
-          lease_token: lease_token,
-          transcript: transcript.to_s,
-          command: Array(command),
-          started_at: tick_job.send(:normalize_timestamp, started_at),
-          ended_at: tick_job.send(:normalize_timestamp, ended_at),
-          exit_status: exit_status
-        )
-      rescue StandardError => e
-        tick_job.emergency_release_on_enqueue_failure(
-          note_id: note_id, lease_token: lease_token, error: e
-        )
-      end
-    end
-
-    def normalize_timestamp(value)
-      return value.iso8601(6) if value.respond_to?(:iso8601)
-      Time.current.iso8601(6)
     end
 
     public
