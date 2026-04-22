@@ -42,11 +42,12 @@ export function GraphPage() {
     return state.dataset.tags.find((t) => t.name === AGENT_TEAM_TAG)?.id ?? null
   }, [state])
 
-  const isAgentsPresetActive = agentTagId !== null && selectedTagIds.has(agentTagId)
+  const isAgentsPresetActive =
+    agentTagId !== null && selectedTagIds.size === 1 && selectedTagIds.has(agentTagId)
 
   const toggleAgentsPreset = () => {
     if (!agentTagId) return
-    toggleTag(agentTagId)
+    setSelectedTagIds(isAgentsPresetActive ? new Set() : new Set([agentTagId]))
   }
 
   if (state.status === "loading") {
@@ -64,6 +65,7 @@ export function GraphPage() {
   const { dataset } = state
   const { nodes, edges } = filtered ?? { nodes: state.nodes, edges: state.edges }
   const counts = countByType(nodes)
+  const visibleAgentCount = nodes.reduce((n, node) => (agents.has(node.id) ? n + 1 : n), 0)
   const tagCounts = tagUsageCounts(dataset.noteTags, new Set(nodes.map((n) => n.id)))
   const sortedTags = [...dataset.tags].sort((a, b) => (tagCounts.get(b.id) ?? 0) - (tagCounts.get(a.id) ?? 0))
 
@@ -95,7 +97,7 @@ export function GraphPage() {
           </div>
           <div data-type="agent">
             <dt>Agentes</dt>
-            <dd>{agents.size}</dd>
+            <dd>{visibleAgentCount}</dd>
           </div>
         </dl>
 
