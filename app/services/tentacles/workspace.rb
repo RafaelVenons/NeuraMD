@@ -54,12 +54,15 @@ module Tentacles
 
       return [nil, "workspace not found: #{name_str}"] unless File.directory?(canonical)
 
-      # Accept both `.git` as directory (standard clone) and as file
-      # (linked worktrees, some submodule layouts where .git contains
-      # `gitdir: <path>`). Validating beyond existence would require
-      # shelling out to git; presence is enough for the runtime to try.
-      dot_git = File.join(canonical, ".git")
-      unless File.directory?(dot_git) || File.file?(dot_git)
+      # Require `.git` to be a real directory. A `.git` FILE (linked
+      # worktrees / submodule-style layouts) can contain
+      # `gitdir: <arbitrary path>`, which would cause `git worktree add`
+      # to operate on the referenced external repo — bypassing the
+      # workspace-root containment enforced above. Workspaces must be
+      # standalone main repos so the containment boundary holds through
+      # git operations. Linked-worktree workspaces would need gitdir
+      # parsing + re-verification to be safe; out of scope here.
+      unless File.directory?(File.join(canonical, ".git"))
         return [nil, "workspace is not a git repository: #{name_str}"]
       end
 

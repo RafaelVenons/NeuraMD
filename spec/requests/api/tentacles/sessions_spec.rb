@@ -255,10 +255,11 @@ RSpec.describe "API tentacle sessions", type: :request do
         )
 
         existing_cwd = WorktreeService.path_for(tentacle_id: note.id, repo_root: Rails.root)
+        fresh_fp = Tentacles::BootConfig.repo_root_fingerprint(Rails.root)
         existing = instance_double(
           TentacleRuntime::Session,
           alive?: true, pid: 4242, started_at: Time.utc(2026, 4, 20, 10),
-          cwd: existing_cwd
+          cwd: existing_cwd, repo_root_fingerprint: fresh_fp
         )
         allow(existing).to receive(:instance_variable_get).with(:@command).and_return(%w[claude])
         TentacleRuntime::SESSIONS[note.id] = existing
@@ -289,7 +290,8 @@ RSpec.describe "API tentacle sessions", type: :request do
         stale_cwd = "/tmp/stale-worktree-#{SecureRandom.hex(4)}"
         existing = instance_double(
           TentacleRuntime::Session,
-          alive?: true, pid: 9999, started_at: Time.current, cwd: stale_cwd
+          alive?: true, pid: 9999, started_at: Time.current,
+          cwd: stale_cwd, repo_root_fingerprint: nil
         )
         TentacleRuntime::SESSIONS[note.id] = existing
 
@@ -302,8 +304,39 @@ RSpec.describe "API tentacle sessions", type: :request do
         expect(response).to have_http_status(:conflict)
         body = response.parsed_body
         expect(body["stale_boot_config"]).to eq(true)
+        expect(body["stale_reason"]).to eq("cwd_changed")
         expect(body["current_cwd"]).to eq(stale_cwd)
         expect(body["desired_cwd"]).to include("tmp/tentacles/#{note.id}")
+      end
+
+      it "returns 409 when the repo identity changed under the same worktree path" do
+        sign_in user
+        note = make_note("ReplacedRepo")
+
+        # Live session carries a fingerprint from an old repo identity
+        # (simulates: workspace dir rm -rf + re-clone at same path). The
+        # current fingerprint resolves to Rails.root with its real inode;
+        # the fingerprint stored on the session points at a different inode
+        # even though the cwd path would still match.
+        existing_cwd = WorktreeService.path_for(tentacle_id: note.id, repo_root: Rails.root)
+        stale_fp = "#{File.realpath(Rails.root)}:999999999"
+        existing = instance_double(
+          TentacleRuntime::Session,
+          alive?: true, pid: 1234, started_at: Time.current,
+          cwd: existing_cwd, repo_root_fingerprint: stale_fp
+        )
+        TentacleRuntime::SESSIONS[note.id] = existing
+
+        expect(TentacleRuntime).not_to receive(:write)
+        expect(TentacleRuntime).not_to receive(:start)
+
+        post "/api/notes/#{note.reload.slug}/tentacle", params: {command: "claude"}.to_json,
+          headers: {"CONTENT_TYPE" => "application/json"}
+
+        expect(response).to have_http_status(:conflict)
+        body = response.parsed_body
+        expect(body["stale_boot_config"]).to eq(true)
+        expect(body["stale_reason"]).to eq("repo_identity_changed")
       end
 
       it "passes the routed initial_prompt to TentacleRuntime.start when starting fresh" do
@@ -350,10 +383,11 @@ RSpec.describe "API tentacle sessions", type: :request do
         sign_in user
         note = make_note("AliveRoute")
         existing_cwd = WorktreeService.path_for(tentacle_id: note.id, repo_root: Rails.root)
+        fresh_fp = Tentacles::BootConfig.repo_root_fingerprint(Rails.root)
         existing = instance_double(
           TentacleRuntime::Session,
           alive?: true, pid: 5555, started_at: Time.utc(2026, 4, 20, 11),
-          cwd: existing_cwd
+          cwd: existing_cwd, repo_root_fingerprint: fresh_fp
         )
         allow(existing).to receive(:instance_variable_get).with(:@command).and_return(%w[claude])
         TentacleRuntime::SESSIONS[note.id] = existing

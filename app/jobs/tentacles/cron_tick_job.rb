@@ -97,7 +97,8 @@ module Tentacles
           command: %w[claude],
           cwd: worktree,
           initial_prompt: prompt,
-          persistence: {kind: "cron", lease_token: state.lease_token}
+          persistence: {kind: "cron", lease_token: state.lease_token},
+          repo_root_fingerprint: Tentacles::BootConfig.repo_root_fingerprint(repo_root)
         )
       rescue StandardError
         state.update_columns(last_attempted_at: nil, lease_pid: nil, lease_host: nil, lease_token: nil)

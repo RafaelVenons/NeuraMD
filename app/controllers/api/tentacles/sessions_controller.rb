@@ -43,24 +43,34 @@ module Api
           render json: {error: e.message}, status: :unprocessable_entity
           return
         end
+        current_fingerprint = ::Tentacles::BootConfig.repo_root_fingerprint(repo_root)
 
         existing = ::TentacleRuntime.get(@note.id)
         if existing&.alive?
           # Reuse is only safe when the current boot config still points at
-          # the same worktree the live session is attached to. If someone
-          # mutated tentacle_workspace/tentacle_cwd after spawn, the session
-          # is attached to a stale path — writing routed_prompt here would
-          # land in the wrong repo without any user signal. Fail with 409
-          # asking the caller to stop+recreate.
+          # the same worktree AND the same underlying repository the live
+          # session is attached to. Two stale scenarios we refuse:
+          # 1. cwd path divergence — tentacle_workspace/tentacle_cwd mutated
+          #    after spawn, so the desired worktree path changed.
+          # 2. repo identity divergence — workspace path stayed the same but
+          #    the repo behind it was replaced (rm -rf + clone). The path
+          #    check alone misses this; the inode fingerprint catches it.
           desired_cwd = WorktreeService.path_for(
             tentacle_id: @note.id,
             repo_root: repo_root,
             worktree_root: worktree_root
           )
-          if existing.cwd && existing.cwd.to_s != desired_cwd.to_s
+          cwd_stale = existing.cwd && existing.cwd.to_s != desired_cwd.to_s
+          repo_stale =
+            existing.repo_root_fingerprint &&
+            current_fingerprint &&
+            existing.repo_root_fingerprint != current_fingerprint
+
+          if cwd_stale || repo_stale
             render json: {
-              error: "session boot config is stale: current workspace/cwd resolves to #{desired_cwd} but the live session is attached to #{existing.cwd}. DELETE /api/notes/#{@note.slug}/tentacle then POST again to recreate.",
+              error: "session boot config is stale. DELETE /api/notes/#{@note.slug}/tentacle then POST again to recreate.",
               stale_boot_config: true,
+              stale_reason: cwd_stale ? "cwd_changed" : "repo_identity_changed",
               current_cwd: existing.cwd.to_s,
               desired_cwd: desired_cwd.to_s
             }, status: :conflict
@@ -85,7 +95,8 @@ module Api
           command: command,
           cwd: cwd,
           initial_prompt: initial_prompt,
-          persistence: {kind: "web", author_id: current_user&.id}
+          persistence: {kind: "web", author_id: current_user&.id},
+          repo_root_fingerprint: current_fingerprint
         )
         render json: serialize_session(@note, session, command_override: command, reused: false, boot_config_applied: true), status: :created
       end
