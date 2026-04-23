@@ -83,8 +83,9 @@ class WorktreeService
     # at boot; without it, `require "config/environment"` blows up and
     # no child process (bin/mcp-server, bundle exec rspec) can start.
     # Idempotent: no-op when the target already has the key, the source
-    # doesn't exist, or the target isn't a Rails app (no
-    # config/credentials.yml.enc committed).
+    # doesn't exist, the target isn't a Rails app (no
+    # config/credentials.yml.enc committed), or the target is not the
+    # same project as the running Rails.root (different origin remote).
     def ensure_rails_runtime_secrets(target_root)
       target_root = Pathname.new(target_root)
       return unless target_root.join("config/credentials.yml.enc").file?
@@ -95,8 +96,40 @@ class WorktreeService
       key_source = Rails.root.join("config/master.key")
       return unless key_source.exist?
 
+      # Never propagate the host app's master.key into a workspace whose
+      # `origin` remote differs from ours. credentials.yml.enc is
+      # encrypted with a specific master.key — using NeuraMD's key
+      # against another repo's ciphertext would fail anyway, but would
+      # leak our key into a human-collaborated space in the process.
+      return unless same_project?(target_root)
+
       FileUtils.mkdir_p(key_target.parent)
-      FileUtils.ln_s(key_source.to_s, key_target.to_s)
+      begin
+        File.symlink(key_source.to_s, key_target.to_s)
+      rescue Errno::EEXIST
+        # Concurrent spawn on the same workspace beat us to it. Desired
+        # final state (a symlink at key_target) is already satisfied;
+        # re-raise only if we lost the race and the target is still
+        # missing (impossible under the filesystem semantics we expect,
+        # but the check costs nothing).
+        raise unless key_target.symlink? || key_target.exist?
+      end
+    end
+
+    # Compare `git remote get-url origin` in the candidate workspace
+    # with the running Rails.root. Same URL → same project → safe to
+    # share encryption keys. Different URL (or either missing origin)
+    # → treat as untrusted foreign repo. Trailing whitespace stripped
+    # because git adds a newline.
+    def same_project?(target_root)
+      target_origin, target_status = run_git(["remote", "get-url", "origin"], repo_root: Pathname.new(target_root))
+      return false unless target_status.success?
+      rails_origin, rails_status = run_git(["remote", "get-url", "origin"], repo_root: Rails.root)
+      return false unless rails_status.success?
+
+      target_origin.to_s.strip == rails_origin.to_s.strip
+    rescue StandardError
+      false
     end
 
     def branch_for(tentacle_id)

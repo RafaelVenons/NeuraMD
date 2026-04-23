@@ -215,6 +215,15 @@ RSpec.describe WorktreeService do
       File.write(rails_root.join("config/master.key"), "abcdef1234567890\n")
       allow(Rails).to receive(:root).and_return(rails_root)
 
+      # Rails.root needs its own git repo with the same `origin` URL as
+      # the workspace — same_project? uses `git remote get-url origin`
+      # on both sides to decide whether sharing the key is safe.
+      Open3.capture2e({"GIT_CONFIG_GLOBAL" => "/dev/null", "GIT_CONFIG_SYSTEM" => "/dev/null"},
+        "git", "init", "--quiet", "--initial-branch=main", chdir: rails_root.to_s)
+      Open3.capture2e("git", "remote", "add", "origin", "https://example.test/neuramd.git", chdir: rails_root.to_s)
+
+      run_git("remote", "add", "origin", "https://example.test/neuramd.git")
+
       # Workspace-as-Rails-app: has credentials.yml.enc committed but no
       # master.key (the gitignored file the symlink provides). Must be
       # committed so every worktree checkout also has it.
@@ -309,6 +318,68 @@ RSpec.describe WorktreeService do
       )
 
       expect(File.exist?(File.join(path, "config/master.key"))).to be(false)
+    end
+
+    it "does not link into a Rails workspace from a DIFFERENT origin (foreign project)" do
+      # Point the workspace's origin at some other repo. master.key must
+      # NOT be symlinked — it would leak host credentials into an
+      # unrelated Rails app, and decryption against that app's
+      # credentials.yml.enc would fail anyway.
+      Open3.capture2e("git", "remote", "set-url", "origin", "https://example.test/different-project.git", chdir: repo_root.to_s)
+
+      path = described_class.ensure(
+        tentacle_id: tentacle_id,
+        repo_root: repo_root,
+        worktree_root: workspace_root,
+        link_shared: false
+      )
+
+      expect(File.exist?(repo_root.join("config/master.key"))).to be(false)
+      expect(File.exist?(File.join(path, "config/master.key"))).to be(false)
+    end
+
+    it "does not link when the workspace has no origin remote" do
+      Open3.capture2e("git", "remote", "remove", "origin", chdir: repo_root.to_s)
+
+      path = described_class.ensure(
+        tentacle_id: tentacle_id,
+        repo_root: repo_root,
+        worktree_root: workspace_root,
+        link_shared: false
+      )
+
+      expect(File.exist?(repo_root.join("config/master.key"))).to be(false)
+      expect(File.exist?(File.join(path, "config/master.key"))).to be(false)
+    end
+
+    it "recovers when a concurrent spawn creates the symlink mid-call (EEXIST race)" do
+      # Simulate: our check-then-create loses the race — File.exist?
+      # reports false, but another thread creates the file before our
+      # File.symlink call. The Errno::EEXIST rescue must swallow cleanly
+      # since the desired end-state (symlink present) is already met.
+      call_count = 0
+      allow(File).to receive(:symlink).and_wrap_original do |orig, src, dst|
+        call_count += 1
+        # First invocation (for workspace root): simulate losing the race
+        # by having another process drop the symlink in place first.
+        if call_count == 1
+          orig.call(src, dst)
+          raise Errno::EEXIST
+        else
+          orig.call(src, dst)
+        end
+      end
+
+      expect {
+        described_class.ensure(
+          tentacle_id: tentacle_id,
+          repo_root: repo_root,
+          worktree_root: workspace_root,
+          link_shared: false
+        )
+      }.not_to raise_error
+
+      expect(File.symlink?(repo_root.join("config/master.key"))).to be(true)
     end
   end
 
