@@ -53,8 +53,177 @@ RSpec.describe Mcp::Tools::ReadNoteTool do
     content = JSON.parse(response.content.first[:text])
     expect(content["backlinks"].length).to eq(1)
     expect(content["backlinks"].first["source_title"]).to eq("Nota que referencia")
-    expect(content["backlinks"].first["role"]).to eq("target_is_child")
+    expect(content["backlinks"].first["role"]).to eq("c")
     expect(content["backlinks"].first["direction"]).to eq("incoming")
+  end
+
+  describe "role literal tokens (Fase 3)" do
+    let!(:center) { create(:note, :with_head_revision, title: "Centro") }
+
+    it "emits 1-char token for outgoing links instead of semantic name" do
+      dst = create(:note, :with_head_revision, title: "Alvo")
+      create(:note_link,
+        src_note: center, dst_note: dst,
+        hier_role: "target_is_parent",
+        created_in_revision: center.head_revision)
+
+      response = described_class.call(slug: center.slug)
+      content = JSON.parse(response.content.first[:text])
+      expect(content["links"].first["role"]).to eq("f")
+    end
+
+    it "emits null for plain links without hier_role" do
+      dst = create(:note, :with_head_revision, title: "Plain")
+      create(:note_link,
+        src_note: center, dst_note: dst,
+        hier_role: nil,
+        created_in_revision: center.head_revision)
+
+      response = described_class.call(slug: center.slug)
+      content = JSON.parse(response.content.first[:text])
+      expect(content["links"].first).to have_key("role")
+      expect(content["links"].first["role"]).to be_nil
+    end
+
+    it "maps all delegation tokens (p/d/v/x) in backlinks" do
+      mapping = {
+        "delegation_pending" => "p",
+        "delegation_directive" => "d",
+        "delegation_verify" => "v",
+        "delegation_block" => "x"
+      }
+      mapping.each do |semantic, _token|
+        src = create(:note, :with_head_revision, title: "src-#{semantic}")
+        create(:note_link,
+          src_note: src, dst_note: center,
+          hier_role: semantic,
+          created_in_revision: src.head_revision)
+      end
+
+      response = described_class.call(slug: center.slug)
+      content = JSON.parse(response.content.first[:text])
+      roles = content["backlinks"].map { |b| b["role"] }.sort
+      expect(roles).to eq(%w[d p v x])
+    end
+  end
+
+  describe "backlink filtering (Fase 3)" do
+    let!(:center) { create(:note, :with_head_revision, title: "Centro") }
+
+    def add_backlink(title:, hier_role:, updated_at: nil)
+      src = create(:note, :with_head_revision, title: title)
+      link = create(:note_link,
+        src_note: src, dst_note: center,
+        hier_role: hier_role,
+        created_in_revision: src.head_revision)
+      link.update_columns(updated_at: updated_at) if updated_at
+      link
+    end
+
+    it "filters backlinks by role token CSV (backlink_roles)" do
+      add_backlink(title: "pend", hier_role: "delegation_pending")
+      add_backlink(title: "block", hier_role: "delegation_block")
+      add_backlink(title: "parent", hier_role: "target_is_parent")
+
+      response = described_class.call(slug: center.slug, backlink_roles: "p,x")
+      content = JSON.parse(response.content.first[:text])
+      roles = content["backlinks"].map { |b| b["role"] }.sort
+      expect(roles).to eq(%w[p x])
+    end
+
+    it "filters to plain links when backlink_roles contains 'none'" do
+      add_backlink(title: "pend", hier_role: "delegation_pending")
+      add_backlink(title: "plain", hier_role: nil)
+
+      response = described_class.call(slug: center.slug, backlink_roles: "none")
+      content = JSON.parse(response.content.first[:text])
+      expect(content["backlinks"].length).to eq(1)
+      expect(content["backlinks"].first["source_title"]).to eq("plain")
+      expect(content["backlinks"].first["role"]).to be_nil
+    end
+
+    it "filters by backlinks_updated_since (ISO8601)" do
+      old = add_backlink(title: "old", hier_role: "delegation_pending",
+        updated_at: 2.days.ago)
+      _new = add_backlink(title: "new", hier_role: "delegation_pending")
+
+      response = described_class.call(slug: center.slug,
+        backlinks_updated_since: 1.day.ago.iso8601)
+      content = JSON.parse(response.content.first[:text])
+      titles = content["backlinks"].map { |b| b["source_title"] }
+      expect(titles).to eq(["new"])
+      expect(titles).not_to include(old.src_note.title)
+    end
+  end
+
+  describe "backlink pagination (Fase 3)" do
+    let!(:center) { create(:note, :with_head_revision, title: "Centro") }
+
+    before do
+      # 5 backlinks, different updated_at for determinism
+      5.times do |i|
+        src = create(:note, :with_head_revision, title: "src-#{i}")
+        link = create(:note_link,
+          src_note: src, dst_note: center,
+          hier_role: "delegation_pending",
+          created_in_revision: src.head_revision)
+        link.update_columns(updated_at: Time.current - i.minutes)
+      end
+    end
+
+    it "defaults limit to 100 and reports has_more=false when fits" do
+      response = described_class.call(slug: center.slug)
+      content = JSON.parse(response.content.first[:text])
+      expect(content["backlinks"].length).to eq(5)
+      expect(content).to have_key("backlinks_next_cursor")
+      expect(content["backlinks_next_cursor"]).to be_nil
+      expect(content["backlinks_has_more"]).to eq(false)
+    end
+
+    it "honors smaller backlink_limit and emits cursor" do
+      response = described_class.call(slug: center.slug, backlink_limit: 2)
+      content = JSON.parse(response.content.first[:text])
+      expect(content["backlinks"].length).to eq(2)
+      expect(content["backlinks_has_more"]).to eq(true)
+      expect(content["backlinks_next_cursor"]).to be_a(String)
+    end
+
+    it "resumes pagination with cursor, deterministic ordering" do
+      first = described_class.call(slug: center.slug, backlink_limit: 2)
+      first_body = JSON.parse(first.content.first[:text])
+      cursor = first_body["backlinks_next_cursor"]
+
+      second = described_class.call(slug: center.slug,
+        backlink_limit: 2, backlink_cursor: cursor)
+      second_body = JSON.parse(second.content.first[:text])
+      expect(second_body["backlinks"].length).to eq(2)
+      expect(second_body["backlinks_has_more"]).to eq(true)
+
+      third = described_class.call(slug: center.slug,
+        backlink_limit: 2, backlink_cursor: second_body["backlinks_next_cursor"])
+      third_body = JSON.parse(third.content.first[:text])
+      expect(third_body["backlinks"].length).to eq(1)
+      expect(third_body["backlinks_has_more"]).to eq(false)
+      expect(third_body["backlinks_next_cursor"]).to be_nil
+
+      seen_titles = first_body["backlinks"].map { |b| b["source_title"] } +
+                    second_body["backlinks"].map { |b| b["source_title"] } +
+                    third_body["backlinks"].map { |b| b["source_title"] }
+      expect(seen_titles.uniq.length).to eq(5)
+    end
+
+    it "clamps backlink_limit at 200 silently" do
+      response = described_class.call(slug: center.slug, backlink_limit: 10_000)
+      expect(response.error?).to be_falsey
+      content = JSON.parse(response.content.first[:text])
+      expect(content["backlinks"].length).to eq(5)
+    end
+
+    it "returns error for malformed cursor" do
+      response = described_class.call(slug: center.slug,
+        backlink_cursor: "not-base64!!!")
+      expect(response.error?).to be true
+    end
   end
 
   it "follows slug redirects" do
