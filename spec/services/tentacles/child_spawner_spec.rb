@@ -55,6 +55,10 @@ RSpec.describe Tentacles::ChildSpawner do
           d.value_type = "long_text"
           d.system = true
         end
+        PropertyDefinition.find_or_create_by!(key: "tentacle_workspace") do |d|
+          d.value_type = "text"
+          d.system = true
+        end
       end
 
       it "sets tentacle_cwd and tentacle_initial_prompt on the head revision when provided" do
@@ -87,6 +91,39 @@ RSpec.describe Tentacles::ChildSpawner do
         expect(result.child.head_revision.properties_data).to eq(
           "tentacle_initial_prompt" => "only prompt"
         )
+      end
+
+      it "sets tentacle_workspace on the head revision when provided" do
+        result = described_class.call(
+          parent: parent,
+          title: "With Workspace",
+          workspace: "neuramd"
+        )
+
+        expect(result.child.head_revision.properties_data["tentacle_workspace"])
+          .to eq("neuramd")
+      end
+
+      it "persists workspace alongside cwd and initial_prompt" do
+        result = described_class.call(
+          parent: parent,
+          title: "All Three",
+          cwd: "/home/venom/projects/MapledaRapeize",
+          initial_prompt: "boot",
+          workspace: "neuramd"
+        )
+
+        expect(result.child.head_revision.properties_data).to eq(
+          "tentacle_cwd" => "/home/venom/projects/MapledaRapeize",
+          "tentacle_initial_prompt" => "boot",
+          "tentacle_workspace" => "neuramd"
+        )
+      end
+
+      it "treats blank workspace as not-set" do
+        result = described_class.call(parent: parent, title: "Blank WS", workspace: "")
+
+        expect(result.child.head_revision.properties_data).not_to have_key("tentacle_workspace")
       end
     end
   end

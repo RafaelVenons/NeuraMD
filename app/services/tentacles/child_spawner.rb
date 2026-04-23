@@ -6,24 +6,26 @@ module Tentacles
 
     Result = Struct.new(:child, :revision, :body, keyword_init: true)
 
-    def self.call(parent:, title:, description: nil, extra_tags: nil, cwd: nil, initial_prompt: nil)
+    def self.call(parent:, title:, description: nil, extra_tags: nil, cwd: nil, initial_prompt: nil, workspace: nil)
       new(
         parent: parent,
         title: title,
         description: description,
         extra_tags: extra_tags,
         cwd: cwd,
-        initial_prompt: initial_prompt
+        initial_prompt: initial_prompt,
+        workspace: workspace
       ).call
     end
 
-    def initialize(parent:, title:, description:, extra_tags:, cwd:, initial_prompt:)
+    def initialize(parent:, title:, description:, extra_tags:, cwd:, initial_prompt:, workspace:)
       @parent         = parent
       @title          = title.to_s.strip
       @description    = description.to_s.strip
       @extra_tags     = extra_tags
       @cwd            = cwd.presence
       @initial_prompt = initial_prompt.presence
+      @workspace      = workspace.presence
     end
 
     def call
@@ -64,6 +66,7 @@ module Tentacles
       changes = {}
       changes["tentacle_cwd"] = @cwd if @cwd
       changes["tentacle_initial_prompt"] = @initial_prompt if @initial_prompt
+      changes["tentacle_workspace"] = @workspace if @workspace
       return nil if changes.empty?
 
       Properties::SetService.call(note: note, changes: changes)
