@@ -44,6 +44,11 @@ module Api
           }, status: :conflict
         end
 
+        def destroy
+          ::TentacleRuntime.stop(tentacle_id: @note.id)
+          render json: {stopped: true, slug: @note.slug, tentacle_id: @note.id}
+        end
+
         private
 
         def set_note

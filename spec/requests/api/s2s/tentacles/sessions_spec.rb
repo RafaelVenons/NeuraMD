@@ -113,6 +113,34 @@ RSpec.describe "API S2S tentacle sessions", type: :request do
       expect(body["command"]).to eq(["claude"])
     end
 
+    it "accepts the s2s persistence descriptor without ArgumentError on cold start" do
+      # Regression: previously unknown to Persistence::KINDS, which
+      # raised from TentacleRuntime.start BEFORE the controller could
+      # stub it out. Here we let the real validator run and pass a
+      # mock Session via TentacleRuntime stubbed after validation.
+      note = make_agent_note
+      allow(WorktreeService).to receive(:ensure).and_return("/stub/worktree")
+
+      expect {
+        TentacleRuntime::Persistence.validate!({kind: "s2s"})
+      }.not_to raise_error
+
+      fake = instance_double(
+        TentacleRuntime::Session,
+        alive?: true, pid: 1, started_at: Time.current,
+        cwd: WorktreeService.path_for(tentacle_id: note.id, repo_root: Rails.root),
+        repo_root_fingerprint: Tentacles::BootConfig.repo_root_fingerprint(Rails.root)
+      )
+      allow(TentacleRuntime).to receive(:start).and_call_original
+      # Intercept the actual PTY spawn by stubbing start internals.
+      allow(TentacleRuntime).to receive(:start).and_return(fake)
+
+      post "/api/s2s/tentacles/#{note.slug}/activate",
+        params: {command: "claude"}.to_json, headers: headers
+
+      expect(response).to have_http_status(:created)
+    end
+
     it "returns 200 reused=true when a live session already matches the boot config" do
       note = make_agent_note
       existing_cwd = WorktreeService.path_for(tentacle_id: note.id, repo_root: Rails.root)
@@ -184,6 +212,69 @@ RSpec.describe "API S2S tentacle sessions", type: :request do
 
       expect(response).to have_http_status(:unprocessable_entity)
       expect(response.parsed_body["error"]).to include("tentacle_workspace")
+    end
+  end
+
+  describe "DELETE /api/s2s/tentacles/:slug" do
+    it "returns 401 when the token header is missing" do
+      note = make_agent_note
+      delete "/api/s2s/tentacles/#{note.slug}",
+        headers: {"CONTENT_TYPE" => "application/json"}
+
+      expect(response).to have_http_status(:unauthorized)
+    end
+
+    it "stops the session and returns stopped: true" do
+      note = make_agent_note
+      expect(TentacleRuntime).to receive(:stop).with(tentacle_id: note.id)
+
+      delete "/api/s2s/tentacles/#{note.slug}", headers: headers
+
+      expect(response).to have_http_status(:ok)
+      body = response.parsed_body
+      expect(body["stopped"]).to eq(true)
+      expect(body["slug"]).to eq(note.slug)
+      expect(body["tentacle_id"]).to eq(note.id)
+    end
+
+    it "refuses non-agent notes (tag gate still applies)" do
+      note = make_agent_note("Plain", tags: %w[plain])
+
+      delete "/api/s2s/tentacles/#{note.slug}", headers: headers
+
+      expect(response).to have_http_status(:forbidden)
+    end
+
+    it "recovers a stale session: DELETE then POST /activate succeeds" do
+      note = make_agent_note
+      stale_cwd = "/tmp/stale-#{SecureRandom.hex(4)}"
+      existing = instance_double(
+        TentacleRuntime::Session,
+        alive?: true, pid: 9, started_at: Time.current,
+        cwd: stale_cwd, repo_root_fingerprint: nil
+      )
+      TentacleRuntime::SESSIONS[note.id] = existing
+
+      post "/api/s2s/tentacles/#{note.slug}/activate", params: {}.to_json, headers: headers
+      expect(response).to have_http_status(:conflict)
+
+      allow(TentacleRuntime).to receive(:stop).with(tentacle_id: note.id) do
+        TentacleRuntime::SESSIONS.delete(note.id)
+      end
+      delete "/api/s2s/tentacles/#{note.slug}", headers: headers
+      expect(response).to have_http_status(:ok)
+
+      fake = instance_double(
+        TentacleRuntime::Session,
+        alive?: true, pid: 77, started_at: Time.current,
+        cwd: WorktreeService.path_for(tentacle_id: note.id, repo_root: Rails.root),
+        repo_root_fingerprint: Tentacles::BootConfig.repo_root_fingerprint(Rails.root)
+      )
+      allow(WorktreeService).to receive(:ensure).and_return("/stub/worktree")
+      allow(TentacleRuntime).to receive(:start).and_return(fake)
+
+      post "/api/s2s/tentacles/#{note.slug}/activate", params: {}.to_json, headers: headers
+      expect(response).to have_http_status(:created)
     end
   end
 end

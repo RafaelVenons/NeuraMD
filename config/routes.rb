@@ -32,7 +32,8 @@ Rails.application.routes.draw do
   # activating peer tentacles without a human opening each in the UI.
   scope "api/s2s" do
     constraints slug: /[^\/]+/ do
-      post "tentacles/:slug/activate", to: "api/s2s/tentacles/sessions#activate", as: :api_s2s_tentacle_activate
+      post   "tentacles/:slug/activate", to: "api/s2s/tentacles/sessions#activate", as: :api_s2s_tentacle_activate
+      delete "tentacles/:slug",          to: "api/s2s/tentacles/sessions#destroy",  as: :api_s2s_tentacle_destroy
     end
   end
 
