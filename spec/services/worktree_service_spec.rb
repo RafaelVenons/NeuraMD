@@ -521,6 +521,89 @@ RSpec.describe WorktreeService do
     end
   end
 
+  describe ".ensure refreshes transversal branches to origin/main" do
+    let(:remote_dir) { Pathname.new(Dir.mktmpdir("neuramd-remote-")) }
+
+    before do
+      # Stand up a bare "remote" that repo_root can fetch from. Initial
+      # state: remote has one commit on main; repo_root has the same
+      # commit; we then add a new commit to remote to simulate a
+      # platform update and assert the worktree picks it up.
+      run_git("remote", "add", "origin", remote_dir.to_s)
+      Open3.capture2e({"GIT_CONFIG_GLOBAL" => "/dev/null", "GIT_CONFIG_SYSTEM" => "/dev/null"},
+        "git", "init", "--bare", "--initial-branch=main", chdir: remote_dir.to_s)
+      run_git("push", "origin", "main")
+    end
+
+    after { FileUtils.remove_entry(remote_dir) if File.directory?(remote_dir) }
+
+    def add_remote_commit(message)
+      # Push a new commit to origin/main from a scratch clone so the
+      # bare repo advances without touching repo_root's working tree.
+      scratch = Dir.mktmpdir("neuramd-scratch-")
+      Open3.capture2e({"GIT_CONFIG_GLOBAL" => "/dev/null", "GIT_CONFIG_SYSTEM" => "/dev/null"},
+        "git", "clone", "--quiet", remote_dir.to_s, scratch)
+      Open3.capture2e({"GIT_CONFIG_GLOBAL" => "/dev/null", "GIT_CONFIG_SYSTEM" => "/dev/null"},
+        "git", "-C", scratch, "-c", "user.email=spec@test", "-c", "user.name=Spec",
+        "commit", "--allow-empty", "-m", message)
+      Open3.capture2e({"GIT_CONFIG_GLOBAL" => "/dev/null", "GIT_CONFIG_SYSTEM" => "/dev/null"},
+        "git", "-C", scratch, "push", "origin", "main")
+      FileUtils.remove_entry(scratch)
+    end
+
+    it "fast-forwards the transversal branch to origin/main on re-ensure" do
+      # Initial ensure: worktree created at current HEAD.
+      path = described_class.ensure(tentacle_id: tentacle_id, repo_root: repo_root, link_shared: true)
+      initial_head = Open3.capture2("git", "-C", path, "rev-parse", "HEAD").first.strip
+
+      # Remote advances (platform update).
+      add_remote_commit("Platform update: new MCP tool")
+
+      # Second ensure: transversal refresh must fast-forward to origin/main.
+      described_class.ensure(tentacle_id: tentacle_id, repo_root: repo_root, link_shared: true)
+      new_head = Open3.capture2("git", "-C", path, "rev-parse", "HEAD").first.strip
+
+      expect(new_head).not_to eq(initial_head)
+      expected = Open3.capture2("git", "-C", repo_root.to_s, "rev-parse", "origin/main").first.strip
+      expect(new_head).to eq(expected)
+    end
+
+    it "does not refresh workspace-mode worktrees (link_shared: false)" do
+      # Workspace mode: the worktree is the agent's own work surface.
+      # Auto-refresh would destroy uncommitted work.
+      worktree_root = Pathname.new(sandbox).join(".tentacle-worktrees", "neuramd")
+      path = described_class.ensure(
+        tentacle_id: tentacle_id,
+        repo_root: repo_root,
+        worktree_root: worktree_root,
+        link_shared: false
+      )
+      initial_head = Open3.capture2("git", "-C", path, "rev-parse", "HEAD").first.strip
+
+      add_remote_commit("Platform update while agent mid-work")
+
+      described_class.ensure(
+        tentacle_id: tentacle_id,
+        repo_root: repo_root,
+        worktree_root: worktree_root,
+        link_shared: false
+      )
+      new_head = Open3.capture2("git", "-C", path, "rev-parse", "HEAD").first.strip
+
+      expect(new_head).to eq(initial_head)
+    end
+
+    it "skips silently when origin fetch fails (e.g., offline)" do
+      # Remove the remote so fetch fails — refresh must no-op rather
+      # than blow up the spawn flow.
+      Open3.capture2e("git", "-C", repo_root.to_s, "remote", "remove", "origin")
+
+      expect {
+        described_class.ensure(tentacle_id: tentacle_id, repo_root: repo_root, link_shared: true)
+      }.not_to raise_error
+    end
+  end
+
   describe ".remove with worktree_root:" do
     let(:worktree_root) { Pathname.new(sandbox).join(".tentacle-worktrees", "neuramd") }
 
