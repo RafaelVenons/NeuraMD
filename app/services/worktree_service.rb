@@ -32,6 +32,17 @@ class WorktreeService
       # dev-convenience paths (vendor/bundle, .bundle) are optional,
       # but master.key is a boot requirement for any Rails app worktree.
       ensure_rails_runtime_secrets(worktree: path, workspace: repo_root)
+
+      # Fast-forward transversal worktrees to the current default branch
+      # on every ensure call. Without this, a transversal agent
+      # (Gerente/Agenda/QA/...) whose branch was created before a
+      # platform change sees stale code — new MCP tools added after its
+      # worktree existed do not appear. link_shared=true is the signal
+      # for "transversal-on-runtime" mode; workspace-mode worktrees
+      # (link_shared=false) are the agent's own work surface and get
+      # managed manually.
+      refresh_transversal_branch(path: path, branch: branch, repo_root: repo_root) if link_shared
+
       path.to_s
     end
 
@@ -125,6 +136,36 @@ class WorktreeService
         # surface the race so callers see the real failure.
         raise unless healthy_symlink_to_source?(key_target, key_source)
       end
+    end
+
+    # Resets a transversal worktree's branch to match origin/<default>.
+    # Idempotent — already-caught-up branches are a no-op hardreset.
+    # Defensive: skips silently when the remote fetch fails (e.g.,
+    # offline), when origin/<branch> doesn't exist (first boot), or
+    # when the worktree is behind HEAD of its own branch in an unusual
+    # way (keeps whatever the worktree has rather than risking data
+    # loss). Transversal agents don't commit, so this is safe.
+    DEFAULT_REMOTE_BRANCH = "main".freeze
+
+    def refresh_transversal_branch(path:, branch:, repo_root:)
+      # Only fetch once per run — avoids repeated network calls when
+      # multiple tentacles spawn back-to-back.
+      _out, fetch_status = run_git(["fetch", "origin", DEFAULT_REMOTE_BRANCH, "--quiet"], repo_root: repo_root)
+      return unless fetch_status.success?
+
+      remote_ref = "refs/remotes/origin/#{DEFAULT_REMOTE_BRANCH}"
+      _out, show_status = run_git(["show-ref", "--verify", "--quiet", remote_ref], repo_root: repo_root)
+      return unless show_status.success?
+
+      # `git -C <worktree> reset --hard origin/main` applies inside the
+      # worktree and updates its own HEAD/branch. The main repo's main
+      # is untouched.
+      out, reset_status = Open3.capture2e("git", "reset", "--hard", "origin/#{DEFAULT_REMOTE_BRANCH}", chdir: path.to_s)
+      return if reset_status.success?
+
+      Rails.logger.warn("WorktreeService: failed to refresh #{path} on branch #{branch}: #{out}") if defined?(Rails)
+    rescue StandardError => e
+      Rails.logger.warn("WorktreeService: refresh raised #{e.class}: #{e.message}") if defined?(Rails)
     end
 
     def healthy_symlink_to_source?(target, source)
