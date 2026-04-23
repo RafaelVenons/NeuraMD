@@ -1,0 +1,142 @@
+#!/usr/bin/env bash
+# NeuraMD autodeploy post-receive hook for the bare mirror at
+# /home/rafael/git-mirrors/NeuraMD.git on AIrch.
+#
+# On push to refs/heads/main:
+#   1. Broadcast a deploy notice to active tentacles (best effort).
+#   2. Pull, bundle install, migrate, precompile assets.
+#   3. If deploy/systemd/ changed, mirror the updated .service files
+#      and drop-ins into /etc/systemd/system/ then daemon-reload.
+#   4. Wait the grace period if any tentacle was alive.
+#   5. Restart web + worker units.
+#
+# Install once per mirror:
+#   ln -sf /home/rafael/apps/NeuraMD/deploy/git-hooks/post-receive \
+#          /home/rafael/git-mirrors/NeuraMD.git/hooks/post-receive
+#
+# Passwordless sudo grants required for rafael (/etc/sudoers.d/neuramd-deploy):
+#   rafael ALL=(root) NOPASSWD: /usr/bin/systemctl restart neuramd-web.service neuramd-worker.service
+#   rafael ALL=(root) NOPASSWD: /usr/bin/systemctl daemon-reload
+#   rafael ALL=(root) NOPASSWD: /usr/bin/install -m 644 /home/rafael/apps/NeuraMD/deploy/systemd/*
+#   rafael ALL=(root) NOPASSWD: /usr/bin/mkdir -p /etc/systemd/system/neuramd-*.service.d
+#
+# Missing sudo grants degrade the hook to warnings; the deploy still
+# completes (app restart only) but daemon-reload and unit replication
+# are skipped. Fix the sudoers entry and re-push to recover.
+
+set -euo pipefail
+
+APP_DIR=/home/rafael/apps/NeuraMD
+BRANCH=main
+GRACE_SECONDS=30
+MISE_SHIMS=/home/rafael/.local/share/mise/shims
+SYSTEMD_REL=deploy/systemd
+SYSTEMD_DEST=/etc/systemd/system
+UNITS=(neuramd-web neuramd-worker)
+ZERO=0000000000000000000000000000000000000000
+
+log() { printf '[autodeploy] %s\n' "$*"; }
+warn() { printf '[autodeploy] WARN: %s\n' "$*" >&2; }
+
+while read -r oldrev newrev refname; do
+  [[ "$refname" == "refs/heads/$BRANCH" ]] || continue
+
+  log "$(date --iso-8601=seconds) $oldrev -> $newrev ($refname)"
+
+  cd "$APP_DIR"
+  export PATH="$MISE_SHIMS:/home/rafael/.local/bin:$PATH"
+  export RAILS_ENV=production
+  export POSTGRES_USER=postgres POSTGRES_HOST=127.0.0.1 POSTGRES_PORT=5432
+  export NEURAMD_DATABASE=neura_md_production
+  export NEURAMD_CACHE_DATABASE=neura_md_production_cache
+  export NEURAMD_QUEUE_DATABASE=neura_md_production_queue
+  export NEURAMD_LEGACY_DATABASE=neura_md_legacy
+  unset GIT_DIR GIT_WORK_TREE
+
+  # (1) Deploy notice to active tentacles. Best effort — no tentacles, or
+  # a failing Rails boot, must not block the deploy.
+  alive=0
+  if [[ "$oldrev" != "$ZERO" ]]; then
+    alive=$(timeout 10 bundle exec rails runner 'print TentacleSession.alive.count' 2>/dev/null || echo 0)
+  fi
+  if [[ "$alive" =~ ^[0-9]+$ ]] && [[ "$alive" -gt 0 ]]; then
+    log "broadcasting deploy notice to $alive active tentacle(s)"
+    timeout 15 bundle exec rails runner "
+      deadline = ${GRACE_SECONDS}.seconds.from_now
+      TentacleSession.alive.find_each do |s|
+        TentacleChannel.broadcast_deploy_notice(tentacle_id: s.tentacle_note_id, deadline_at: deadline)
+      end
+    " 2>&1 | sed 's/^/  /' || warn "broadcast failed (continuing)"
+  else
+    log "no alive tentacles; skipping broadcast"
+    alive=0
+  fi
+
+  # (2) Working tree sync.
+  git fetch origin "$BRANCH"
+  git reset --hard HEAD
+  git clean -fd
+  git checkout -B "$BRANCH" "origin/$BRANCH"
+  git reset --hard "$newrev"
+
+  # (3) Dependencies, schema, assets.
+  bundle install --jobs=4 --deployment --without development test
+  bundle exec rails db:migrate
+  bundle exec rails assets:precompile
+
+  # (4) Systemd file replication. Detect changes in deploy/systemd/ since
+  # the last deploy; mirror .service files and drop-ins into
+  # /etc/systemd/system/ then daemon-reload.
+  systemd_changed=false
+  if [[ "$oldrev" == "$ZERO" ]]; then
+    systemd_changed=true
+  elif ! git diff --quiet "$oldrev" "$newrev" -- "$SYSTEMD_REL"; then
+    systemd_changed=true
+  fi
+
+  if $systemd_changed; then
+    log "deploy/systemd/ changed; mirroring into $SYSTEMD_DEST"
+    for unit in "${UNITS[@]}"; do
+      base_src="$APP_DIR/$SYSTEMD_REL/$unit.service"
+      if [[ -f "$base_src" ]]; then
+        if sudo -n install -m 644 "$base_src" "$SYSTEMD_DEST/$unit.service" 2>/dev/null; then
+          log "  installed $unit.service"
+        else
+          warn "  sudo install $unit.service failed (missing sudoers grant?)"
+        fi
+      fi
+
+      dropin_src="$APP_DIR/$SYSTEMD_REL/$unit.service.d"
+      dropin_dst="$SYSTEMD_DEST/$unit.service.d"
+      if [[ -d "$dropin_src" ]]; then
+        sudo -n mkdir -p "$dropin_dst" 2>/dev/null || warn "  mkdir $dropin_dst failed"
+        for conf in "$dropin_src"/*.conf; do
+          [[ -f "$conf" ]] || continue
+          if sudo -n install -m 644 "$conf" "$dropin_dst/$(basename "$conf")" 2>/dev/null; then
+            log "  installed $(basename "$conf") -> $dropin_dst"
+          else
+            warn "  sudo install $(basename "$conf") failed"
+          fi
+        done
+      fi
+    done
+
+    if sudo -n systemctl daemon-reload 2>/dev/null; then
+      log "daemon-reload OK"
+    else
+      warn "daemon-reload failed (missing sudoers grant?)"
+    fi
+  else
+    log "deploy/systemd/ unchanged; skipping unit replication"
+  fi
+
+  # (5) Grace period then restart. Grace only when active tentacles need
+  # a chance to finish in-flight work; otherwise restart immediately.
+  if [[ "$alive" -gt 0 ]]; then
+    log "sleeping ${GRACE_SECONDS}s before restart (grace for active tentacles)"
+    sleep "$GRACE_SECONDS"
+  fi
+
+  sudo -n systemctl restart neuramd-web.service neuramd-worker.service
+  log "$(date --iso-8601=seconds) autodeploy complete"
+done
