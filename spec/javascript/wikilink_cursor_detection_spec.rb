@@ -114,9 +114,9 @@ RSpec.describe "JS wikilink cursor detection (boundary logic mirror)" do
     end
 
     it "detects arbitrary role prefixes without treating them as broken syntax" do
-      text = "[[Custom|x:#{uuid}]]"
+      text = "[[Custom|z:#{uuid}]]"
       result = detect_link_multi(text, 5)
-      expect(result[:role]).to eq("x")
+      expect(result[:role]).to eq("z")
     end
   end
 end

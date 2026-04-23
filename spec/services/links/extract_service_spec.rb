@@ -36,9 +36,33 @@ RSpec.describe Links::ExtractService do
       expect(result).to eq([{dst_note_id: uuid, hier_role: "next_in_sequence"}])
     end
 
-    it "treats unknown roles as plain links while preserving the destination" do
+    it "extracts pending delegation role (p:)" do
       uuid = SecureRandom.uuid
-      result = described_class.call("[[Sibling|x:#{uuid}]]")
+      result = described_class.call("[[Smell candidate|p:#{uuid}]]")
+      expect(result).to eq([{dst_note_id: uuid, hier_role: "delegation_pending"}])
+    end
+
+    it "extracts directive delegation role (d:)" do
+      uuid = SecureRandom.uuid
+      result = described_class.call("[[Worker briefing|d:#{uuid}]]")
+      expect(result).to eq([{dst_note_id: uuid, hier_role: "delegation_directive"}])
+    end
+
+    it "extracts verify delegation role (v:)" do
+      uuid = SecureRandom.uuid
+      result = described_class.call("[[Reviewer|v:#{uuid}]]")
+      expect(result).to eq([{dst_note_id: uuid, hier_role: "delegation_verify"}])
+    end
+
+    it "extracts block delegation role (x:)" do
+      uuid = SecureRandom.uuid
+      result = described_class.call("[[Blocker|x:#{uuid}]]")
+      expect(result).to eq([{dst_note_id: uuid, hier_role: "delegation_block"}])
+    end
+
+    it "treats roles outside the vocabulary as plain links while preserving the destination" do
+      uuid = SecureRandom.uuid
+      result = described_class.call("[[Sibling|z:#{uuid}]]")
       expect(result).to eq([{dst_note_id: uuid, hier_role: nil}])
     end
 
@@ -58,7 +82,7 @@ RSpec.describe Links::ExtractService do
 
     it "prefers a meaningful semantic role over unknown roles for the same UUID" do
       uuid = SecureRandom.uuid
-      content = "[[Note|x:#{uuid}]] and [[Parent|f:#{uuid}]]"
+      content = "[[Note|z:#{uuid}]] and [[Parent|f:#{uuid}]]"
       result = described_class.call(content)
       expect(result).to eq([{dst_note_id: uuid, hier_role: "target_is_parent"}])
     end
@@ -67,7 +91,7 @@ RSpec.describe Links::ExtractService do
       uuid1 = SecureRandom.uuid
       uuid2 = SecureRandom.uuid
       uuid3 = SecureRandom.uuid
-      content = "[[Note A|#{uuid1}]] and [[Note B|c:#{uuid2}]] and [[Note C|x:#{uuid3}]]"
+      content = "[[Note A|#{uuid1}]] and [[Note B|c:#{uuid2}]] and [[Note C|z:#{uuid3}]]"
       result = described_class.call(content)
       expect(result).to contain_exactly(
         {dst_note_id: uuid1, hier_role: nil},

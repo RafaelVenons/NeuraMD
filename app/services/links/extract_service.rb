@@ -1,23 +1,11 @@
 module Links
   # Parses wiki-link markup from markdown content and returns an array of link descriptors.
   #
-  # Supported formats:
-  #   [[Display Text|uuid]]        → hier_role: nil
-  #   [[Display Text|f:uuid]]      → hier_role: "target_is_parent"  (Father)
-  #   [[Display Text|c:uuid]]      → hier_role: "target_is_child"   (Child)
-  #   [[Display Text|b:uuid]]      → hier_role: "same_level"        (Brother)
-  #
-  # Returns array of { dst_note_id: uuid, hier_role: string_or_nil }.
-  # The DB allows only one note_link per destination note, so repeated references to the
-  # same UUID collapse into a single link. If any occurrence has an explicit role prefix,
-  # that semantic role wins over plain references.
+  # Parses wiki-links like [[Display|role:uuid]] into link descriptors.
+  # The vocabulary of accepted role tokens lives in NoteLink::Roles::TOKEN_TO_SEMANTIC;
+  # tokens outside that allow-list fall through to hier_role: nil (plain link).
   class ExtractService
-    ROLE_MAP = {
-      "f" => "target_is_parent",
-      "c" => "target_is_child",
-      "b" => "same_level",
-      "n" => "next_in_sequence"
-    }.freeze
+    ROLE_MAP = NoteLink::Roles::TOKEN_TO_SEMANTIC
 
     UUID_RE = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i
     SLUG_RE = /[a-z0-9]+(?:-[a-z0-9]+)*/

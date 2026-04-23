@@ -26,11 +26,18 @@ RSpec.describe Links::SyncService do
       expect(src_note.outgoing_links.last.hier_role).to eq("target_is_parent")
     end
 
-    it "treats unknown roles as plain links instead of rejecting them" do
-      content = "[[Dest|x:#{dst_note.id}]]"
+    it "treats roles outside the vocabulary as plain links instead of rejecting them" do
+      content = "[[Dest|z:#{dst_note.id}]]"
 
       expect { call(content) }.to change(NoteLink, :count).by(1)
       expect(src_note.outgoing_links.last.hier_role).to be_nil
+    end
+
+    it "persists delegation roles recognised by the vocabulary" do
+      content = "[[Dest|x:#{dst_note.id}]]"
+
+      expect { call(content) }.to change(NoteLink, :count).by(1)
+      expect(src_note.outgoing_links.last.hier_role).to eq("delegation_block")
     end
 
     it "deletes links removed from content" do
@@ -54,8 +61,8 @@ RSpec.describe Links::SyncService do
       expect(src_note.outgoing_links.find_by(dst_note_id: dst_note.id).hier_role).to eq("same_level")
     end
 
-    it "upgrades an unknown role to a semantic one when the latest content adds meaning" do
-      call("[[Dest|x:#{dst_note.id}]]")
+    it "upgrades a plain link to a semantic one when the latest content adds meaning" do
+      call("[[Dest|z:#{dst_note.id}]]")
 
       expect {
         call("[[Dest|c:#{dst_note.id}]]")
