@@ -115,6 +115,16 @@ RSpec.describe Tentacles::Workspace do
       expect(err).to be_nil
       expect(path).to eq(File.realpath(target))
     end
+
+    it "accepts workspaces where .git is a file (linked worktree / gitdir pointer)" do
+      linked = File.join(sandbox, "linked")
+      FileUtils.mkdir_p(linked)
+      File.write(File.join(linked, ".git"), "gitdir: /tmp/some-external-gitdir\n")
+
+      path, err = described_class.resolve("linked")
+      expect(err).to be_nil
+      expect(path).to eq(File.realpath(linked))
+    end
   end
 
   describe ".worktree_root_for" do

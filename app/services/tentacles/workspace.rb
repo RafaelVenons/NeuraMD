@@ -53,7 +53,15 @@ module Tentacles
       end
 
       return [nil, "workspace not found: #{name_str}"] unless File.directory?(canonical)
-      return [nil, "workspace is not a git repository: #{name_str}"] unless File.directory?(File.join(canonical, ".git"))
+
+      # Accept both `.git` as directory (standard clone) and as file
+      # (linked worktrees, some submodule layouts where .git contains
+      # `gitdir: <path>`). Validating beyond existence would require
+      # shelling out to git; presence is enough for the runtime to try.
+      dot_git = File.join(canonical, ".git")
+      unless File.directory?(dot_git) || File.file?(dot_git)
+        return [nil, "workspace is not a git repository: #{name_str}"]
+      end
 
       [canonical, nil]
     end

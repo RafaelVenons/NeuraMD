@@ -136,6 +136,24 @@ RSpec.describe Tentacles::ChildSpawner do
 
         expect(Note.where(title: "Both")).to be_empty
       end
+
+      it "rolls back the child note when apply_boot_config! fails" do
+        # Simulate a half-deployed environment where the tentacle_workspace
+        # property definition is missing. Without the transaction wrap, the
+        # child note would persist even after the property write blows up.
+        allow(Properties::SetService).to receive(:call).and_raise(Properties::SetService::UnknownKeyError, "tentacle_workspace not registered")
+
+        expect {
+          described_class.call(
+            parent: parent,
+            title: "PartialWrite",
+            workspace: "neuramd"
+          )
+        }.to raise_error(Properties::SetService::UnknownKeyError)
+
+        expect(Note.where(title: "PartialWrite")).to be_empty
+        expect(NoteRevision.joins(:note).where(notes: {title: "PartialWrite"})).to be_empty
+      end
     end
   end
 end

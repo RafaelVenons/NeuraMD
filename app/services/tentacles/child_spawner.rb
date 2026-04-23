@@ -36,14 +36,23 @@ module Tentacles
       end
 
       body = compose_body
-      child = Note.create!(title: @title, note_kind: "markdown")
-      revision = child.note_revisions.create!(content_markdown: body, revision_kind: :checkpoint)
-      child.update!(head_revision_id: revision.id)
-      publish_event("note.created", note_id: child.id, slug: child.slug, title: child.title)
+      # Wrap note + revision + links + tags + boot_config in a single
+      # transaction so a late failure (missing PropertyDefinition, link
+      # sync error, tag conflict) does not leave an orphan child note
+      # behind. A retry on the caller now sees a clean DB instead of
+      # a half-initialised tentacle that subtly diverges from parent.
+      child = nil
+      revision = nil
+      Note.transaction do
+        child = Note.create!(title: @title, note_kind: "markdown")
+        revision = child.note_revisions.create!(content_markdown: body, revision_kind: :checkpoint)
+        child.update!(head_revision_id: revision.id)
 
-      Links::SyncService.call(src_note: child, revision: revision, content: body)
-      apply_tags!(child)
-      revision = apply_boot_config!(child.reload) || revision
+        Links::SyncService.call(src_note: child, revision: revision, content: body)
+        apply_tags!(child)
+        revision = apply_boot_config!(child.reload) || revision
+      end
+      publish_event("note.created", note_id: child.id, slug: child.slug, title: child.title)
 
       Result.new(child: child.reload, revision: revision, body: body)
     end
