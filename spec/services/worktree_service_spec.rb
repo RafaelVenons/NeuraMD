@@ -249,7 +249,7 @@ RSpec.describe WorktreeService do
       expect(File.realpath(target)).to eq(rails_root.join("config/master.key").to_s)
     end
 
-    it "also ensures master.key at the workspace root itself" do
+    it "leaves the backing workspace repo untouched (scope limited to worktree)" do
       described_class.ensure(
         tentacle_id: tentacle_id,
         repo_root: repo_root,
@@ -257,9 +257,40 @@ RSpec.describe WorktreeService do
         link_shared: false
       )
 
+      # master.key in the workspace itself is NOT created — avoids
+      # persistent secret exposure in a human-facing clone that
+      # `remove` would leave behind.
       workspace_key = repo_root.join("config/master.key")
-      expect(workspace_key.symlink?).to be(true)
-      expect(File.realpath(workspace_key)).to eq(rails_root.join("config/master.key").to_s)
+      expect(workspace_key.exist?).to be(false)
+      expect(workspace_key.symlink?).to be(false)
+    end
+
+    it "reconciles the symlink on repeat ensure calls for an already-registered worktree" do
+      # First call creates the worktree + symlink.
+      path = described_class.ensure(
+        tentacle_id: tentacle_id,
+        repo_root: repo_root,
+        worktree_root: workspace_root,
+        link_shared: false
+      )
+      key_target = File.join(path, "config/master.key")
+      expect(File.symlink?(key_target)).to be(true)
+
+      # Simulate: manual rm of the symlink (or a pre-fix worktree that
+      # never had it). The worktree IS still registered with git.
+      FileUtils.rm(key_target)
+      expect(File.exist?(key_target)).to be(false)
+
+      # Second call must reconcile instead of short-circuiting at the
+      # `registered?` early return.
+      described_class.ensure(
+        tentacle_id: tentacle_id,
+        repo_root: repo_root,
+        worktree_root: workspace_root,
+        link_shared: false
+      )
+      expect(File.symlink?(key_target)).to be(true)
+      expect(File.realpath(key_target)).to eq(rails_root.join("config/master.key").to_s)
     end
 
     it "is idempotent when the symlink already exists" do
@@ -276,9 +307,19 @@ RSpec.describe WorktreeService do
       }.not_to raise_error
     end
 
-    it "does not overwrite an existing real master.key at the workspace root" do
-      real_key = repo_root.join("config/master.key")
-      File.write(real_key, "workspace-owned-key\n")
+    it "does not overwrite an existing real master.key inside the worktree" do
+      path = described_class.ensure(
+        tentacle_id: tentacle_id,
+        repo_root: repo_root,
+        worktree_root: workspace_root,
+        link_shared: false
+      )
+      worktree_key = File.join(path, "config/master.key")
+
+      # Replace the symlink with a real file — e.g. agent wrote a
+      # different local key for experimental use.
+      FileUtils.rm(worktree_key)
+      File.write(worktree_key, "worktree-owned-key\n")
 
       described_class.ensure(
         tentacle_id: tentacle_id,
@@ -287,8 +328,8 @@ RSpec.describe WorktreeService do
         link_shared: false
       )
 
-      expect(File.symlink?(real_key)).to be(false)
-      expect(File.read(real_key)).to eq("workspace-owned-key\n")
+      expect(File.symlink?(worktree_key)).to be(false)
+      expect(File.read(worktree_key)).to eq("worktree-owned-key\n")
     end
 
     it "skips linking when the workspace is not a Rails app (no credentials.yml.enc)" do
@@ -354,24 +395,17 @@ RSpec.describe WorktreeService do
 
     it "recovers when a concurrent spawn creates the symlink mid-call (EEXIST race)" do
       # Simulate: our check-then-create loses the race — File.exist?
-      # reports false, but another thread creates the file before our
+      # reports false, but another process creates the file before our
       # File.symlink call. The Errno::EEXIST rescue must swallow cleanly
       # since the desired end-state (symlink present) is already met.
-      call_count = 0
       allow(File).to receive(:symlink).and_wrap_original do |orig, src, dst|
-        call_count += 1
-        # First invocation (for workspace root): simulate losing the race
-        # by having another process drop the symlink in place first.
-        if call_count == 1
-          orig.call(src, dst)
-          raise Errno::EEXIST
-        else
-          orig.call(src, dst)
-        end
+        orig.call(src, dst)
+        raise Errno::EEXIST
       end
 
+      path = nil
       expect {
-        described_class.ensure(
+        path = described_class.ensure(
           tentacle_id: tentacle_id,
           repo_root: repo_root,
           worktree_root: workspace_root,
@@ -379,7 +413,7 @@ RSpec.describe WorktreeService do
         )
       }.not_to raise_error
 
-      expect(File.symlink?(repo_root.join("config/master.key"))).to be(true)
+      expect(File.symlink?(File.join(path, "config/master.key"))).to be(true)
     end
   end
 

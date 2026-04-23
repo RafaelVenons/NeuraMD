@@ -12,22 +12,21 @@ class WorktreeService
       path = Pathname.new(path_for(tentacle_id: tentacle_id, repo_root: repo_root, worktree_root: worktree_root))
       branch = branch_for(tentacle_id)
 
-      return path.to_s if registered?(path.to_s, repo_root: repo_root)
+      unless registered?(path.to_s, repo_root: repo_root)
+        FileUtils.mkdir_p(path.parent)
+        FileUtils.remove_entry(path.to_s) if File.directory?(path)
 
-      # Before anything else, make sure the workspace itself (the repo
-      # the worktree will check out from) has the runtime master.key a
-      # Rails child would need. `tentacle_workspace=<name>` workspaces
-      # are separate clones without gitignored files — the previous
-      # behaviour left every worktree unable to boot Rails until
-      # master.key was symlinked manually.
-      ensure_rails_runtime_secrets(repo_root)
+        args = ["worktree", "add"]
+        args.concat(branch_exists?(branch, repo_root: repo_root) ? [path.to_s, branch] : ["-b", branch, path.to_s])
+        run_git!(args, repo_root: repo_root)
+      end
 
-      FileUtils.mkdir_p(path.parent)
-      FileUtils.remove_entry(path.to_s) if File.directory?(path)
-
-      args = ["worktree", "add"]
-      args.concat(branch_exists?(branch, repo_root: repo_root) ? [path.to_s, branch] : ["-b", branch, path.to_s])
-      run_git!(args, repo_root: repo_root)
+      # Runtime reconciliation runs on every ensure call — new worktree
+      # or already-registered. Both paths are idempotent. Covers the
+      # case of a worktree registered before this fix landed that never
+      # received its master.key symlink. Scope is the tentacle worktree
+      # only; the backing workspace repo is intentionally left untouched
+      # so `remove` can clean up everything this service created.
       link_shared_paths(path: path, repo_root: repo_root) if link_shared
       # master.key must reach the worktree regardless of link_shared:
       # dev-convenience paths (vendor/bundle, .bundle) are optional,
