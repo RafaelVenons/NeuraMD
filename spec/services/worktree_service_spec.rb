@@ -203,6 +203,324 @@ RSpec.describe WorktreeService do
     end
   end
 
+  describe ".ensure runtime secrets for Rails-app workspaces" do
+    let(:workspace_root) { Pathname.new(sandbox).join(".tentacle-worktrees", "railsy") }
+    let(:rails_root) { Pathname.new(Dir.mktmpdir("neuramd-rails-runtime-")) }
+
+    before do
+      # Simulate the current process's Rails.root (the running neuramd-web)
+      # holding the authoritative master.key. WorktreeService symlinks from
+      # this location when preparing a Rails-app workspace or worktree.
+      FileUtils.mkdir_p(rails_root.join("config"))
+      File.write(rails_root.join("config/master.key"), "abcdef1234567890\n")
+      allow(Rails).to receive(:root).and_return(rails_root)
+
+      # Workspace-as-Rails-app: has credentials.yml.enc committed but no
+      # master.key (the gitignored file the symlink provides). Must be
+      # committed so every worktree checkout also has it.
+      FileUtils.mkdir_p(repo_root.join("config"))
+      File.write(repo_root.join("config/credentials.yml.enc"), "encrypted\n")
+      run_git("add", "config/credentials.yml.enc")
+      run_git("commit", "-m", "add credentials.yml.enc")
+
+      # Trust this workspace explicitly — the new contract requires an
+      # allowlist opt-in via NEURAMD_TRUSTED_WORKSPACE_KEYS. Empty/unset
+      # env = nothing trusted = no linking.
+      ENV["NEURAMD_TRUSTED_WORKSPACE_KEYS"] = repo_root.to_s
+    end
+
+    after do
+      ENV.delete("NEURAMD_TRUSTED_WORKSPACE_KEYS")
+      FileUtils.remove_entry(rails_root) if File.directory?(rails_root)
+    end
+
+    it "symlinks master.key into the worktree even when link_shared is false" do
+      path = described_class.ensure(
+        tentacle_id: tentacle_id,
+        repo_root: repo_root,
+        worktree_root: workspace_root,
+        link_shared: false
+      )
+
+      target = File.join(path, "config/master.key")
+      expect(File.symlink?(target)).to be(true), "master.key should be symlinked even with link_shared: false"
+      expect(File.read(target)).to eq("abcdef1234567890\n")
+      expect(File.realpath(target)).to eq(rails_root.join("config/master.key").to_s)
+    end
+
+    it "leaves the backing workspace repo untouched (scope limited to worktree)" do
+      described_class.ensure(
+        tentacle_id: tentacle_id,
+        repo_root: repo_root,
+        worktree_root: workspace_root,
+        link_shared: false
+      )
+
+      # master.key in the workspace itself is NOT created — avoids
+      # persistent secret exposure in a human-facing clone that
+      # `remove` would leave behind.
+      workspace_key = repo_root.join("config/master.key")
+      expect(workspace_key.exist?).to be(false)
+      expect(workspace_key.symlink?).to be(false)
+    end
+
+    it "reconciles the symlink on repeat ensure calls for an already-registered worktree" do
+      # First call creates the worktree + symlink.
+      path = described_class.ensure(
+        tentacle_id: tentacle_id,
+        repo_root: repo_root,
+        worktree_root: workspace_root,
+        link_shared: false
+      )
+      key_target = File.join(path, "config/master.key")
+      expect(File.symlink?(key_target)).to be(true)
+
+      # Simulate: manual rm of the symlink (or a pre-fix worktree that
+      # never had it). The worktree IS still registered with git.
+      FileUtils.rm(key_target)
+      expect(File.exist?(key_target)).to be(false)
+
+      # Second call must reconcile instead of short-circuiting at the
+      # `registered?` early return.
+      described_class.ensure(
+        tentacle_id: tentacle_id,
+        repo_root: repo_root,
+        worktree_root: workspace_root,
+        link_shared: false
+      )
+      expect(File.symlink?(key_target)).to be(true)
+      expect(File.realpath(key_target)).to eq(rails_root.join("config/master.key").to_s)
+    end
+
+    it "is idempotent when the symlink already exists" do
+      FileUtils.mkdir_p(repo_root.join("config"))
+      File.symlink(rails_root.join("config/master.key").to_s, repo_root.join("config/master.key").to_s)
+
+      expect {
+        described_class.ensure(
+          tentacle_id: tentacle_id,
+          repo_root: repo_root,
+          worktree_root: workspace_root,
+          link_shared: false
+        )
+      }.not_to raise_error
+    end
+
+    it "does not overwrite an existing real master.key inside the worktree" do
+      path = described_class.ensure(
+        tentacle_id: tentacle_id,
+        repo_root: repo_root,
+        worktree_root: workspace_root,
+        link_shared: false
+      )
+      worktree_key = File.join(path, "config/master.key")
+
+      # Replace the symlink with a real file — e.g. agent wrote a
+      # different local key for experimental use.
+      FileUtils.rm(worktree_key)
+      File.write(worktree_key, "worktree-owned-key\n")
+
+      described_class.ensure(
+        tentacle_id: tentacle_id,
+        repo_root: repo_root,
+        worktree_root: workspace_root,
+        link_shared: false
+      )
+
+      expect(File.symlink?(worktree_key)).to be(false)
+      expect(File.read(worktree_key)).to eq("worktree-owned-key\n")
+    end
+
+    it "skips linking when the workspace is not a Rails app (no credentials.yml.enc)" do
+      FileUtils.rm(repo_root.join("config/credentials.yml.enc"))
+      run_git("add", "config/credentials.yml.enc")
+      run_git("commit", "-m", "remove credentials.yml.enc")
+
+      path = described_class.ensure(
+        tentacle_id: tentacle_id,
+        repo_root: repo_root,
+        worktree_root: workspace_root,
+        link_shared: false
+      )
+
+      expect(File.exist?(File.join(path, "config/master.key"))).to be(false)
+      expect(File.exist?(repo_root.join("config/master.key"))).to be(false)
+    end
+
+    it "skips when the running Rails.root has no master.key" do
+      FileUtils.rm(rails_root.join("config/master.key"))
+
+      path = described_class.ensure(
+        tentacle_id: tentacle_id,
+        repo_root: repo_root,
+        worktree_root: workspace_root,
+        link_shared: false
+      )
+
+      expect(File.exist?(File.join(path, "config/master.key"))).to be(false)
+    end
+
+    it "does not link when NEURAMD_TRUSTED_WORKSPACE_KEYS is unset" do
+      ENV.delete("NEURAMD_TRUSTED_WORKSPACE_KEYS")
+
+      path = described_class.ensure(
+        tentacle_id: tentacle_id,
+        repo_root: repo_root,
+        worktree_root: workspace_root,
+        link_shared: false
+      )
+
+      expect(File.exist?(File.join(path, "config/master.key"))).to be(false)
+    end
+
+    it "does not link when the workspace path is not in the allowlist" do
+      ENV["NEURAMD_TRUSTED_WORKSPACE_KEYS"] = "/some/other/trusted/path"
+
+      path = described_class.ensure(
+        tentacle_id: tentacle_id,
+        repo_root: repo_root,
+        worktree_root: workspace_root,
+        link_shared: false
+      )
+
+      expect(File.exist?(File.join(path, "config/master.key"))).to be(false)
+    end
+
+    it "accepts multiple comma-separated allowlist entries and matches any of them" do
+      other_dir = Dir.mktmpdir("untrusted-")
+      ENV["NEURAMD_TRUSTED_WORKSPACE_KEYS"] = [other_dir, repo_root.to_s].join(",")
+
+      path = described_class.ensure(
+        tentacle_id: tentacle_id,
+        repo_root: repo_root,
+        worktree_root: workspace_root,
+        link_shared: false
+      )
+
+      expect(File.symlink?(File.join(path, "config/master.key"))).to be(true)
+    ensure
+      FileUtils.remove_entry(other_dir) if other_dir && File.directory?(other_dir)
+    end
+
+    it "normalizes allowlist entries via File.realpath (symlink in allowlist OK)" do
+      # Create a symlink that points at repo_root; listing the symlink
+      # in the allowlist must still match the real workspace path.
+      link = File.join(Dir.tmpdir, "allowlist-link-#{SecureRandom.hex(4)}")
+      File.symlink(repo_root.to_s, link)
+      ENV["NEURAMD_TRUSTED_WORKSPACE_KEYS"] = link
+
+      path = described_class.ensure(
+        tentacle_id: tentacle_id,
+        worktree_root: workspace_root,
+        repo_root: repo_root,
+        link_shared: false
+      )
+
+      expect(File.symlink?(File.join(path, "config/master.key"))).to be(true)
+    ensure
+      File.unlink(link) if link && File.symlink?(link)
+    end
+
+    it "ignores allowlist entries whose path does not exist" do
+      ENV["NEURAMD_TRUSTED_WORKSPACE_KEYS"] = "/nonexistent/#{SecureRandom.hex(4)},#{repo_root}"
+
+      path = described_class.ensure(
+        tentacle_id: tentacle_id,
+        repo_root: repo_root,
+        worktree_root: workspace_root,
+        link_shared: false
+      )
+
+      # The second allowlist entry matches → link happens.
+      expect(File.symlink?(File.join(path, "config/master.key"))).to be(true)
+    end
+
+    it "replaces a dangling symlink that points at a stale source path" do
+      path = described_class.ensure(
+        tentacle_id: tentacle_id,
+        repo_root: repo_root,
+        worktree_root: workspace_root,
+        link_shared: false
+      )
+      key_target = File.join(path, "config/master.key")
+      expect(File.symlink?(key_target)).to be(true)
+
+      # Simulate: previous Rails.root moved/was replaced. The worktree's
+      # master.key symlink is now dangling (points nowhere resolvable)
+      # — re-ensure must repair by pointing at the current Rails.root.
+      stale_source = File.join(Dir.tmpdir, "stale-neuramd-#{SecureRandom.hex(4)}", "config/master.key")
+      FileUtils.rm(key_target)
+      FileUtils.mkdir_p(File.dirname(key_target))
+      File.symlink(stale_source, key_target)
+      dangling = begin
+        File.realpath(key_target)
+      rescue Errno::ENOENT
+        nil
+      end
+      expect(dangling).to be_nil
+
+      described_class.ensure(
+        tentacle_id: tentacle_id,
+        repo_root: repo_root,
+        worktree_root: workspace_root,
+        link_shared: false
+      )
+
+      expect(File.symlink?(key_target)).to be(true)
+      expect(File.realpath(key_target)).to eq(rails_root.join("config/master.key").to_s)
+    end
+
+    it "replaces a symlink that points at a DIFFERENT (non-current) master.key path" do
+      path = described_class.ensure(
+        tentacle_id: tentacle_id,
+        repo_root: repo_root,
+        worktree_root: workspace_root,
+        link_shared: false
+      )
+      key_target = File.join(path, "config/master.key")
+
+      # Replace with a symlink to a DIFFERENT existing file — simulates
+      # a previous deploy's Rails.root that is still on disk but is
+      # no longer authoritative.
+      other_source = File.join(rails_root, "config/old-master.key")
+      File.write(other_source, "old-deploy-key\n")
+      FileUtils.rm(key_target)
+      File.symlink(other_source, key_target)
+
+      described_class.ensure(
+        tentacle_id: tentacle_id,
+        repo_root: repo_root,
+        worktree_root: workspace_root,
+        link_shared: false
+      )
+
+      expect(File.realpath(key_target)).to eq(rails_root.join("config/master.key").to_s)
+    end
+
+    it "recovers when a concurrent spawn creates the symlink mid-call (EEXIST race)" do
+      # Simulate: our check-then-create loses the race — File.exist?
+      # reports false, but another process creates the file before our
+      # File.symlink call. The Errno::EEXIST rescue must swallow cleanly
+      # since the desired end-state (symlink present) is already met.
+      allow(File).to receive(:symlink).and_wrap_original do |orig, src, dst|
+        orig.call(src, dst)
+        raise Errno::EEXIST
+      end
+
+      path = nil
+      expect {
+        path = described_class.ensure(
+          tentacle_id: tentacle_id,
+          repo_root: repo_root,
+          worktree_root: workspace_root,
+          link_shared: false
+        )
+      }.not_to raise_error
+
+      expect(File.symlink?(File.join(path, "config/master.key"))).to be(true)
+    end
+  end
+
   describe ".remove with worktree_root:" do
     let(:worktree_root) { Pathname.new(sandbox).join(".tentacle-worktrees", "neuramd") }
 
