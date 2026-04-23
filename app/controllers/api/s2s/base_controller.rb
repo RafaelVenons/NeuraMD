@@ -19,7 +19,7 @@ module Api
       private
 
       def authenticate_agent_token!
-        configured = ::Rails.application.credentials.agent_s2s_token
+        configured = configured_token
         if configured.blank?
           render json: {error: "S2S token not configured"}, status: :service_unavailable
           return
@@ -30,6 +30,19 @@ module Api
           render json: {error: "invalid or missing X-NeuraMD-Agent-Token"}, status: :unauthorized
           nil
         end
+      end
+
+      # ENV wins over credentials. Env is set via systemd drop-in
+      # (Environment=AGENT_S2S_TOKEN=...), which survives the
+      # autodeploy hook's `git reset --hard` that would otherwise
+      # wipe a credentials.yml.enc write that was never committed.
+      # Credentials remain as the fallback for dev/test environments
+      # where systemd isn't in the picture.
+      def configured_token
+        env_value = ENV["AGENT_S2S_TOKEN"].to_s.strip
+        return env_value unless env_value.empty?
+
+        ::Rails.application.credentials.agent_s2s_token
       end
 
       def ensure_tentacles_enabled!
