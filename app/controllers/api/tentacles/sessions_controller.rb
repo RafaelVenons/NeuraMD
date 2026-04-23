@@ -1,8 +1,6 @@
 module Api
   module Tentacles
     class SessionsController < Api::BaseController
-      class InvalidBootConfig < StandardError; end
-
       KNOWN_COMMANDS = {
         "bash" => ["bash", "-l"],
         "claude" => ["claude"]
@@ -31,74 +29,28 @@ module Api
         authorize @note, :update?
         command = resolve_command(params[:command])
 
-        routed_prompt, routed_err = ::Tentacles::BootConfig.validate_initial_prompt(params[:initial_prompt])
-        if routed_err
-          render json: {error: routed_err}, status: :unprocessable_entity
-          return
-        end
-
-        begin
-          repo_root, worktree_root, link_shared, boot_prompt = sanitized_boot_config(@note)
-        rescue InvalidBootConfig => e
-          render json: {error: e.message}, status: :unprocessable_entity
-          return
-        end
-        current_fingerprint = ::Tentacles::BootConfig.repo_root_fingerprint(repo_root)
-
-        existing = ::TentacleRuntime.get(@note.id)
-        if existing&.alive?
-          # Reuse is only safe when the current boot config still points at
-          # the same worktree AND the same underlying repository the live
-          # session is attached to. Two stale scenarios we refuse:
-          # 1. cwd path divergence — tentacle_workspace/tentacle_cwd mutated
-          #    after spawn, so the desired worktree path changed.
-          # 2. repo identity divergence — workspace path stayed the same but
-          #    the repo behind it was replaced (rm -rf + clone). The path
-          #    check alone misses this; the inode fingerprint catches it.
-          desired_cwd = WorktreeService.path_for(
-            tentacle_id: @note.id,
-            repo_root: repo_root,
-            worktree_root: worktree_root
-          )
-          cwd_stale = existing.cwd && existing.cwd.to_s != desired_cwd.to_s
-          repo_stale =
-            existing.repo_root_fingerprint &&
-            current_fingerprint &&
-            existing.repo_root_fingerprint != current_fingerprint
-
-          if cwd_stale || repo_stale
-            render json: {
-              error: "session boot config is stale. DELETE /api/notes/#{@note.slug}/tentacle then POST again to recreate.",
-              stale_boot_config: true,
-              stale_reason: cwd_stale ? "cwd_changed" : "repo_identity_changed",
-              current_cwd: existing.cwd.to_s,
-              desired_cwd: desired_cwd.to_s
-            }, status: :conflict
-            return
-          end
-
-          if routed_prompt.present?
-            ::TentacleRuntime.write(tentacle_id: @note.id, data: "#{routed_prompt}\n")
-          end
-          render json: serialize_session(@note, existing, reused: true, boot_config_applied: false, routed_prompt_delivered: routed_prompt.present?), status: :ok
-          return
-        end
-        initial_prompt = merge_prompts(boot_prompt, routed_prompt)
-        cwd = WorktreeService.ensure(
-          tentacle_id: @note.id,
-          repo_root: repo_root,
-          worktree_root: worktree_root,
-          link_shared: link_shared
-        )
-        session = ::TentacleRuntime.start(
-          tentacle_id: @note.id,
+        result = ::Tentacles::SessionControl.activate(
+          note: @note,
           command: command,
-          cwd: cwd,
-          initial_prompt: initial_prompt,
-          persistence: {kind: "web", author_id: current_user&.id},
-          repo_root_fingerprint: current_fingerprint
+          initial_prompt: params[:initial_prompt],
+          persistence: {kind: "web", author_id: current_user&.id}
         )
-        render json: serialize_session(@note, session, command_override: command, reused: false, boot_config_applied: true), status: :created
+
+        if result.reused
+          render json: serialize_session(@note, result.session, reused: true, boot_config_applied: false, routed_prompt_delivered: result.routed_prompt_delivered), status: :ok
+        else
+          render json: serialize_session(@note, result.session, command_override: command, reused: false, boot_config_applied: true), status: :created
+        end
+      rescue ::Tentacles::SessionControl::InvalidBootConfig => e
+        render json: {error: e.message}, status: :unprocessable_entity
+      rescue ::Tentacles::SessionControl::StaleSession => e
+        render json: {
+          error: "session boot config is stale. DELETE /api/notes/#{@note.slug}/tentacle then POST again to recreate.",
+          stale_boot_config: true,
+          stale_reason: e.reason,
+          current_cwd: e.current_cwd,
+          desired_cwd: e.desired_cwd
+        }, status: :conflict
       end
 
       def destroy
@@ -118,56 +70,6 @@ module Api
       def set_note
         @note = Note.active.find_by(slug: params[:slug])
         render_not_found unless @note
-      end
-
-      def merge_prompts(boot, routed)
-        return boot if routed.nil? || routed.empty?
-        return routed if boot.nil? || boot.empty?
-        "#{boot}\n\n#{routed}"
-      end
-
-      def sanitized_boot_config(note)
-        props = note.current_properties
-
-        # When tentacle_workspace is declared on the note, it is the binding
-        # runtime contract: resolve-or-fail-closed. The old behaviour of
-        # logging a warning and falling back to tentacle_cwd is an attractive
-        # nuisance — a stale cwd could send commits to a completely different
-        # repo without any user signal. Raise so the controller can 422.
-        workspace_name = props["tentacle_workspace"]
-        workspace_path = nil
-        if workspace_name.present?
-          workspace_path, workspace_err = ::Tentacles::Workspace.resolve(workspace_name)
-          if workspace_err
-            Rails.logger.warn("Tentacle #{note.id} tentacle_workspace rejected at session start: #{workspace_err}")
-            raise InvalidBootConfig, "tentacle_workspace: #{workspace_err}"
-          end
-        end
-
-        canonical_cwd = nil
-        unless workspace_path
-          canonical_cwd, cwd_err = ::Tentacles::BootConfig.canonicalize_cwd(props["tentacle_cwd"])
-          # Same fail-closed principle as tentacle_workspace above. When
-          # tentacle_cwd is declared on the note, it is the binding runtime
-          # contract. Falling back to Rails.root when the stored cwd is
-          # stale/renamed/deleted would silently commit to the app repo
-          # instead — same wrong-target risk, different property.
-          if cwd_err && props["tentacle_cwd"].present?
-            Rails.logger.warn("Tentacle #{note.id} tentacle_cwd rejected at session start: #{cwd_err}")
-            raise InvalidBootConfig, "tentacle_cwd: #{cwd_err}"
-          end
-        end
-
-        validated_prompt, prompt_err = ::Tentacles::BootConfig.validate_initial_prompt(props["tentacle_initial_prompt"])
-        if prompt_err
-          Rails.logger.warn("Tentacle #{note.id} tentacle_initial_prompt rejected at session start: #{prompt_err}")
-        end
-
-        repo_root = workspace_path || canonical_cwd || Rails.root
-        worktree_root = workspace_path ? ::Tentacles::Workspace.worktree_root_for(workspace_name) : nil
-        link_shared = workspace_path.nil?
-
-        [repo_root, worktree_root, link_shared, validated_prompt]
       end
 
       def resolve_command(raw)
