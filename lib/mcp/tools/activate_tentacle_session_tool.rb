@@ -54,6 +54,8 @@ module Mcp
         end
 
         uri = URI.parse("#{base_url}/api/s2s/tentacles/#{URI.encode_www_form_component(slug)}/activate")
+        return error_response("refusing to send S2S token over plaintext HTTP to non-local host #{uri.host}; use https:// or a loopback address") unless safe_transport?(uri)
+
         payload = {command: command_value}
         payload[:initial_prompt] = initial_prompt if initial_prompt.present?
 
@@ -72,6 +74,18 @@ module Mcp
 
       def self.base_url
         ENV.fetch("NEURAMD_S2S_URL", DEFAULT_BASE_URL)
+      end
+
+      # HTTPS is always fine; plain HTTP only to loopback. Prevents
+      # accidentally shipping the bearer token to a non-local host
+      # because of a misconfigured NEURAMD_S2S_URL override.
+      LOOPBACK_HOSTS = %w[127.0.0.1 ::1 localhost].freeze
+
+      def self.safe_transport?(uri)
+        return true if uri.scheme == "https"
+        return true if uri.scheme == "http" && LOOPBACK_HOSTS.include?(uri.host.to_s)
+
+        false
       end
 
       def self.post_json(uri, payload, token)

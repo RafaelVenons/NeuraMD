@@ -108,8 +108,8 @@ RSpec.describe Mcp::Tools::ActivateTentacleSessionTool do
       expect(response.content.first[:text]).to include("Errno::ECONNREFUSED")
     end
 
-    it "honors NEURAMD_S2S_URL env override" do
-      ENV["NEURAMD_S2S_URL"] = "http://other.local:9999"
+    it "honors NEURAMD_S2S_URL env override for loopback targets" do
+      ENV["NEURAMD_S2S_URL"] = "http://127.0.0.1:9999"
       captured_uri = nil
       allow(described_class).to receive(:post_json) do |uri, _payload, _token|
         captured_uri = uri
@@ -117,7 +117,32 @@ RSpec.describe Mcp::Tools::ActivateTentacleSessionTool do
       end
 
       described_class.call(slug: "gerente")
-      expect(captured_uri.to_s).to start_with("http://other.local:9999")
+      expect(captured_uri.to_s).to start_with("http://127.0.0.1:9999")
+    ensure
+      ENV.delete("NEURAMD_S2S_URL")
+    end
+
+    it "refuses to send the S2S token over plain HTTP to non-loopback hosts" do
+      ENV["NEURAMD_S2S_URL"] = "http://other.local:9999"
+      expect(described_class).not_to receive(:post_json)
+
+      response = described_class.call(slug: "gerente")
+      expect(response.error?).to be(true)
+      expect(response.content.first[:text]).to include("plaintext HTTP", "other.local")
+    ensure
+      ENV.delete("NEURAMD_S2S_URL")
+    end
+
+    it "allows HTTPS to non-loopback hosts" do
+      ENV["NEURAMD_S2S_URL"] = "https://other.local:443"
+      captured_uri = nil
+      allow(described_class).to receive(:post_json) do |uri, _payload, _token|
+        captured_uri = uri
+        [{activated: true}.to_json, 201]
+      end
+
+      described_class.call(slug: "gerente")
+      expect(captured_uri.scheme).to eq("https")
     ensure
       ENV.delete("NEURAMD_S2S_URL")
     end
