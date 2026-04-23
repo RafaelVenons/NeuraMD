@@ -37,19 +37,40 @@ module Api
           return
         end
 
-        existing = ::TentacleRuntime.get(@note.id)
-        if existing&.alive?
-          if routed_prompt.present?
-            ::TentacleRuntime.write(tentacle_id: @note.id, data: "#{routed_prompt}\n")
-          end
-          render json: serialize_session(@note, existing, reused: true, boot_config_applied: false, routed_prompt_delivered: routed_prompt.present?), status: :ok
-          return
-        end
-
         begin
           repo_root, worktree_root, link_shared, boot_prompt = sanitized_boot_config(@note)
         rescue InvalidBootConfig => e
           render json: {error: e.message}, status: :unprocessable_entity
+          return
+        end
+
+        existing = ::TentacleRuntime.get(@note.id)
+        if existing&.alive?
+          # Reuse is only safe when the current boot config still points at
+          # the same worktree the live session is attached to. If someone
+          # mutated tentacle_workspace/tentacle_cwd after spawn, the session
+          # is attached to a stale path — writing routed_prompt here would
+          # land in the wrong repo without any user signal. Fail with 409
+          # asking the caller to stop+recreate.
+          desired_cwd = WorktreeService.path_for(
+            tentacle_id: @note.id,
+            repo_root: repo_root,
+            worktree_root: worktree_root
+          )
+          if existing.cwd && existing.cwd.to_s != desired_cwd.to_s
+            render json: {
+              error: "session boot config is stale: current workspace/cwd resolves to #{desired_cwd} but the live session is attached to #{existing.cwd}. DELETE /api/notes/#{@note.slug}/tentacle then POST again to recreate.",
+              stale_boot_config: true,
+              current_cwd: existing.cwd.to_s,
+              desired_cwd: desired_cwd.to_s
+            }, status: :conflict
+            return
+          end
+
+          if routed_prompt.present?
+            ::TentacleRuntime.write(tentacle_id: @note.id, data: "#{routed_prompt}\n")
+          end
+          render json: serialize_session(@note, existing, reused: true, boot_config_applied: false, routed_prompt_delivered: routed_prompt.present?), status: :ok
           return
         end
         initial_prompt = merge_prompts(boot_prompt, routed_prompt)

@@ -254,9 +254,11 @@ RSpec.describe "API tentacle sessions", type: :request do
           changes: {"tentacle_initial_prompt" => "fresh boot message"}
         )
 
+        existing_cwd = WorktreeService.path_for(tentacle_id: note.id, repo_root: Rails.root)
         existing = instance_double(
           TentacleRuntime::Session,
-          alive?: true, pid: 4242, started_at: Time.utc(2026, 4, 20, 10)
+          alive?: true, pid: 4242, started_at: Time.utc(2026, 4, 20, 10),
+          cwd: existing_cwd
         )
         allow(existing).to receive(:instance_variable_get).with(:@command).and_return(%w[claude])
         TentacleRuntime::SESSIONS[note.id] = existing
@@ -272,6 +274,36 @@ RSpec.describe "API tentacle sessions", type: :request do
         expect(body["reused"]).to eq(true)
         expect(body["boot_config_applied"]).to eq(false)
         expect(body["pid"]).to eq(4242)
+      end
+
+      it "returns 409 when the live session's cwd no longer matches the note's boot config" do
+        sign_in user
+        note = make_note("StaleReuse")
+
+        # Simulate a session that was spawned for an earlier boot config
+        # (attached to a different worktree path). Any mutation to the
+        # note's tentacle_workspace/tentacle_cwd after this point would
+        # produce the same effect; here we just construct the divergence
+        # directly by giving the live session a path the current resolver
+        # cannot produce.
+        stale_cwd = "/tmp/stale-worktree-#{SecureRandom.hex(4)}"
+        existing = instance_double(
+          TentacleRuntime::Session,
+          alive?: true, pid: 9999, started_at: Time.current, cwd: stale_cwd
+        )
+        TentacleRuntime::SESSIONS[note.id] = existing
+
+        expect(TentacleRuntime).not_to receive(:write)
+        expect(TentacleRuntime).not_to receive(:start)
+
+        post "/api/notes/#{note.reload.slug}/tentacle", params: {command: "claude"}.to_json,
+          headers: {"CONTENT_TYPE" => "application/json"}
+
+        expect(response).to have_http_status(:conflict)
+        body = response.parsed_body
+        expect(body["stale_boot_config"]).to eq(true)
+        expect(body["current_cwd"]).to eq(stale_cwd)
+        expect(body["desired_cwd"]).to include("tmp/tentacles/#{note.id}")
       end
 
       it "passes the routed initial_prompt to TentacleRuntime.start when starting fresh" do
@@ -317,9 +349,11 @@ RSpec.describe "API tentacle sessions", type: :request do
       it "writes routed initial_prompt to the PTY when reusing an alive session" do
         sign_in user
         note = make_note("AliveRoute")
+        existing_cwd = WorktreeService.path_for(tentacle_id: note.id, repo_root: Rails.root)
         existing = instance_double(
           TentacleRuntime::Session,
-          alive?: true, pid: 5555, started_at: Time.utc(2026, 4, 20, 11)
+          alive?: true, pid: 5555, started_at: Time.utc(2026, 4, 20, 11),
+          cwd: existing_cwd
         )
         allow(existing).to receive(:instance_variable_get).with(:@command).and_return(%w[claude])
         TentacleRuntime::SESSIONS[note.id] = existing

@@ -285,7 +285,7 @@ class TentacleRuntime
     DEFAULT_CONTEXT_WARNING_RATIO = 0.70
     TOKEN_BYTES_RATIO = 4
 
-    attr_reader :tentacle_id, :pid, :started_at, :dtach
+    attr_reader :tentacle_id, :pid, :started_at, :dtach, :cwd
 
     def initialize(tentacle_id:, command:, cwd: nil, env: {}, on_exit: nil,
                    context_warning_ratio: nil, context_window_tokens: nil,

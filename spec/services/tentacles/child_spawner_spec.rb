@@ -104,17 +104,15 @@ RSpec.describe Tentacles::ChildSpawner do
           .to eq("neuramd")
       end
 
-      it "persists workspace alongside cwd and initial_prompt" do
+      it "persists workspace alongside initial_prompt" do
         result = described_class.call(
           parent: parent,
-          title: "All Three",
-          cwd: "/home/venom/projects/MapledaRapeize",
+          title: "WS + Prompt",
           initial_prompt: "boot",
           workspace: "neuramd"
         )
 
         expect(result.child.head_revision.properties_data).to eq(
-          "tentacle_cwd" => "/home/venom/projects/MapledaRapeize",
           "tentacle_initial_prompt" => "boot",
           "tentacle_workspace" => "neuramd"
         )
@@ -124,6 +122,19 @@ RSpec.describe Tentacles::ChildSpawner do
         result = described_class.call(parent: parent, title: "Blank WS", workspace: "")
 
         expect(result.child.head_revision.properties_data).not_to have_key("tentacle_workspace")
+      end
+
+      it "raises DualTarget when both cwd and workspace are given" do
+        expect {
+          described_class.call(
+            parent: parent,
+            title: "Both",
+            cwd: "/home/venom/projects/MapledaRapeize",
+            workspace: "neuramd"
+          )
+        }.to raise_error(described_class::DualTarget)
+
+        expect(Note.where(title: "Both")).to be_empty
       end
     end
   end

@@ -3,6 +3,7 @@ module Tentacles
     include ::DomainEvents
 
     class BlankTitle < StandardError; end
+    class DualTarget < StandardError; end
 
     Result = Struct.new(:child, :revision, :body, keyword_init: true)
 
@@ -30,6 +31,9 @@ module Tentacles
 
     def call
       raise BlankTitle, "title cannot be blank" if @title.empty?
+      if @cwd && @workspace
+        raise DualTarget, "cannot set both cwd and workspace — pick one"
+      end
 
       body = compose_body
       child = Note.create!(title: @title, note_kind: "markdown")
