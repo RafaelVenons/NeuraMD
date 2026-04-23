@@ -53,14 +53,15 @@ RSpec.describe Mcp::Tools::ReadNoteTool do
     content = JSON.parse(response.content.first[:text])
     expect(content["backlinks"].length).to eq(1)
     expect(content["backlinks"].first["source_title"]).to eq("Nota que referencia")
-    expect(content["backlinks"].first["role"]).to eq("c")
+    expect(content["backlinks"].first["role"]).to eq("target_is_child")
+    expect(content["backlinks"].first["role_token"]).to eq("c")
     expect(content["backlinks"].first["direction"]).to eq("incoming")
   end
 
-  describe "role literal tokens (Fase 3)" do
+  describe "role_token additive field (Fase 3)" do
     let!(:center) { create(:note, :with_head_revision, title: "Centro") }
 
-    it "emits 1-char token for outgoing links instead of semantic name" do
+    it "preserves semantic role and adds role_token for outgoing links" do
       dst = create(:note, :with_head_revision, title: "Alvo")
       create(:note_link,
         src_note: center, dst_note: dst,
@@ -69,10 +70,11 @@ RSpec.describe Mcp::Tools::ReadNoteTool do
 
       response = described_class.call(slug: center.slug)
       content = JSON.parse(response.content.first[:text])
-      expect(content["links"].first["role"]).to eq("f")
+      expect(content["links"].first["role"]).to eq("target_is_parent")
+      expect(content["links"].first["role_token"]).to eq("f")
     end
 
-    it "emits null for plain links without hier_role" do
+    it "emits null role and null role_token for plain links without hier_role" do
       dst = create(:note, :with_head_revision, title: "Plain")
       create(:note_link,
         src_note: center, dst_note: dst,
@@ -82,10 +84,12 @@ RSpec.describe Mcp::Tools::ReadNoteTool do
       response = described_class.call(slug: center.slug)
       content = JSON.parse(response.content.first[:text])
       expect(content["links"].first).to have_key("role")
+      expect(content["links"].first).to have_key("role_token")
       expect(content["links"].first["role"]).to be_nil
+      expect(content["links"].first["role_token"]).to be_nil
     end
 
-    it "maps all delegation tokens (p/d/v/x) in backlinks" do
+    it "maps all delegation tokens (p/d/v/x) in backlinks role_token while role stays semantic" do
       mapping = {
         "delegation_pending" => "p",
         "delegation_directive" => "d",
@@ -102,8 +106,10 @@ RSpec.describe Mcp::Tools::ReadNoteTool do
 
       response = described_class.call(slug: center.slug)
       content = JSON.parse(response.content.first[:text])
+      tokens = content["backlinks"].map { |b| b["role_token"] }.sort
       roles = content["backlinks"].map { |b| b["role"] }.sort
-      expect(roles).to eq(%w[d p v x])
+      expect(tokens).to eq(%w[d p v x])
+      expect(roles).to eq(%w[delegation_block delegation_directive delegation_pending delegation_verify])
     end
   end
 
@@ -127,8 +133,8 @@ RSpec.describe Mcp::Tools::ReadNoteTool do
 
       response = described_class.call(slug: center.slug, backlink_roles: "p,x")
       content = JSON.parse(response.content.first[:text])
-      roles = content["backlinks"].map { |b| b["role"] }.sort
-      expect(roles).to eq(%w[p x])
+      tokens = content["backlinks"].map { |b| b["role_token"] }.sort
+      expect(tokens).to eq(%w[p x])
     end
 
     it "filters to plain links when backlink_roles contains 'none'" do
@@ -140,6 +146,7 @@ RSpec.describe Mcp::Tools::ReadNoteTool do
       expect(content["backlinks"].length).to eq(1)
       expect(content["backlinks"].first["source_title"]).to eq("plain")
       expect(content["backlinks"].first["role"]).to be_nil
+      expect(content["backlinks"].first["role_token"]).to be_nil
     end
 
     it "filters by backlinks_updated_since (ISO8601)" do

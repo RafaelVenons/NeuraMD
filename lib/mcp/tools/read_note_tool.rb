@@ -13,7 +13,7 @@ module Mcp
       NONE_TOKEN = "none"
 
       tool_name "read_note"
-      description "Read a NeuraMD note by slug or alias. Returns full content, tags, aliases, and links with 1-char role tokens (f/c/b/p/d/v/x). Follows slug redirects and aliases."
+      description "Read a NeuraMD note by slug or alias. Returns full content, tags, aliases, and links. Each link carries both `role` (semantic name, e.g. target_is_child) and `role_token` (1-char token: f/c/b/p/d/v/x or null). Follows slug redirects and aliases."
 
       input_schema(
         type: "object",
@@ -54,7 +54,8 @@ module Mcp
           {
             target_slug: link.dst_note.slug,
             target_title: link.dst_note.title,
-            role: role_token(link.hier_role),
+            role: link.hier_role,
+            role_token: role_token(link.hier_role),
             direction: "outgoing"
           }
         end
@@ -144,7 +145,8 @@ module Mcp
           {
             source_slug: link.src_note.slug,
             source_title: link.src_note.title,
-            role: role_token(link.hier_role),
+            role: link.hier_role,
+            role_token: role_token(link.hier_role),
             direction: "incoming"
           }
         end

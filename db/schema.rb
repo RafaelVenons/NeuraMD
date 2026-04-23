@@ -204,7 +204,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_04_23_222303) do
     t.index ["src_note_id", "dst_note_id"], name: "index_note_links_on_src_note_id_and_dst_note_id", unique: true
     t.index ["src_note_id", "dst_note_id"], name: "index_note_links_unique_src_dst_no_role", unique: true, where: "(hier_role IS NULL)"
     t.index ["src_note_id"], name: "index_note_links_on_src_note_id"
-    t.check_constraint "hier_role IS NULL OR (hier_role::text = ANY (ARRAY['target_is_parent'::character varying::text, 'target_is_child'::character varying::text, 'same_level'::character varying::text, 'next_in_sequence'::character varying::text, 'delegation_pending'::character varying::text, 'delegation_directive'::character varying::text, 'delegation_verify'::character varying::text, 'delegation_block'::character varying::text]))", name: "check_note_links_hier_role_allow_list"
+    t.check_constraint "hier_role IS NULL OR (hier_role::text = ANY (ARRAY['target_is_parent'::character varying, 'target_is_child'::character varying, 'same_level'::character varying, 'next_in_sequence'::character varying, 'delegation_pending'::character varying, 'delegation_directive'::character varying, 'delegation_verify'::character varying, 'delegation_block'::character varying]::text[]))", name: "check_note_links_hier_role_allow_list"
   end
 
   create_table "note_revisions", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
