@@ -115,8 +115,14 @@ module Api
         canonical_cwd = nil
         unless workspace_path
           canonical_cwd, cwd_err = ::Tentacles::BootConfig.canonicalize_cwd(props["tentacle_cwd"])
+          # Same fail-closed principle as tentacle_workspace above. When
+          # tentacle_cwd is declared on the note, it is the binding runtime
+          # contract. Falling back to Rails.root when the stored cwd is
+          # stale/renamed/deleted would silently commit to the app repo
+          # instead — same wrong-target risk, different property.
           if cwd_err && props["tentacle_cwd"].present?
             Rails.logger.warn("Tentacle #{note.id} tentacle_cwd rejected at session start: #{cwd_err}")
+            raise InvalidBootConfig, "tentacle_cwd: #{cwd_err}"
           end
         end
 

@@ -210,7 +210,7 @@ RSpec.describe "API tentacle sessions", type: :request do
         expect(response).to have_http_status(:created)
       end
 
-      it "falls back to Rails.root when stored tentacle_cwd is outside the whitelist" do
+      it "returns 422 when stored tentacle_cwd is outside the whitelist" do
         sign_in user
         note = make_note("TaintedCwd")
         Properties::SetService.call(
@@ -218,20 +218,17 @@ RSpec.describe "API tentacle sessions", type: :request do
           changes: {"tentacle_cwd" => "/etc"}
         )
 
-        fake = instance_double(TentacleRuntime::Session, alive?: true, pid: 1, started_at: Time.current)
-        expect(WorktreeService).to receive(:ensure) do |**kwargs|
-          expect(kwargs[:repo_root]).to eq(Rails.root)
-          "/stub/worktree"
-        end
-        allow(TentacleRuntime).to receive(:start).and_return(fake)
+        expect(WorktreeService).not_to receive(:ensure)
+        expect(TentacleRuntime).not_to receive(:start)
 
         post "/api/notes/#{note.reload.slug}/tentacle", params: {command: "bash"}.to_json,
           headers: {"CONTENT_TYPE" => "application/json"}
 
-        expect(response).to have_http_status(:created)
+        expect(response).to have_http_status(:unprocessable_entity)
+        expect(response.parsed_body["error"]).to include("tentacle_cwd")
       end
 
-      it "falls back to Rails.root when stored tentacle_cwd does not exist" do
+      it "returns 422 when stored tentacle_cwd does not exist" do
         sign_in user
         note = make_note("VanishedCwd")
         Properties::SetService.call(
@@ -239,17 +236,14 @@ RSpec.describe "API tentacle sessions", type: :request do
           changes: {"tentacle_cwd" => "/home/venom/projects/does-not-exist-#{SecureRandom.hex(4)}"}
         )
 
-        fake = instance_double(TentacleRuntime::Session, alive?: true, pid: 1, started_at: Time.current)
-        expect(WorktreeService).to receive(:ensure) do |**kwargs|
-          expect(kwargs[:repo_root]).to eq(Rails.root)
-          "/stub/worktree"
-        end
-        allow(TentacleRuntime).to receive(:start).and_return(fake)
+        expect(WorktreeService).not_to receive(:ensure)
+        expect(TentacleRuntime).not_to receive(:start)
 
         post "/api/notes/#{note.reload.slug}/tentacle", params: {command: "bash"}.to_json,
           headers: {"CONTENT_TYPE" => "application/json"}
 
-        expect(response).to have_http_status(:created)
+        expect(response).to have_http_status(:unprocessable_entity)
+        expect(response.parsed_body["error"]).to include("tentacle_cwd")
       end
 
       it "signals reused=true and skips TentacleRuntime.start when a live session already exists" do

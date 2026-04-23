@@ -36,6 +36,22 @@ module Tentacles
           return [nil, "workspace not found: #{name_str}"]
         end
 
+      # Re-check containment after symlink resolution. Without this, a
+      # symlink placed under the shared workspace root could redirect a
+      # tentacle's worktree to an arbitrary repo elsewhere on disk,
+      # bypassing the workspace whitelist entirely. realpath(root) is
+      # computed each call so root-level symlink changes are observed.
+      canonical_root =
+        begin
+          File.realpath(root)
+        rescue Errno::ENOENT, Errno::ENOTDIR
+          return [nil, "workspace root does not exist: #{root}"]
+        end
+      root_prefix = canonical_root.end_with?("/") ? canonical_root : "#{canonical_root}/"
+      unless canonical.start_with?(root_prefix)
+        return [nil, "workspace escapes workspace root: #{name_str}"]
+      end
+
       return [nil, "workspace not found: #{name_str}"] unless File.directory?(canonical)
       return [nil, "workspace is not a git repository: #{name_str}"] unless File.directory?(File.join(canonical, ".git"))
 

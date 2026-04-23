@@ -92,6 +92,29 @@ RSpec.describe Tentacles::Workspace do
       expect(described_class.resolve("my-project").last).to be_nil
       expect(described_class.resolve("foo.bar").last).to be_nil
     end
+
+    it "rejects a symlink entry that escapes the workspace root" do
+      external = Dir.mktmpdir("ws-spec-escape-")
+      external_repo = File.join(external, "rogue")
+      FileUtils.mkdir_p(File.join(external_repo, ".git"))
+
+      File.symlink(external_repo, File.join(sandbox, "escaped"))
+
+      path, err = described_class.resolve("escaped")
+      expect(path).to be_nil
+      expect(err).to match(/escapes workspace root/i)
+    ensure
+      FileUtils.remove_entry(external) if external && File.directory?(external)
+    end
+
+    it "accepts an intra-root symlink that still resolves under the workspace root" do
+      target = make_repo("actual")
+      File.symlink(target, File.join(sandbox, "alias"))
+
+      path, err = described_class.resolve("alias")
+      expect(err).to be_nil
+      expect(path).to eq(File.realpath(target))
+    end
   end
 
   describe ".worktree_root_for" do
