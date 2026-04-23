@@ -7,11 +7,15 @@ class TentacleRuntime
   # any detached session that exits naturally after a deploy would be
   # dropped, because the original closure lived only in the old process.
   #
-  # Two kinds are supported today:
-  #   {kind: "web",  author_id: <Integer|nil>}
-  #   {kind: "cron", lease_token: <String>}
+  # Three kinds are supported today:
+  #   {kind: "web",  author_id: <Integer|nil>} — human-initiated via UI
+  #   {kind: "cron", lease_token: <String>}    — scheduled by Tentacles::CronTickJob
+  #   {kind: "s2s"}                            — agent-initiated via
+  #     /api/s2s/tentacles/:slug/activate. Transcript persistence
+  #     follows the same path as web (no human author), cron-specific
+  #     lease dance is skipped.
   module Persistence
-    KINDS = %w[web cron].freeze
+    KINDS = %w[web cron s2s].freeze
 
     def self.validate!(descriptor)
       return nil if descriptor.nil?
@@ -29,8 +33,8 @@ class TentacleRuntime
 
       normalized = descriptor.transform_keys(&:to_s)
       case normalized["kind"]
-      when "web"  then build_web(normalized, tentacle_id: tentacle_id)
-      when "cron" then build_cron(normalized, tentacle_id: tentacle_id)
+      when "web", "s2s" then build_web(normalized, tentacle_id: tentacle_id)
+      when "cron"       then build_cron(normalized, tentacle_id: tentacle_id)
       end
     end
 

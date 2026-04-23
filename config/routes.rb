@@ -27,6 +27,16 @@ Rails.application.routes.draw do
   get    "api/tentacles/sessions", to: "api/tentacles/sessions#index", as: :api_tentacles_sessions
   post   "api/tentacles/drain",    to: "api/tentacles/drain#create",   as: :api_tentacles_drain
 
+  # Service-to-service tentacle control surface. Token-authed (see
+  # Api::S2s::BaseController), for agents (notably the Gerente)
+  # activating peer tentacles without a human opening each in the UI.
+  scope "api/s2s" do
+    constraints slug: /[^\/]+/ do
+      post   "tentacles/:slug/activate", to: "api/s2s/tentacles/sessions#activate", as: :api_s2s_tentacle_activate
+      delete "tentacles/:slug",          to: "api/s2s/tentacles/sessions#destroy",  as: :api_s2s_tentacle_destroy
+    end
+  end
+
   scope "api" do
     constraints slug: /[^\/]+/ do
       get    "notes/:slug",                           to: "api/notes#show",             as: :api_note
