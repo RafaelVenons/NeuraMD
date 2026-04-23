@@ -46,6 +46,15 @@ module Mcp
         parent = find_note(parent_slug)
         return error_response("Parent note not found: #{parent_slug}") unless parent
 
+        workspace_given = tentacle_workspace.present? && !tentacle_workspace.to_s.strip.empty?
+        cwd_given = cwd.present? && !cwd.to_s.strip.empty?
+        if workspace_given && cwd_given
+          return error_response(
+            "cannot set both tentacle_workspace and cwd — pick one. " \
+            "Workspace is preferred for code-editing children; cwd is for single-agent ephemeral work in a specific repo."
+          )
+        end
+
         validated_workspace, workspace_error = validate_workspace(tentacle_workspace)
         return error_response(workspace_error) if workspace_error
 

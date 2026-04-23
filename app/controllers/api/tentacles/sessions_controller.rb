@@ -1,6 +1,8 @@
 module Api
   module Tentacles
     class SessionsController < Api::BaseController
+      class InvalidBootConfig < StandardError; end
+
       KNOWN_COMMANDS = {
         "bash" => ["bash", "-l"],
         "claude" => ["claude"]
@@ -44,7 +46,12 @@ module Api
           return
         end
 
-        repo_root, worktree_root, link_shared, boot_prompt = sanitized_boot_config(@note)
+        begin
+          repo_root, worktree_root, link_shared, boot_prompt = sanitized_boot_config(@note)
+        rescue InvalidBootConfig => e
+          render json: {error: e.message}, status: :unprocessable_entity
+          return
+        end
         initial_prompt = merge_prompts(boot_prompt, routed_prompt)
         cwd = WorktreeService.ensure(
           tentacle_id: @note.id,
@@ -90,10 +97,19 @@ module Api
       def sanitized_boot_config(note)
         props = note.current_properties
 
+        # When tentacle_workspace is declared on the note, it is the binding
+        # runtime contract: resolve-or-fail-closed. The old behaviour of
+        # logging a warning and falling back to tentacle_cwd is an attractive
+        # nuisance — a stale cwd could send commits to a completely different
+        # repo without any user signal. Raise so the controller can 422.
         workspace_name = props["tentacle_workspace"]
-        workspace_path, workspace_err = ::Tentacles::Workspace.resolve(workspace_name)
-        if workspace_err && workspace_name.present?
-          Rails.logger.warn("Tentacle #{note.id} tentacle_workspace rejected at session start: #{workspace_err}")
+        workspace_path = nil
+        if workspace_name.present?
+          workspace_path, workspace_err = ::Tentacles::Workspace.resolve(workspace_name)
+          if workspace_err
+            Rails.logger.warn("Tentacle #{note.id} tentacle_workspace rejected at session start: #{workspace_err}")
+            raise InvalidBootConfig, "tentacle_workspace: #{workspace_err}"
+          end
         end
 
         canonical_cwd = nil

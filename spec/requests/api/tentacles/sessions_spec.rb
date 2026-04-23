@@ -459,24 +459,40 @@ RSpec.describe "API tentacle sessions", type: :request do
         expect(response).to have_http_status(:created)
       end
 
-      it "falls back to tentacle_cwd / Rails.root when workspace is invalid" do
+      it "returns 422 and does not spawn when tentacle_workspace cannot be resolved" do
         sign_in user
         note = make_note("BadWs")
         Properties::SetService.call(note: note, changes: {"tentacle_workspace" => "missing-one"})
 
-        fake = instance_double(TentacleRuntime::Session, alive?: true, pid: 1, started_at: Time.current)
-        expect(WorktreeService).to receive(:ensure) do |**kwargs|
-          expect(kwargs[:repo_root]).to eq(Rails.root)
-          expect(kwargs[:worktree_root]).to be_nil
-          expect(kwargs[:link_shared]).to eq(true).or be_nil
-          "/stub/worktree"
-        end
-        allow(TentacleRuntime).to receive(:start).and_return(fake)
+        expect(WorktreeService).not_to receive(:ensure)
+        expect(TentacleRuntime).not_to receive(:start)
 
         post "/api/notes/#{note.reload.slug}/tentacle", params: {command: "claude"}.to_json,
           headers: {"CONTENT_TYPE" => "application/json"}
 
-        expect(response).to have_http_status(:created)
+        expect(response).to have_http_status(:unprocessable_entity)
+        expect(response.parsed_body["error"]).to include("tentacle_workspace", "missing-one")
+      end
+
+      it "returns 422 even when both tentacle_workspace and tentacle_cwd are set but workspace is invalid" do
+        sign_in user
+        note = make_note("BadWsStaleCwd")
+        Properties::SetService.call(
+          note: note,
+          changes: {
+            "tentacle_workspace" => "missing-renamed",
+            "tentacle_cwd" => "/etc"
+          }
+        )
+
+        expect(WorktreeService).not_to receive(:ensure)
+        expect(TentacleRuntime).not_to receive(:start)
+
+        post "/api/notes/#{note.reload.slug}/tentacle", params: {command: "claude"}.to_json,
+          headers: {"CONTENT_TYPE" => "application/json"}
+
+        expect(response).to have_http_status(:unprocessable_entity)
+        expect(response.parsed_body["error"]).to include("tentacle_workspace")
       end
     end
   end

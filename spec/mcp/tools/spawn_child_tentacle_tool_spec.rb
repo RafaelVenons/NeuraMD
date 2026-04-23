@@ -295,6 +295,51 @@ RSpec.describe Mcp::Tools::SpawnChildTentacleTool do
           "tentacle_initial_prompt" => "boot message for the worker"
         )
       end
+
+      it "rejects both tentacle_workspace and cwd provided together" do
+        PropertyDefinition.find_or_create_by!(key: "tentacle_cwd") do |d|
+          d.value_type = "text"
+          d.system = true
+        end
+        cwd_path = described_class.cwd_allowed_prefixes.first + "combo-test"
+        FileUtils.mkdir_p(cwd_path)
+
+        response = described_class.call(
+          parent_slug: parent.slug,
+          title: "Both Provided",
+          tentacle_workspace: workspace_name,
+          cwd: cwd_path
+        )
+
+        expect(response.error?).to be true
+        expect(response.content.first[:text]).to include("cannot set both tentacle_workspace and cwd")
+        expect(Note.where(title: "Both Provided")).to be_empty
+      ensure
+        FileUtils.remove_entry(cwd_path) if cwd_path && File.directory?(cwd_path)
+      end
+
+      it "allows cwd when tentacle_workspace is blank" do
+        PropertyDefinition.find_or_create_by!(key: "tentacle_cwd") do |d|
+          d.value_type = "text"
+          d.system = true
+        end
+        cwd_path = described_class.cwd_allowed_prefixes.first + "cwd-alone"
+        FileUtils.mkdir_p(cwd_path)
+
+        response = described_class.call(
+          parent_slug: parent.slug,
+          title: "CWD Alone",
+          tentacle_workspace: "",
+          cwd: cwd_path
+        )
+        data = JSON.parse(response.content.first[:text])
+        child = Note.find(data["id"])
+
+        expect(child.head_revision.properties_data["tentacle_cwd"]).to eq(cwd_path)
+        expect(child.head_revision.properties_data).not_to have_key("tentacle_workspace")
+      ensure
+        FileUtils.remove_entry(cwd_path) if cwd_path && File.directory?(cwd_path)
+      end
     end
   end
 end
