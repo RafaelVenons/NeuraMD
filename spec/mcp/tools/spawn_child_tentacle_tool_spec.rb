@@ -194,5 +194,152 @@ RSpec.describe Mcp::Tools::SpawnChildTentacleTool do
         expect(child.head_revision.properties_data["tentacle_cwd"]).to be_nil
       end
     end
+
+    context "with tentacle_workspace param" do
+      before do
+        PropertyDefinition.find_or_create_by!(key: "tentacle_workspace") do |d|
+          d.value_type = "text"
+          d.system = true
+        end
+      end
+
+      let(:workspace_root) { Dir.mktmpdir("spawn-tool-ws-") }
+      let(:workspace_name) { "demo" }
+      let(:workspace_path) { File.join(workspace_root, workspace_name) }
+
+      before do
+        FileUtils.mkdir_p(File.join(workspace_path, ".git"))
+        stub_const("Tentacles::Workspace::DEFAULT_ROOT", workspace_root)
+        ENV["NEURAMD_TENTACLE_WORKSPACE_ROOT"] = workspace_root
+      end
+
+      after do
+        ENV.delete("NEURAMD_TENTACLE_WORKSPACE_ROOT")
+        FileUtils.remove_entry(workspace_root) if File.directory?(workspace_root)
+      end
+
+      it "persists tentacle_workspace as property when workspace exists as a git repo" do
+        response = described_class.call(
+          parent_slug: parent.slug,
+          title: "Child in Workspace",
+          tentacle_workspace: workspace_name
+        )
+        data = JSON.parse(response.content.first[:text])
+        child = Note.find(data["id"])
+
+        expect(child.head_revision.properties_data["tentacle_workspace"]).to eq(workspace_name)
+      end
+
+      it "rejects tentacle_workspace that does not exist" do
+        response = described_class.call(
+          parent_slug: parent.slug,
+          title: "Ghost WS",
+          tentacle_workspace: "does-not-exist"
+        )
+        expect(response.error?).to be true
+        expect(response.content.first[:text]).to include("workspace not found")
+      end
+
+      it "rejects tentacle_workspace with invalid name pattern" do
+        response = described_class.call(
+          parent_slug: parent.slug,
+          title: "Bad Name",
+          tentacle_workspace: "../escape"
+        )
+        expect(response.error?).to be true
+        expect(response.content.first[:text]).to include("invalid workspace name")
+      end
+
+      it "rejects tentacle_workspace that exists but is not a git repo" do
+        plain_dir = File.join(workspace_root, "plain")
+        FileUtils.mkdir_p(plain_dir)
+
+        response = described_class.call(
+          parent_slug: parent.slug,
+          title: "Plain Dir",
+          tentacle_workspace: "plain"
+        )
+        expect(response.error?).to be true
+        expect(response.content.first[:text]).to include("not a git repository")
+      end
+
+      it "treats blank tentacle_workspace as not-set" do
+        response = described_class.call(
+          parent_slug: parent.slug,
+          title: "Blank WS",
+          tentacle_workspace: ""
+        )
+        data = JSON.parse(response.content.first[:text])
+        child = Note.find(data["id"])
+
+        expect(child.head_revision.properties_data).not_to have_key("tentacle_workspace")
+      end
+
+      it "persists workspace alongside initial_prompt" do
+        PropertyDefinition.find_or_create_by!(key: "tentacle_initial_prompt") do |d|
+          d.value_type = "long_text"
+          d.system = true
+        end
+
+        response = described_class.call(
+          parent_slug: parent.slug,
+          title: "WS + Prompt",
+          tentacle_workspace: workspace_name,
+          initial_prompt: "boot message for the worker"
+        )
+        data = JSON.parse(response.content.first[:text])
+        child = Note.find(data["id"])
+
+        expect(child.head_revision.properties_data).to include(
+          "tentacle_workspace" => workspace_name,
+          "tentacle_initial_prompt" => "boot message for the worker"
+        )
+      end
+
+      it "rejects both tentacle_workspace and cwd provided together" do
+        PropertyDefinition.find_or_create_by!(key: "tentacle_cwd") do |d|
+          d.value_type = "text"
+          d.system = true
+        end
+        cwd_path = described_class.cwd_allowed_prefixes.first + "combo-test"
+        FileUtils.mkdir_p(cwd_path)
+
+        response = described_class.call(
+          parent_slug: parent.slug,
+          title: "Both Provided",
+          tentacle_workspace: workspace_name,
+          cwd: cwd_path
+        )
+
+        expect(response.error?).to be true
+        expect(response.content.first[:text]).to include("cannot set both tentacle_workspace and cwd")
+        expect(Note.where(title: "Both Provided")).to be_empty
+      ensure
+        FileUtils.remove_entry(cwd_path) if cwd_path && File.directory?(cwd_path)
+      end
+
+      it "allows cwd when tentacle_workspace is blank" do
+        PropertyDefinition.find_or_create_by!(key: "tentacle_cwd") do |d|
+          d.value_type = "text"
+          d.system = true
+        end
+        cwd_path = described_class.cwd_allowed_prefixes.first + "cwd-alone"
+        FileUtils.mkdir_p(cwd_path)
+
+        response = described_class.call(
+          parent_slug: parent.slug,
+          title: "CWD Alone",
+          tentacle_workspace: "",
+          cwd: cwd_path
+        )
+        data = JSON.parse(response.content.first[:text])
+        child = Note.find(data["id"])
+
+        expect(child.head_revision.properties_data["tentacle_cwd"]).to eq(cwd_path)
+        expect(child.head_revision.properties_data).not_to have_key("tentacle_workspace")
+      ensure
+        FileUtils.remove_entry(cwd_path) if cwd_path && File.directory?(cwd_path)
+      end
+    end
   end
 end

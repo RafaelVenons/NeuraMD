@@ -41,5 +41,20 @@ module Tentacles
 
       [value, nil]
     end
+
+    # Identity snapshot of a repo root. Captures canonical path + inode,
+    # so renames (symlink retarget, path change) and in-place replacements
+    # (rm -rf + re-clone at same path) both produce a different fingerprint.
+    # The cwd path alone cannot distinguish those cases — a tentacle's
+    # worktree directory keeps its path even when the repo behind it was
+    # swapped.
+    def repo_root_fingerprint(repo_root)
+      return nil if repo_root.nil?
+
+      path = File.realpath(repo_root.to_s)
+      "#{path}:#{File.stat(path).ino}"
+    rescue Errno::ENOENT, Errno::ENOTDIR
+      nil
+    end
   end
 end

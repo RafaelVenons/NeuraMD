@@ -38,7 +38,8 @@ class TentacleRuntime
     end
 
     def start(tentacle_id:, command:, cwd: nil, env: {}, on_exit: nil, persistence: nil,
-              initial_prompt: nil, context_warning_ratio: nil, context_window_tokens: nil)
+              initial_prompt: nil, context_warning_ratio: nil, context_window_tokens: nil,
+              repo_root_fingerprint: nil)
       existing = SESSIONS[tentacle_id]
       return existing if existing&.alive?
 
@@ -63,7 +64,8 @@ class TentacleRuntime
           on_exit: effective_on_exit,
           persistence_descriptor: descriptor,
           context_warning_ratio: context_warning_ratio,
-          context_window_tokens: context_window_tokens
+          context_window_tokens: context_window_tokens,
+          repo_root_fingerprint: repo_root_fingerprint
         )
         SESSIONS[tentacle_id] = session
         schedule_initial_prompt(session, initial_prompt) if initial_prompt.present?
@@ -285,14 +287,16 @@ class TentacleRuntime
     DEFAULT_CONTEXT_WARNING_RATIO = 0.70
     TOKEN_BYTES_RATIO = 4
 
-    attr_reader :tentacle_id, :pid, :started_at, :dtach
+    attr_reader :tentacle_id, :pid, :started_at, :dtach, :cwd, :repo_root_fingerprint
 
     def initialize(tentacle_id:, command:, cwd: nil, env: {}, on_exit: nil,
                    context_warning_ratio: nil, context_window_tokens: nil,
-                   session_record: nil, persistence_descriptor: nil)
+                   session_record: nil, persistence_descriptor: nil,
+                   repo_root_fingerprint: nil)
       @tentacle_id = tentacle_id
       @command = command
       @cwd = cwd
+      @repo_root_fingerprint = repo_root_fingerprint
       @env = self.class.default_env.merge(env).merge("NEURAMD_TENTACLE_ID" => tentacle_id.to_s)
       @on_exit = on_exit
       @persistence_descriptor = persistence_descriptor

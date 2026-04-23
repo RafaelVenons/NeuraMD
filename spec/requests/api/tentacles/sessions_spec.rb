@@ -210,7 +210,7 @@ RSpec.describe "API tentacle sessions", type: :request do
         expect(response).to have_http_status(:created)
       end
 
-      it "falls back to Rails.root when stored tentacle_cwd is outside the whitelist" do
+      it "returns 422 when stored tentacle_cwd is outside the whitelist" do
         sign_in user
         note = make_note("TaintedCwd")
         Properties::SetService.call(
@@ -218,20 +218,17 @@ RSpec.describe "API tentacle sessions", type: :request do
           changes: {"tentacle_cwd" => "/etc"}
         )
 
-        fake = instance_double(TentacleRuntime::Session, alive?: true, pid: 1, started_at: Time.current)
-        expect(WorktreeService).to receive(:ensure) do |**kwargs|
-          expect(kwargs[:repo_root]).to eq(Rails.root)
-          "/stub/worktree"
-        end
-        allow(TentacleRuntime).to receive(:start).and_return(fake)
+        expect(WorktreeService).not_to receive(:ensure)
+        expect(TentacleRuntime).not_to receive(:start)
 
         post "/api/notes/#{note.reload.slug}/tentacle", params: {command: "bash"}.to_json,
           headers: {"CONTENT_TYPE" => "application/json"}
 
-        expect(response).to have_http_status(:created)
+        expect(response).to have_http_status(:unprocessable_entity)
+        expect(response.parsed_body["error"]).to include("tentacle_cwd")
       end
 
-      it "falls back to Rails.root when stored tentacle_cwd does not exist" do
+      it "returns 422 when stored tentacle_cwd does not exist" do
         sign_in user
         note = make_note("VanishedCwd")
         Properties::SetService.call(
@@ -239,17 +236,14 @@ RSpec.describe "API tentacle sessions", type: :request do
           changes: {"tentacle_cwd" => "/home/venom/projects/does-not-exist-#{SecureRandom.hex(4)}"}
         )
 
-        fake = instance_double(TentacleRuntime::Session, alive?: true, pid: 1, started_at: Time.current)
-        expect(WorktreeService).to receive(:ensure) do |**kwargs|
-          expect(kwargs[:repo_root]).to eq(Rails.root)
-          "/stub/worktree"
-        end
-        allow(TentacleRuntime).to receive(:start).and_return(fake)
+        expect(WorktreeService).not_to receive(:ensure)
+        expect(TentacleRuntime).not_to receive(:start)
 
         post "/api/notes/#{note.reload.slug}/tentacle", params: {command: "bash"}.to_json,
           headers: {"CONTENT_TYPE" => "application/json"}
 
-        expect(response).to have_http_status(:created)
+        expect(response).to have_http_status(:unprocessable_entity)
+        expect(response.parsed_body["error"]).to include("tentacle_cwd")
       end
 
       it "signals reused=true and skips TentacleRuntime.start when a live session already exists" do
@@ -260,9 +254,12 @@ RSpec.describe "API tentacle sessions", type: :request do
           changes: {"tentacle_initial_prompt" => "fresh boot message"}
         )
 
+        existing_cwd = WorktreeService.path_for(tentacle_id: note.id, repo_root: Rails.root)
+        fresh_fp = Tentacles::BootConfig.repo_root_fingerprint(Rails.root)
         existing = instance_double(
           TentacleRuntime::Session,
-          alive?: true, pid: 4242, started_at: Time.utc(2026, 4, 20, 10)
+          alive?: true, pid: 4242, started_at: Time.utc(2026, 4, 20, 10),
+          cwd: existing_cwd, repo_root_fingerprint: fresh_fp
         )
         allow(existing).to receive(:instance_variable_get).with(:@command).and_return(%w[claude])
         TentacleRuntime::SESSIONS[note.id] = existing
@@ -278,6 +275,68 @@ RSpec.describe "API tentacle sessions", type: :request do
         expect(body["reused"]).to eq(true)
         expect(body["boot_config_applied"]).to eq(false)
         expect(body["pid"]).to eq(4242)
+      end
+
+      it "returns 409 when the live session's cwd no longer matches the note's boot config" do
+        sign_in user
+        note = make_note("StaleReuse")
+
+        # Simulate a session that was spawned for an earlier boot config
+        # (attached to a different worktree path). Any mutation to the
+        # note's tentacle_workspace/tentacle_cwd after this point would
+        # produce the same effect; here we just construct the divergence
+        # directly by giving the live session a path the current resolver
+        # cannot produce.
+        stale_cwd = "/tmp/stale-worktree-#{SecureRandom.hex(4)}"
+        existing = instance_double(
+          TentacleRuntime::Session,
+          alive?: true, pid: 9999, started_at: Time.current,
+          cwd: stale_cwd, repo_root_fingerprint: nil
+        )
+        TentacleRuntime::SESSIONS[note.id] = existing
+
+        expect(TentacleRuntime).not_to receive(:write)
+        expect(TentacleRuntime).not_to receive(:start)
+
+        post "/api/notes/#{note.reload.slug}/tentacle", params: {command: "claude"}.to_json,
+          headers: {"CONTENT_TYPE" => "application/json"}
+
+        expect(response).to have_http_status(:conflict)
+        body = response.parsed_body
+        expect(body["stale_boot_config"]).to eq(true)
+        expect(body["stale_reason"]).to eq("cwd_changed")
+        expect(body["current_cwd"]).to eq(stale_cwd)
+        expect(body["desired_cwd"]).to include("tmp/tentacles/#{note.id}")
+      end
+
+      it "returns 409 when the repo identity changed under the same worktree path" do
+        sign_in user
+        note = make_note("ReplacedRepo")
+
+        # Live session carries a fingerprint from an old repo identity
+        # (simulates: workspace dir rm -rf + re-clone at same path). The
+        # current fingerprint resolves to Rails.root with its real inode;
+        # the fingerprint stored on the session points at a different inode
+        # even though the cwd path would still match.
+        existing_cwd = WorktreeService.path_for(tentacle_id: note.id, repo_root: Rails.root)
+        stale_fp = "#{File.realpath(Rails.root)}:999999999"
+        existing = instance_double(
+          TentacleRuntime::Session,
+          alive?: true, pid: 1234, started_at: Time.current,
+          cwd: existing_cwd, repo_root_fingerprint: stale_fp
+        )
+        TentacleRuntime::SESSIONS[note.id] = existing
+
+        expect(TentacleRuntime).not_to receive(:write)
+        expect(TentacleRuntime).not_to receive(:start)
+
+        post "/api/notes/#{note.reload.slug}/tentacle", params: {command: "claude"}.to_json,
+          headers: {"CONTENT_TYPE" => "application/json"}
+
+        expect(response).to have_http_status(:conflict)
+        body = response.parsed_body
+        expect(body["stale_boot_config"]).to eq(true)
+        expect(body["stale_reason"]).to eq("repo_identity_changed")
       end
 
       it "passes the routed initial_prompt to TentacleRuntime.start when starting fresh" do
@@ -323,9 +382,12 @@ RSpec.describe "API tentacle sessions", type: :request do
       it "writes routed initial_prompt to the PTY when reusing an alive session" do
         sign_in user
         note = make_note("AliveRoute")
+        existing_cwd = WorktreeService.path_for(tentacle_id: note.id, repo_root: Rails.root)
+        fresh_fp = Tentacles::BootConfig.repo_root_fingerprint(Rails.root)
         existing = instance_double(
           TentacleRuntime::Session,
-          alive?: true, pid: 5555, started_at: Time.utc(2026, 4, 20, 11)
+          alive?: true, pid: 5555, started_at: Time.utc(2026, 4, 20, 11),
+          cwd: existing_cwd, repo_root_fingerprint: fresh_fp
         )
         allow(existing).to receive(:instance_variable_get).with(:@command).and_return(%w[claude])
         TentacleRuntime::SESSIONS[note.id] = existing
@@ -459,24 +521,40 @@ RSpec.describe "API tentacle sessions", type: :request do
         expect(response).to have_http_status(:created)
       end
 
-      it "falls back to tentacle_cwd / Rails.root when workspace is invalid" do
+      it "returns 422 and does not spawn when tentacle_workspace cannot be resolved" do
         sign_in user
         note = make_note("BadWs")
         Properties::SetService.call(note: note, changes: {"tentacle_workspace" => "missing-one"})
 
-        fake = instance_double(TentacleRuntime::Session, alive?: true, pid: 1, started_at: Time.current)
-        expect(WorktreeService).to receive(:ensure) do |**kwargs|
-          expect(kwargs[:repo_root]).to eq(Rails.root)
-          expect(kwargs[:worktree_root]).to be_nil
-          expect(kwargs[:link_shared]).to eq(true).or be_nil
-          "/stub/worktree"
-        end
-        allow(TentacleRuntime).to receive(:start).and_return(fake)
+        expect(WorktreeService).not_to receive(:ensure)
+        expect(TentacleRuntime).not_to receive(:start)
 
         post "/api/notes/#{note.reload.slug}/tentacle", params: {command: "claude"}.to_json,
           headers: {"CONTENT_TYPE" => "application/json"}
 
-        expect(response).to have_http_status(:created)
+        expect(response).to have_http_status(:unprocessable_entity)
+        expect(response.parsed_body["error"]).to include("tentacle_workspace", "missing-one")
+      end
+
+      it "returns 422 even when both tentacle_workspace and tentacle_cwd are set but workspace is invalid" do
+        sign_in user
+        note = make_note("BadWsStaleCwd")
+        Properties::SetService.call(
+          note: note,
+          changes: {
+            "tentacle_workspace" => "missing-renamed",
+            "tentacle_cwd" => "/etc"
+          }
+        )
+
+        expect(WorktreeService).not_to receive(:ensure)
+        expect(TentacleRuntime).not_to receive(:start)
+
+        post "/api/notes/#{note.reload.slug}/tentacle", params: {command: "claude"}.to_json,
+          headers: {"CONTENT_TYPE" => "application/json"}
+
+        expect(response).to have_http_status(:unprocessable_entity)
+        expect(response.parsed_body["error"]).to include("tentacle_workspace")
       end
     end
   end

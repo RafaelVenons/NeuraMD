@@ -55,6 +55,10 @@ RSpec.describe Tentacles::ChildSpawner do
           d.value_type = "long_text"
           d.system = true
         end
+        PropertyDefinition.find_or_create_by!(key: "tentacle_workspace") do |d|
+          d.value_type = "text"
+          d.system = true
+        end
       end
 
       it "sets tentacle_cwd and tentacle_initial_prompt on the head revision when provided" do
@@ -87,6 +91,68 @@ RSpec.describe Tentacles::ChildSpawner do
         expect(result.child.head_revision.properties_data).to eq(
           "tentacle_initial_prompt" => "only prompt"
         )
+      end
+
+      it "sets tentacle_workspace on the head revision when provided" do
+        result = described_class.call(
+          parent: parent,
+          title: "With Workspace",
+          workspace: "neuramd"
+        )
+
+        expect(result.child.head_revision.properties_data["tentacle_workspace"])
+          .to eq("neuramd")
+      end
+
+      it "persists workspace alongside initial_prompt" do
+        result = described_class.call(
+          parent: parent,
+          title: "WS + Prompt",
+          initial_prompt: "boot",
+          workspace: "neuramd"
+        )
+
+        expect(result.child.head_revision.properties_data).to eq(
+          "tentacle_initial_prompt" => "boot",
+          "tentacle_workspace" => "neuramd"
+        )
+      end
+
+      it "treats blank workspace as not-set" do
+        result = described_class.call(parent: parent, title: "Blank WS", workspace: "")
+
+        expect(result.child.head_revision.properties_data).not_to have_key("tentacle_workspace")
+      end
+
+      it "raises DualTarget when both cwd and workspace are given" do
+        expect {
+          described_class.call(
+            parent: parent,
+            title: "Both",
+            cwd: "/home/venom/projects/MapledaRapeize",
+            workspace: "neuramd"
+          )
+        }.to raise_error(described_class::DualTarget)
+
+        expect(Note.where(title: "Both")).to be_empty
+      end
+
+      it "rolls back the child note when apply_boot_config! fails" do
+        # Simulate a half-deployed environment where the tentacle_workspace
+        # property definition is missing. Without the transaction wrap, the
+        # child note would persist even after the property write blows up.
+        allow(Properties::SetService).to receive(:call).and_raise(Properties::SetService::UnknownKeyError, "tentacle_workspace not registered")
+
+        expect {
+          described_class.call(
+            parent: parent,
+            title: "PartialWrite",
+            workspace: "neuramd"
+          )
+        }.to raise_error(Properties::SetService::UnknownKeyError)
+
+        expect(Note.where(title: "PartialWrite")).to be_empty
+        expect(NoteRevision.joins(:note).where(notes: {title: "PartialWrite"})).to be_empty
       end
     end
   end

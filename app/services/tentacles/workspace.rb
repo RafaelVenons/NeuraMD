@@ -36,8 +36,35 @@ module Tentacles
           return [nil, "workspace not found: #{name_str}"]
         end
 
+      # Re-check containment after symlink resolution. Without this, a
+      # symlink placed under the shared workspace root could redirect a
+      # tentacle's worktree to an arbitrary repo elsewhere on disk,
+      # bypassing the workspace whitelist entirely. realpath(root) is
+      # computed each call so root-level symlink changes are observed.
+      canonical_root =
+        begin
+          File.realpath(root)
+        rescue Errno::ENOENT, Errno::ENOTDIR
+          return [nil, "workspace root does not exist: #{root}"]
+        end
+      root_prefix = canonical_root.end_with?("/") ? canonical_root : "#{canonical_root}/"
+      unless canonical.start_with?(root_prefix)
+        return [nil, "workspace escapes workspace root: #{name_str}"]
+      end
+
       return [nil, "workspace not found: #{name_str}"] unless File.directory?(canonical)
-      return [nil, "workspace is not a git repository: #{name_str}"] unless File.directory?(File.join(canonical, ".git"))
+
+      # Require `.git` to be a real directory. A `.git` FILE (linked
+      # worktrees / submodule-style layouts) can contain
+      # `gitdir: <arbitrary path>`, which would cause `git worktree add`
+      # to operate on the referenced external repo — bypassing the
+      # workspace-root containment enforced above. Workspaces must be
+      # standalone main repos so the containment boundary holds through
+      # git operations. Linked-worktree workspaces would need gitdir
+      # parsing + re-verification to be safe; out of scope here.
+      unless File.directory?(File.join(canonical, ".git"))
+        return [nil, "workspace is not a git repository: #{name_str}"]
+      end
 
       [canonical, nil]
     end
