@@ -215,15 +215,6 @@ RSpec.describe WorktreeService do
       File.write(rails_root.join("config/master.key"), "abcdef1234567890\n")
       allow(Rails).to receive(:root).and_return(rails_root)
 
-      # Rails.root needs its own git repo with the same `origin` URL as
-      # the workspace — same_project? uses `git remote get-url origin`
-      # on both sides to decide whether sharing the key is safe.
-      Open3.capture2e({"GIT_CONFIG_GLOBAL" => "/dev/null", "GIT_CONFIG_SYSTEM" => "/dev/null"},
-        "git", "init", "--quiet", "--initial-branch=main", chdir: rails_root.to_s)
-      Open3.capture2e("git", "remote", "add", "origin", "https://example.test/neuramd.git", chdir: rails_root.to_s)
-
-      run_git("remote", "add", "origin", "https://example.test/neuramd.git")
-
       # Workspace-as-Rails-app: has credentials.yml.enc committed but no
       # master.key (the gitignored file the symlink provides). Must be
       # committed so every worktree checkout also has it.
@@ -231,9 +222,17 @@ RSpec.describe WorktreeService do
       File.write(repo_root.join("config/credentials.yml.enc"), "encrypted\n")
       run_git("add", "config/credentials.yml.enc")
       run_git("commit", "-m", "add credentials.yml.enc")
+
+      # Trust this workspace explicitly — the new contract requires an
+      # allowlist opt-in via NEURAMD_TRUSTED_WORKSPACE_KEYS. Empty/unset
+      # env = nothing trusted = no linking.
+      ENV["NEURAMD_TRUSTED_WORKSPACE_KEYS"] = repo_root.to_s
     end
 
-    after { FileUtils.remove_entry(rails_root) if File.directory?(rails_root) }
+    after do
+      ENV.delete("NEURAMD_TRUSTED_WORKSPACE_KEYS")
+      FileUtils.remove_entry(rails_root) if File.directory?(rails_root)
+    end
 
     it "symlinks master.key into the worktree even when link_shared is false" do
       path = described_class.ensure(
@@ -361,12 +360,8 @@ RSpec.describe WorktreeService do
       expect(File.exist?(File.join(path, "config/master.key"))).to be(false)
     end
 
-    it "does not link into a Rails workspace from a DIFFERENT origin (foreign project)" do
-      # Point the workspace's origin at some other repo. master.key must
-      # NOT be symlinked — it would leak host credentials into an
-      # unrelated Rails app, and decryption against that app's
-      # credentials.yml.enc would fail anyway.
-      Open3.capture2e("git", "remote", "set-url", "origin", "https://example.test/different-project.git", chdir: repo_root.to_s)
+    it "does not link when NEURAMD_TRUSTED_WORKSPACE_KEYS is unset" do
+      ENV.delete("NEURAMD_TRUSTED_WORKSPACE_KEYS")
 
       path = described_class.ensure(
         tentacle_id: tentacle_id,
@@ -375,12 +370,11 @@ RSpec.describe WorktreeService do
         link_shared: false
       )
 
-      expect(File.exist?(repo_root.join("config/master.key"))).to be(false)
       expect(File.exist?(File.join(path, "config/master.key"))).to be(false)
     end
 
-    it "does not link when the workspace has no origin remote" do
-      Open3.capture2e("git", "remote", "remove", "origin", chdir: repo_root.to_s)
+    it "does not link when the workspace path is not in the allowlist" do
+      ENV["NEURAMD_TRUSTED_WORKSPACE_KEYS"] = "/some/other/trusted/path"
 
       path = described_class.ensure(
         tentacle_id: tentacle_id,
@@ -389,13 +383,12 @@ RSpec.describe WorktreeService do
         link_shared: false
       )
 
-      expect(File.exist?(repo_root.join("config/master.key"))).to be(false)
       expect(File.exist?(File.join(path, "config/master.key"))).to be(false)
     end
 
-    it "treats ssh and https origin URLs for the same repo as the same project" do
-      Open3.capture2e("git", "remote", "set-url", "origin", "https://github.com/RafaelVenons/neuramd.git", chdir: repo_root.to_s)
-      Open3.capture2e("git", "remote", "set-url", "origin", "git@github.com:RafaelVenons/neuramd.git", chdir: rails_root.to_s)
+    it "accepts multiple comma-separated allowlist entries and matches any of them" do
+      other_dir = Dir.mktmpdir("untrusted-")
+      ENV["NEURAMD_TRUSTED_WORKSPACE_KEYS"] = [other_dir, repo_root.to_s].join(",")
 
       path = described_class.ensure(
         tentacle_id: tentacle_id,
@@ -405,11 +398,31 @@ RSpec.describe WorktreeService do
       )
 
       expect(File.symlink?(File.join(path, "config/master.key"))).to be(true)
+    ensure
+      FileUtils.remove_entry(other_dir) if other_dir && File.directory?(other_dir)
     end
 
-    it "normalizes trailing .git and user-prefixed https URLs" do
-      Open3.capture2e("git", "remote", "set-url", "origin", "https://token@github.com/RafaelVenons/neuramd", chdir: repo_root.to_s)
-      Open3.capture2e("git", "remote", "set-url", "origin", "git@github.com:RafaelVenons/neuramd.git", chdir: rails_root.to_s)
+    it "normalizes allowlist entries via File.realpath (symlink in allowlist OK)" do
+      # Create a symlink that points at repo_root; listing the symlink
+      # in the allowlist must still match the real workspace path.
+      link = File.join(Dir.tmpdir, "allowlist-link-#{SecureRandom.hex(4)}")
+      File.symlink(repo_root.to_s, link)
+      ENV["NEURAMD_TRUSTED_WORKSPACE_KEYS"] = link
+
+      path = described_class.ensure(
+        tentacle_id: tentacle_id,
+        worktree_root: workspace_root,
+        repo_root: repo_root,
+        link_shared: false
+      )
+
+      expect(File.symlink?(File.join(path, "config/master.key"))).to be(true)
+    ensure
+      File.unlink(link) if link && File.symlink?(link)
+    end
+
+    it "ignores allowlist entries whose path does not exist" do
+      ENV["NEURAMD_TRUSTED_WORKSPACE_KEYS"] = "/nonexistent/#{SecureRandom.hex(4)},#{repo_root}"
 
       path = described_class.ensure(
         tentacle_id: tentacle_id,
@@ -418,6 +431,7 @@ RSpec.describe WorktreeService do
         link_shared: false
       )
 
+      # The second allowlist entry matches → link happens.
       expect(File.symlink?(File.join(path, "config/master.key"))).to be(true)
     end
 

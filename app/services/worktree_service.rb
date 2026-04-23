@@ -31,7 +31,7 @@ class WorktreeService
       # master.key must reach the worktree regardless of link_shared:
       # dev-convenience paths (vendor/bundle, .bundle) are optional,
       # but master.key is a boot requirement for any Rails app worktree.
-      ensure_rails_runtime_secrets(path)
+      ensure_rails_runtime_secrets(worktree: path, workspace: repo_root)
       path.to_s
     end
 
@@ -81,19 +81,31 @@ class WorktreeService
     # Rails apps need config/master.key to decrypt credentials.yml.enc
     # at boot; without it, `require "config/environment"` blows up and
     # no child process (bin/mcp-server, bundle exec rspec) can start.
+    #
+    # Gated by an EXPLICIT ALLOWLIST (NEURAMD_TRUSTED_WORKSPACE_KEYS,
+    # comma-separated absolute workspace paths). Relying on git origin
+    # URL equality would trust any clone of the same remote, including
+    # attacker-controlled forks placed in the workspace root by anyone
+    # with write access there. Empty/unset env = zero linking — secure
+    # default. Admin opts specific workspaces in by setting the env in
+    # systemd drop-in + restarting.
+    #
     # Idempotent: no-op when the target is already a healthy symlink to
     # the current Rails.root master.key, a user-owned real file, the
     # source doesn't exist, the target isn't a Rails app, or the target
-    # is not the same project as the running Rails.root.
-    def ensure_rails_runtime_secrets(target_root)
-      target_root = Pathname.new(target_root)
-      return unless target_root.join("config/credentials.yml.enc").file?
+    # path is not in the trusted allowlist.
+    def ensure_rails_runtime_secrets(worktree:, workspace:)
+      worktree = Pathname.new(worktree)
+      return unless worktree.join("config/credentials.yml.enc").file?
+      # Allowlist gate is keyed on the WORKSPACE (backing repo) path.
+      # Worktrees inherit trust from their workspace — admin configures
+      # per-workspace, not per-tentacle.
+      return unless trusted_workspace_for_key?(workspace)
 
       key_source = Rails.root.join("config/master.key")
       return unless key_source.exist?
-      return unless same_project?(target_root)
 
-      key_target = target_root.join("config/master.key")
+      key_target = worktree.join("config/master.key")
       return if healthy_symlink_to_source?(key_target, key_source)
       # A real file (not a symlink) is treated as user-owned — leave it
       # alone so local experimentation isn't clobbered.
@@ -123,36 +135,25 @@ class WorktreeService
       false
     end
 
-    # Project identity check used to gate key propagation. Compares the
-    # `origin` remote of the candidate workspace against the running
-    # Rails.root. Uses canonical normalization so equivalent URLs
-    # (ssh/https, with/without .git suffix, with/without user@) resolve
-    # to the same identity string. Missing origin or git failure →
-    # treat as untrusted.
-    def same_project?(target_root)
-      target_origin, target_status = run_git(["remote", "get-url", "origin"], repo_root: Pathname.new(target_root))
-      return false unless target_status.success?
-      rails_origin, rails_status = run_git(["remote", "get-url", "origin"], repo_root: Rails.root)
-      return false unless rails_status.success?
+    # Explicit allowlist of workspace paths that may receive the host
+    # app's master.key. Env var NEURAMD_TRUSTED_WORKSPACE_KEYS holds a
+    # comma-separated list of absolute paths. A workspace must match
+    # one entry by File.realpath to be trusted; any deviation (wrong
+    # path, unset env, missing workspace dir) falls through to "not
+    # trusted" and the key is not linked.
+    def trusted_workspace_for_key?(workspace_path)
+      raw = ENV["NEURAMD_TRUSTED_WORKSPACE_KEYS"].to_s
+      return false if raw.strip.empty?
 
-      normalize_origin_url(target_origin) == normalize_origin_url(rails_origin)
-    rescue StandardError
+      allowed = raw.split(",").map(&:strip).reject(&:empty?)
+      workspace_real = File.realpath(workspace_path.to_s)
+      allowed.any? do |entry|
+        File.realpath(entry) == workspace_real
+      rescue Errno::ENOENT
+        false
+      end
+    rescue Errno::ENOENT
       false
-    end
-
-    # Reduce a git remote URL to a comparable `host/path` identity:
-    #   git@github.com:org/repo.git   → github.com/org/repo
-    #   https://github.com/org/repo   → github.com/org/repo
-    #   https://user@github.com/x.git → github.com/x
-    def normalize_origin_url(raw)
-      url = raw.to_s.strip.sub(/\.git\z/, "")
-      if (m = url.match(/\Agit@([^:]+):(.+)\z/))
-        return "#{m[1]}/#{m[2]}"
-      end
-      if (m = url.match(%r{\A[a-zA-Z]+://(?:[^@/]+@)?([^/]+)/(.+)\z}))
-        return "#{m[1]}/#{m[2]}"
-      end
-      url
     end
 
     def branch_for(tentacle_id)
