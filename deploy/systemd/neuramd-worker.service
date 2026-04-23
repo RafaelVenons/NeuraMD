@@ -18,7 +18,6 @@ Environment=NEURAMD_DATABASE=neura_md_production
 Environment=NEURAMD_CACHE_DATABASE=neura_md_production_cache
 Environment=NEURAMD_QUEUE_DATABASE=neura_md_production_queue
 Environment=NEURAMD_LEGACY_DATABASE=neura_md_legacy
-Environment=NEURAMD_TENTACLES_ENABLED=1
 Environment=PATH=/home/rafael/.local/share/mise/shims:/home/rafael/.local/bin:/usr/local/bin:/usr/bin
 ExecStart=/home/rafael/.local/share/mise/shims/bundle exec bin/jobs
 Restart=always
@@ -27,29 +26,14 @@ StandardOutput=journal
 StandardError=journal
 SyslogIdentifier=neuramd-worker
 
-# Tentacle cwd whitelist. The cron tick job boots tentacles from this
-# worker, so any custom cwd root must be mirrored in ReadWritePaths
-# (specifically the `<root>/tmp/tentacles` subpath) or the worktree
-# provisioning call will fail under ProtectHome=read-only. Leaving it
-# unset falls back to Tentacles::BootConfig::DEFAULT_CWD_ALLOWED_PREFIXES.
-# Environment=NEURAMD_TENTACLE_CWD_ROOTS=/home/rafael/projects/
-
-# Shared dtach runtime directory. The web unit owns this directory
-# (RuntimeDirectoryPreserve=yes), but the supervisor job running here
-# needs write access to sweep orphaned sockets. Declaring the same
-# RuntimeDirectory entry mounts the path with matching ownership.
-RuntimeDirectory=nm-tentacles
-RuntimeDirectoryMode=0750
-RuntimeDirectoryPreserve=yes
-
-# Hardening
+# Hardening (base). Feature-specific RW paths, env, and runtime directives
+# live in drop-ins under neuramd-worker.service.d/ — see
+# deploy/systemd/neuramd-worker.service.d/*.conf.
 NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=full
 ProtectHome=read-only
-# /home/rafael/.codex: codex CLI needs auth.json, config.toml, sqlite state
-# /home/rafael/workspaces: shared tentacle workspace root (Tentacles::Workspace.DEFAULT_ROOT)
-ReadWritePaths=/home/rafael/apps/NeuraMD/tmp /home/rafael/apps/NeuraMD/log /home/rafael/apps/NeuraMD/storage /home/rafael/apps/NeuraMD/.git /home/rafael/.claude /home/rafael/.claude.json /home/rafael/.codex /home/rafael/workspaces
+ReadWritePaths=/home/rafael/apps/NeuraMD/tmp /home/rafael/apps/NeuraMD/log /home/rafael/apps/NeuraMD/storage
 
 [Install]
 WantedBy=multi-user.target
