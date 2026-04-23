@@ -393,6 +393,96 @@ RSpec.describe WorktreeService do
       expect(File.exist?(File.join(path, "config/master.key"))).to be(false)
     end
 
+    it "treats ssh and https origin URLs for the same repo as the same project" do
+      Open3.capture2e("git", "remote", "set-url", "origin", "https://github.com/RafaelVenons/neuramd.git", chdir: repo_root.to_s)
+      Open3.capture2e("git", "remote", "set-url", "origin", "git@github.com:RafaelVenons/neuramd.git", chdir: rails_root.to_s)
+
+      path = described_class.ensure(
+        tentacle_id: tentacle_id,
+        repo_root: repo_root,
+        worktree_root: workspace_root,
+        link_shared: false
+      )
+
+      expect(File.symlink?(File.join(path, "config/master.key"))).to be(true)
+    end
+
+    it "normalizes trailing .git and user-prefixed https URLs" do
+      Open3.capture2e("git", "remote", "set-url", "origin", "https://token@github.com/RafaelVenons/neuramd", chdir: repo_root.to_s)
+      Open3.capture2e("git", "remote", "set-url", "origin", "git@github.com:RafaelVenons/neuramd.git", chdir: rails_root.to_s)
+
+      path = described_class.ensure(
+        tentacle_id: tentacle_id,
+        repo_root: repo_root,
+        worktree_root: workspace_root,
+        link_shared: false
+      )
+
+      expect(File.symlink?(File.join(path, "config/master.key"))).to be(true)
+    end
+
+    it "replaces a dangling symlink that points at a stale source path" do
+      path = described_class.ensure(
+        tentacle_id: tentacle_id,
+        repo_root: repo_root,
+        worktree_root: workspace_root,
+        link_shared: false
+      )
+      key_target = File.join(path, "config/master.key")
+      expect(File.symlink?(key_target)).to be(true)
+
+      # Simulate: previous Rails.root moved/was replaced. The worktree's
+      # master.key symlink is now dangling (points nowhere resolvable)
+      # — re-ensure must repair by pointing at the current Rails.root.
+      stale_source = File.join(Dir.tmpdir, "stale-neuramd-#{SecureRandom.hex(4)}", "config/master.key")
+      FileUtils.rm(key_target)
+      FileUtils.mkdir_p(File.dirname(key_target))
+      File.symlink(stale_source, key_target)
+      dangling = begin
+        File.realpath(key_target)
+      rescue Errno::ENOENT
+        nil
+      end
+      expect(dangling).to be_nil
+
+      described_class.ensure(
+        tentacle_id: tentacle_id,
+        repo_root: repo_root,
+        worktree_root: workspace_root,
+        link_shared: false
+      )
+
+      expect(File.symlink?(key_target)).to be(true)
+      expect(File.realpath(key_target)).to eq(rails_root.join("config/master.key").to_s)
+    end
+
+    it "replaces a symlink that points at a DIFFERENT (non-current) master.key path" do
+      path = described_class.ensure(
+        tentacle_id: tentacle_id,
+        repo_root: repo_root,
+        worktree_root: workspace_root,
+        link_shared: false
+      )
+      key_target = File.join(path, "config/master.key")
+
+      # Replace with a symlink to a DIFFERENT existing file — simulates
+      # a previous deploy's Rails.root that is still on disk but is
+      # no longer authoritative.
+      other_source = File.join(rails_root, "config/old-master.key")
+      File.write(other_source, "old-deploy-key\n")
+      FileUtils.rm(key_target)
+      File.symlink(other_source, key_target)
+
+      described_class.ensure(
+        tentacle_id: tentacle_id,
+        repo_root: repo_root,
+        worktree_root: workspace_root,
+        link_shared: false
+      )
+
+      expect(File.realpath(key_target)).to eq(rails_root.join("config/master.key").to_s)
+    end
+
     it "recovers when a concurrent spawn creates the symlink mid-call (EEXIST race)" do
       # Simulate: our check-then-create loses the race — File.exist?
       # reports false, but another process creates the file before our

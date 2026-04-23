@@ -81,54 +81,78 @@ class WorktreeService
     # Rails apps need config/master.key to decrypt credentials.yml.enc
     # at boot; without it, `require "config/environment"` blows up and
     # no child process (bin/mcp-server, bundle exec rspec) can start.
-    # Idempotent: no-op when the target already has the key, the source
-    # doesn't exist, the target isn't a Rails app (no
-    # config/credentials.yml.enc committed), or the target is not the
-    # same project as the running Rails.root (different origin remote).
+    # Idempotent: no-op when the target is already a healthy symlink to
+    # the current Rails.root master.key, a user-owned real file, the
+    # source doesn't exist, the target isn't a Rails app, or the target
+    # is not the same project as the running Rails.root.
     def ensure_rails_runtime_secrets(target_root)
       target_root = Pathname.new(target_root)
       return unless target_root.join("config/credentials.yml.enc").file?
 
-      key_target = target_root.join("config/master.key")
-      return if key_target.symlink? || key_target.exist?
-
       key_source = Rails.root.join("config/master.key")
       return unless key_source.exist?
-
-      # Never propagate the host app's master.key into a workspace whose
-      # `origin` remote differs from ours. credentials.yml.enc is
-      # encrypted with a specific master.key — using NeuraMD's key
-      # against another repo's ciphertext would fail anyway, but would
-      # leak our key into a human-collaborated space in the process.
       return unless same_project?(target_root)
+
+      key_target = target_root.join("config/master.key")
+      return if healthy_symlink_to_source?(key_target, key_source)
+      # A real file (not a symlink) is treated as user-owned — leave it
+      # alone so local experimentation isn't clobbered.
+      return if key_target.exist? && !key_target.symlink?
+
+      # Dangling or stale symlink (pointing at a different source) gets
+      # replaced. This repairs worktrees that were provisioned before
+      # this fix or against an old Rails.root path.
+      FileUtils.rm_f(key_target) if key_target.symlink?
 
       FileUtils.mkdir_p(key_target.parent)
       begin
         File.symlink(key_source.to_s, key_target.to_s)
       rescue Errno::EEXIST
-        # Concurrent spawn on the same workspace beat us to it. Desired
-        # final state (a symlink at key_target) is already satisfied;
-        # re-raise only if we lost the race and the target is still
-        # missing (impossible under the filesystem semantics we expect,
-        # but the check costs nothing).
-        raise unless key_target.symlink? || key_target.exist?
+        # Concurrent spawn on the same workspace beat us to it. If the
+        # target now points at the right source we're done; otherwise
+        # surface the race so callers see the real failure.
+        raise unless healthy_symlink_to_source?(key_target, key_source)
       end
     end
 
-    # Compare `git remote get-url origin` in the candidate workspace
-    # with the running Rails.root. Same URL → same project → safe to
-    # share encryption keys. Different URL (or either missing origin)
-    # → treat as untrusted foreign repo. Trailing whitespace stripped
-    # because git adds a newline.
+    def healthy_symlink_to_source?(target, source)
+      return false unless target.symlink?
+      File.realpath(target) == File.realpath(source)
+    rescue Errno::ENOENT
+      # Target is a dangling symlink — not healthy.
+      false
+    end
+
+    # Project identity check used to gate key propagation. Compares the
+    # `origin` remote of the candidate workspace against the running
+    # Rails.root. Uses canonical normalization so equivalent URLs
+    # (ssh/https, with/without .git suffix, with/without user@) resolve
+    # to the same identity string. Missing origin or git failure →
+    # treat as untrusted.
     def same_project?(target_root)
       target_origin, target_status = run_git(["remote", "get-url", "origin"], repo_root: Pathname.new(target_root))
       return false unless target_status.success?
       rails_origin, rails_status = run_git(["remote", "get-url", "origin"], repo_root: Rails.root)
       return false unless rails_status.success?
 
-      target_origin.to_s.strip == rails_origin.to_s.strip
+      normalize_origin_url(target_origin) == normalize_origin_url(rails_origin)
     rescue StandardError
       false
+    end
+
+    # Reduce a git remote URL to a comparable `host/path` identity:
+    #   git@github.com:org/repo.git   → github.com/org/repo
+    #   https://github.com/org/repo   → github.com/org/repo
+    #   https://user@github.com/x.git → github.com/x
+    def normalize_origin_url(raw)
+      url = raw.to_s.strip.sub(/\.git\z/, "")
+      if (m = url.match(/\Agit@([^:]+):(.+)\z/))
+        return "#{m[1]}/#{m[2]}"
+      end
+      if (m = url.match(%r{\A[a-zA-Z]+://(?:[^@/]+@)?([^/]+)/(.+)\z}))
+        return "#{m[1]}/#{m[2]}"
+      end
+      url
     end
 
     def branch_for(tentacle_id)
