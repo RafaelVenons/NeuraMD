@@ -21,11 +21,28 @@ class AddHierRoleAllowListCheckToNoteLinks < ActiveRecord::Migration[8.1]
   def up
     remove_check_constraint :note_links, name: CONSTRAINT_NAME, if_exists: true
 
+    # Audit pre-existing rows BEFORE locking in the constraint. If legacy data
+    # contains hier_role values outside the allow-list (e.g. historical values
+    # inserted before app-level validation existed, or raw SQL writes), log
+    # them so the operator can remediate in a follow-up pass. The constraint
+    # is added as NOT VALID so the migration never fails on legacy data; new
+    # inserts/updates are enforced immediately, and a separate validation
+    # migration can run ALTER TABLE ... VALIDATE CONSTRAINT once the audit is
+    # resolved.
     allow_list = ALLOWED_ROLES.map { |name| connection.quote(name) }.join(", ")
+    violations = connection.select_value(<<~SQL.squish)
+      SELECT COUNT(*) FROM note_links
+      WHERE hier_role IS NOT NULL AND hier_role NOT IN (#{allow_list})
+    SQL
+    if violations.to_i.positive?
+      say "WARNING: #{violations} note_links rows have hier_role outside the allow-list. " \
+        "Constraint added as NOT VALID; remediate these rows before running VALIDATE CONSTRAINT."
+    end
+
     add_check_constraint :note_links,
       "hier_role IS NULL OR hier_role IN (#{allow_list})",
       name: CONSTRAINT_NAME,
-      validate: true
+      validate: false
   end
 
   def down

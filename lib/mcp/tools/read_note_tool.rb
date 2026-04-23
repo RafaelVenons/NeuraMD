@@ -13,7 +13,7 @@ module Mcp
       NONE_TOKEN = "none"
 
       tool_name "read_note"
-      description "Read a NeuraMD note by slug or alias. Returns full content, tags, aliases, and links. Each link carries both `role` (semantic name, e.g. target_is_child) and `role_token` (1-char token: f/c/b/p/d/v/x or null). Follows slug redirects and aliases."
+      description "Read a NeuraMD note by slug or alias. Returns full content, tags, aliases, and links. Each link carries both `role` (semantic name, e.g. target_is_child) and `role_token` (1-char token: f/c/b/p/d/v/x or null). Backlinks are unbounded by default; pass `backlink_limit` or `backlink_cursor` to opt into pagination. Follows slug redirects and aliases."
 
       input_schema(
         type: "object",
@@ -21,19 +21,19 @@ module Mcp
           slug: {type: "string", description: "The note slug (URL identifier)"},
           backlink_roles: {
             type: "string",
-            description: "Optional CSV of 1-char role tokens to filter backlinks (e.g. 'p,x'). Use 'none' for backlinks without role. Unknown tokens are silently ignored."
+            description: "Optional CSV of 1-char role tokens to filter backlinks (e.g. 'p,x'). Use 'none' for backlinks without role. Unknown tokens are silently ignored — if all tokens are unknown, the filter is dropped entirely (no WHERE IN () trap)."
           },
           backlink_limit: {
             type: "integer",
-            description: "Max backlinks to return (default #{BACKLINK_LIMIT_DEFAULT}, capped at #{BACKLINK_LIMIT_MAX}). Values ≤0 fall back to default."
+            description: "Opt-in pagination. When set, caps backlinks per page (max #{BACKLINK_LIMIT_MAX}; values ≤0 fall back to #{BACKLINK_LIMIT_DEFAULT}). Omit (or pass null) to return all backlinks unbounded."
           },
           backlink_cursor: {
             type: "string",
-            description: "Opaque cursor from a previous response (backlinks_next_cursor) to resume pagination."
+            description: "Opaque cursor from a previous response (backlinks_next_cursor) to resume pagination. Setting this also enables pagination; limit defaults to #{BACKLINK_LIMIT_DEFAULT} if not provided."
           },
           backlinks_updated_since: {
             type: "string",
-            description: "ISO8601 timestamp. Returns only backlinks whose updated_at is ≥ since."
+            description: "ISO8601 timestamp. Returns only backlinks whose updated_at is ≥ since. Does not enable pagination."
           }
         },
         required: ["slug"]
@@ -136,10 +136,20 @@ module Mcp
           )
         end
 
-        effective_limit = clamp_limit(limit)
-        rows = scope.order(updated_at: :desc, id: :desc).limit(effective_limit + 1).to_a
-        has_more = rows.length > effective_limit
-        rows = rows.first(effective_limit)
+        scope = scope.order(updated_at: :desc, id: :desc)
+        paginate = limit.is_a?(Integer) || cursor.present?
+
+        if paginate
+          effective_limit = clamp_limit(limit)
+          rows = scope.limit(effective_limit + 1).to_a
+          has_more = rows.length > effective_limit
+          rows = rows.first(effective_limit)
+          next_cursor = has_more && rows.any? ? encode_cursor(rows.last.updated_at, rows.last.id) : nil
+        else
+          rows = scope.to_a
+          has_more = false
+          next_cursor = nil
+        end
 
         items = rows.map do |link|
           {
@@ -150,7 +160,6 @@ module Mcp
             direction: "incoming"
           }
         end
-        next_cursor = has_more && rows.any? ? encode_cursor(rows.last.updated_at, rows.last.id) : nil
 
         {items: items, next_cursor: next_cursor, has_more: has_more}
       end
@@ -160,16 +169,18 @@ module Mcp
         tokens = csv.to_s.split(",").map(&:strip).reject(&:empty?)
         return nil if tokens.empty?
 
-        # Unknown tokens are ignored (not converted). 'none' is the explicit sentinel
-        # for NULL hier_role. If all tokens are unknown, the result is an empty filter,
-        # which Rails interprets as "no matches" — preserving the user's intent to filter.
-        tokens.each_with_object([]) do |token, acc|
+        # Unknown tokens are silently ignored. 'none' is the explicit sentinel for NULL
+        # hier_role. If every supplied token is unknown, return nil so the filter is
+        # dropped entirely (vs. producing `WHERE hier_role IN ()`, which would silently
+        # hide all backlinks under client/server version skew).
+        values = tokens.each_with_object([]) do |token, acc|
           if token == NONE_TOKEN
             acc << nil
           elsif (sem = NoteLink::Roles::TOKEN_TO_SEMANTIC[token])
             acc << sem
           end
         end
+        values.empty? ? nil : values
       end
 
       def self.clamp_limit(limit)

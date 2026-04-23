@@ -149,6 +149,26 @@ RSpec.describe Mcp::Tools::ReadNoteTool do
       expect(content["backlinks"].first["role_token"]).to be_nil
     end
 
+    it "treats all-unknown backlink_roles as no filter (silent ignore aligned with docs)" do
+      add_backlink(title: "pend", hier_role: "delegation_pending")
+      add_backlink(title: "plain", hier_role: nil)
+
+      response = described_class.call(slug: center.slug, backlink_roles: "zzz,qqq")
+      content = JSON.parse(response.content.first[:text])
+      # All tokens unknown → filter is silently ignored (no filter), not WHERE IN ()
+      expect(content["backlinks"].length).to eq(2)
+    end
+
+    it "mixes known and unknown tokens — unknowns dropped, knowns applied" do
+      add_backlink(title: "pend", hier_role: "delegation_pending")
+      add_backlink(title: "parent", hier_role: "target_is_parent")
+
+      response = described_class.call(slug: center.slug, backlink_roles: "p,zzz")
+      content = JSON.parse(response.content.first[:text])
+      expect(content["backlinks"].length).to eq(1)
+      expect(content["backlinks"].first["source_title"]).to eq("pend")
+    end
+
     it "filters by backlinks_updated_since (ISO8601)" do
       old = add_backlink(title: "old", hier_role: "delegation_pending",
         updated_at: 2.days.ago)
@@ -178,13 +198,50 @@ RSpec.describe Mcp::Tools::ReadNoteTool do
       end
     end
 
-    it "defaults limit to 100 and reports has_more=false when fits" do
+    it "returns all backlinks unbounded when no pagination param is given (preserves legacy behavior)" do
       response = described_class.call(slug: center.slug)
       content = JSON.parse(response.content.first[:text])
       expect(content["backlinks"].length).to eq(5)
       expect(content).to have_key("backlinks_next_cursor")
       expect(content["backlinks_next_cursor"]).to be_nil
       expect(content["backlinks_has_more"]).to eq(false)
+    end
+
+    it "returns 105+ backlinks without truncation when no pagination param is given" do
+      # 5 already created in before; add 100 more → 105 total.
+      # Legacy (unbounded) behavior must return all of them with has_more=false.
+      100.times do |i|
+        src = create(:note, :with_head_revision, title: "bulk-#{i}")
+        create(:note_link,
+          src_note: src, dst_note: center,
+          created_in_revision: src.head_revision)
+      end
+      response = described_class.call(slug: center.slug)
+      content = JSON.parse(response.content.first[:text])
+      expect(content["backlinks"].length).to eq(105)
+      expect(content["backlinks_has_more"]).to eq(false)
+      expect(content["backlinks_next_cursor"]).to be_nil
+    end
+
+    it "returns all backlinks when filter is given but no pagination param" do
+      # filter alone does not trigger pagination
+      response = described_class.call(slug: center.slug, backlink_roles: "p")
+      content = JSON.parse(response.content.first[:text])
+      expect(content["backlinks"].length).to eq(5)
+      expect(content["backlinks_has_more"]).to eq(false)
+    end
+
+    it "applies default limit of 100 when cursor is given without explicit limit" do
+      # cursor alone implies pagination; use default limit
+      first = described_class.call(slug: center.slug, backlink_limit: 2)
+      first_body = JSON.parse(first.content.first[:text])
+      cursor = first_body["backlinks_next_cursor"]
+
+      # resume with cursor only (no explicit limit)
+      resumed = described_class.call(slug: center.slug, backlink_cursor: cursor)
+      resumed_body = JSON.parse(resumed.content.first[:text])
+      expect(resumed_body["backlinks"].length).to eq(3)
+      expect(resumed_body["backlinks_has_more"]).to eq(false)
     end
 
     it "honors smaller backlink_limit and emits cursor" do
