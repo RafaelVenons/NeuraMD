@@ -48,9 +48,9 @@ module Mcp
 
         command_value = ALLOWED_COMMANDS.include?(command.to_s) ? command.to_s : DEFAULT_COMMAND
 
-        token = ::Rails.application.credentials.agent_s2s_token
+        token = resolve_token
         if token.blank?
-          return error_response("S2S token not configured (Rails.application.credentials.agent_s2s_token). Ask the human to set it via `rails credentials:edit` before retrying.")
+          return error_response("S2S token not configured. Set ENV[\"AGENT_S2S_TOKEN\"] in the neuramd-web unit (systemd drop-in) or populate Rails.application.credentials.agent_s2s_token before retrying.")
         end
 
         uri = URI.parse("#{base_url}/api/s2s/tentacles/#{URI.encode_www_form_component(slug)}/activate")
@@ -74,6 +74,17 @@ module Mcp
 
       def self.base_url
         ENV.fetch("NEURAMD_S2S_URL", DEFAULT_BASE_URL)
+      end
+
+      # ENV wins over Rails.application.credentials for the same
+      # reason as the server side: autodeploy's `git reset --hard`
+      # would wipe an uncommitted credentials.yml.enc update, so the
+      # production path is systemd drop-in env injection.
+      def self.resolve_token
+        env_value = ENV["AGENT_S2S_TOKEN"].to_s.strip
+        return env_value unless env_value.empty?
+
+        ::Rails.application.credentials.agent_s2s_token
       end
 
       # HTTPS is always fine; plain HTTP only to loopback. Prevents
