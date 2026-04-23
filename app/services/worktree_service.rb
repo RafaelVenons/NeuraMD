@@ -14,6 +14,14 @@ class WorktreeService
 
       return path.to_s if registered?(path.to_s, repo_root: repo_root)
 
+      # Before anything else, make sure the workspace itself (the repo
+      # the worktree will check out from) has the runtime master.key a
+      # Rails child would need. `tentacle_workspace=<name>` workspaces
+      # are separate clones without gitignored files — the previous
+      # behaviour left every worktree unable to boot Rails until
+      # master.key was symlinked manually.
+      ensure_rails_runtime_secrets(repo_root)
+
       FileUtils.mkdir_p(path.parent)
       FileUtils.remove_entry(path.to_s) if File.directory?(path)
 
@@ -21,6 +29,10 @@ class WorktreeService
       args.concat(branch_exists?(branch, repo_root: repo_root) ? [path.to_s, branch] : ["-b", branch, path.to_s])
       run_git!(args, repo_root: repo_root)
       link_shared_paths(path: path, repo_root: repo_root) if link_shared
+      # master.key must reach the worktree regardless of link_shared:
+      # dev-convenience paths (vendor/bundle, .bundle) are optional,
+      # but master.key is a boot requirement for any Rails app worktree.
+      ensure_rails_runtime_secrets(path)
       path.to_s
     end
 
@@ -65,6 +77,26 @@ class WorktreeService
         FileUtils.mkdir_p(target.parent)
         FileUtils.ln_s(source.to_s, target.to_s)
       end
+    end
+
+    # Rails apps need config/master.key to decrypt credentials.yml.enc
+    # at boot; without it, `require "config/environment"` blows up and
+    # no child process (bin/mcp-server, bundle exec rspec) can start.
+    # Idempotent: no-op when the target already has the key, the source
+    # doesn't exist, or the target isn't a Rails app (no
+    # config/credentials.yml.enc committed).
+    def ensure_rails_runtime_secrets(target_root)
+      target_root = Pathname.new(target_root)
+      return unless target_root.join("config/credentials.yml.enc").file?
+
+      key_target = target_root.join("config/master.key")
+      return if key_target.symlink? || key_target.exist?
+
+      key_source = Rails.root.join("config/master.key")
+      return unless key_source.exist?
+
+      FileUtils.mkdir_p(key_target.parent)
+      FileUtils.ln_s(key_source.to_s, key_target.to_s)
     end
 
     def branch_for(tentacle_id)

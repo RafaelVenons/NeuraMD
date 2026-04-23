@@ -203,6 +203,115 @@ RSpec.describe WorktreeService do
     end
   end
 
+  describe ".ensure runtime secrets for Rails-app workspaces" do
+    let(:workspace_root) { Pathname.new(sandbox).join(".tentacle-worktrees", "railsy") }
+    let(:rails_root) { Pathname.new(Dir.mktmpdir("neuramd-rails-runtime-")) }
+
+    before do
+      # Simulate the current process's Rails.root (the running neuramd-web)
+      # holding the authoritative master.key. WorktreeService symlinks from
+      # this location when preparing a Rails-app workspace or worktree.
+      FileUtils.mkdir_p(rails_root.join("config"))
+      File.write(rails_root.join("config/master.key"), "abcdef1234567890\n")
+      allow(Rails).to receive(:root).and_return(rails_root)
+
+      # Workspace-as-Rails-app: has credentials.yml.enc committed but no
+      # master.key (the gitignored file the symlink provides). Must be
+      # committed so every worktree checkout also has it.
+      FileUtils.mkdir_p(repo_root.join("config"))
+      File.write(repo_root.join("config/credentials.yml.enc"), "encrypted\n")
+      run_git("add", "config/credentials.yml.enc")
+      run_git("commit", "-m", "add credentials.yml.enc")
+    end
+
+    after { FileUtils.remove_entry(rails_root) if File.directory?(rails_root) }
+
+    it "symlinks master.key into the worktree even when link_shared is false" do
+      path = described_class.ensure(
+        tentacle_id: tentacle_id,
+        repo_root: repo_root,
+        worktree_root: workspace_root,
+        link_shared: false
+      )
+
+      target = File.join(path, "config/master.key")
+      expect(File.symlink?(target)).to be(true), "master.key should be symlinked even with link_shared: false"
+      expect(File.read(target)).to eq("abcdef1234567890\n")
+      expect(File.realpath(target)).to eq(rails_root.join("config/master.key").to_s)
+    end
+
+    it "also ensures master.key at the workspace root itself" do
+      described_class.ensure(
+        tentacle_id: tentacle_id,
+        repo_root: repo_root,
+        worktree_root: workspace_root,
+        link_shared: false
+      )
+
+      workspace_key = repo_root.join("config/master.key")
+      expect(workspace_key.symlink?).to be(true)
+      expect(File.realpath(workspace_key)).to eq(rails_root.join("config/master.key").to_s)
+    end
+
+    it "is idempotent when the symlink already exists" do
+      FileUtils.mkdir_p(repo_root.join("config"))
+      File.symlink(rails_root.join("config/master.key").to_s, repo_root.join("config/master.key").to_s)
+
+      expect {
+        described_class.ensure(
+          tentacle_id: tentacle_id,
+          repo_root: repo_root,
+          worktree_root: workspace_root,
+          link_shared: false
+        )
+      }.not_to raise_error
+    end
+
+    it "does not overwrite an existing real master.key at the workspace root" do
+      real_key = repo_root.join("config/master.key")
+      File.write(real_key, "workspace-owned-key\n")
+
+      described_class.ensure(
+        tentacle_id: tentacle_id,
+        repo_root: repo_root,
+        worktree_root: workspace_root,
+        link_shared: false
+      )
+
+      expect(File.symlink?(real_key)).to be(false)
+      expect(File.read(real_key)).to eq("workspace-owned-key\n")
+    end
+
+    it "skips linking when the workspace is not a Rails app (no credentials.yml.enc)" do
+      FileUtils.rm(repo_root.join("config/credentials.yml.enc"))
+      run_git("add", "config/credentials.yml.enc")
+      run_git("commit", "-m", "remove credentials.yml.enc")
+
+      path = described_class.ensure(
+        tentacle_id: tentacle_id,
+        repo_root: repo_root,
+        worktree_root: workspace_root,
+        link_shared: false
+      )
+
+      expect(File.exist?(File.join(path, "config/master.key"))).to be(false)
+      expect(File.exist?(repo_root.join("config/master.key"))).to be(false)
+    end
+
+    it "skips when the running Rails.root has no master.key" do
+      FileUtils.rm(rails_root.join("config/master.key"))
+
+      path = described_class.ensure(
+        tentacle_id: tentacle_id,
+        repo_root: repo_root,
+        worktree_root: workspace_root,
+        link_shared: false
+      )
+
+      expect(File.exist?(File.join(path, "config/master.key"))).to be(false)
+    end
+  end
+
   describe ".remove with worktree_root:" do
     let(:worktree_root) { Pathname.new(sandbox).join(".tentacle-worktrees", "neuramd") }
 
