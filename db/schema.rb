@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_04_23_222303) do
+ActiveRecord::Schema[8.1].define(version: 2026_04_24_005046) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
   enable_extension "pg_trgm"
@@ -206,7 +206,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_04_23_222303) do
     t.index ["src_note_id"], name: "index_note_links_on_src_note_id"
   end
 
-  add_check_constraint "note_links", "hier_role IS NULL OR (hier_role::text = ANY (ARRAY['target_is_parent'::character varying, 'target_is_child'::character varying, 'same_level'::character varying, 'next_in_sequence'::character varying, 'delegation_pending'::character varying, 'delegation_directive'::character varying, 'delegation_verify'::character varying, 'delegation_block'::character varying]::text[]))", name: "check_note_links_hier_role_allow_list", validate: false
+  add_check_constraint "note_links", "hier_role IS NULL OR (hier_role::text = ANY (ARRAY['target_is_parent'::character varying::text, 'target_is_child'::character varying::text, 'same_level'::character varying::text, 'next_in_sequence'::character varying::text, 'delegation_pending'::character varying::text, 'delegation_directive'::character varying::text, 'delegation_verify'::character varying::text, 'delegation_block'::character varying::text]))", name: "check_note_links_hier_role_allow_list", validate: false
 
   create_table "note_revisions", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
     t.boolean "ai_generated", default: false, null: false
