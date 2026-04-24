@@ -29,12 +29,14 @@ RSpec.describe SeedAvatarPropertyDefinitions do
     expect(pd.config.fetch("options")).to eq(Agents::AvatarPalette::HATS)
   end
 
-  it "creates avatar_variant as a system text PD" do
+  it "creates avatar_variant as a system enum PD whose options match the frozen allow-list" do
     run_up
     pd = PropertyDefinition.find_by(key: "avatar_variant")
     expect(pd).to be_present
-    expect(pd.value_type).to eq("text")
+    expect(pd.value_type).to eq("enum")
     expect(pd.system).to be true
+    expect(pd.config.fetch("options")).to eq(described_class::ALLOWED_VARIANTS)
+    expect(pd.config.fetch("options")).to eq(Agents::AvatarPalette::VARIANTS)
   end
 
   it "is idempotent — running up twice does not duplicate PDs or raise" do
@@ -84,8 +86,16 @@ RSpec.describe SeedAvatarPropertyDefinitions do
   end
 
   it "does not duplicate rows when a pre-existing conflicting PD is corrected" do
-    PropertyDefinition.create!(key: "avatar_variant", value_type: "long_text", system: false, config: {})
+    PropertyDefinition.create!(
+      key: "avatar_variant",
+      value_type: "long_text",
+      system: false,
+      config: {}
+    )
     run_up
     expect(PropertyDefinition.where(key: "avatar_variant").count).to eq(1)
+    pd = PropertyDefinition.find_by!(key: "avatar_variant")
+    expect(pd.value_type).to eq("enum")
+    expect(pd.config.fetch("options")).to eq(described_class::ALLOWED_VARIANTS)
   end
 end

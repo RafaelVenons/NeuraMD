@@ -29,6 +29,7 @@ module Agents
     HATS = %w[none cartola chef].freeze
     DEFAULT_HAT = "none".freeze
 
+    VARIANTS = %w[clawd-v1].freeze
     DEFAULT_VARIANT = "clawd-v1".freeze
 
     def self.default_color_for(tag_names)

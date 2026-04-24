@@ -1,8 +1,9 @@
 class SeedAvatarPropertyDefinitions < ActiveRecord::Migration[8.1]
-  # Hats must be inlined so schema replay doesn't depend on app constants.
-  # Adding a new hat = new migration, not edit-in-place. Keep in sync with
-  # Agents::AvatarPalette::HATS (spec asserts).
+  # Allow-lists are inlined so schema replay doesn't depend on app constants.
+  # Adding a value = new migration, not edit-in-place. Keep in sync with
+  # Agents::AvatarPalette::{HATS,VARIANTS} (specs assert equality).
   ALLOWED_HATS = %w[none cartola chef].freeze
+  ALLOWED_VARIANTS = %w[clawd-v1].freeze
 
   SEEDS = [
     {
@@ -22,10 +23,11 @@ class SeedAvatarPropertyDefinitions < ActiveRecord::Migration[8.1]
     },
     {
       key: "avatar_variant",
-      value_type: "text",
+      value_type: "enum",
       label: "Variante do avatar",
-      description: "Reservado pra futuras variações do Clawd (default clawd-v1).",
-      config: {}
+      description: "Família do Clawd (clawd-v1 inicial). " \
+        "Variantes futuras entram via nova migration.",
+      config: {"options" => ALLOWED_VARIANTS}
     }
   ].freeze
 

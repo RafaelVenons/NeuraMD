@@ -97,14 +97,20 @@ module Graph
       end
     end
 
+    # Live runtime, not DB. `TentacleSession.alive` rows can linger as `alive`
+    # after the runtime dies until `Tentacles::SupervisorJob` sweeps them (5-min
+    # cadence). Reading from `TentacleRuntime::SESSIONS` — the same source
+    # `Api::Tentacles::RuntimeController#index` uses — is the authoritative
+    # "is this agent actually running right now?" signal.
     def load_alive_tentacle_note_ids(note_ids)
       return Set.new if note_ids.empty?
 
-      TentacleSession
-        .alive
-        .where(tentacle_note_id: note_ids.to_a)
-        .pluck(:tentacle_note_id)
-        .to_set
+      alive = Set.new
+      TentacleRuntime::SESSIONS.each_pair do |id, session|
+        next unless session&.alive?
+        alive << id if note_ids.include?(id)
+      end
+      alive
     end
 
     def promise_titles_for(note)

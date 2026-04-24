@@ -81,7 +81,7 @@ module Graph
 
     def avatar_payload
       {
-        variant: stored_property("avatar_variant") || Agents::AvatarPalette::DEFAULT_VARIANT,
+        variant: validated_variant || Agents::AvatarPalette::DEFAULT_VARIANT,
         color: validated_color || Agents::AvatarPalette.default_color_for(tag_names),
         hat: validated_hat || Agents::AvatarPalette::DEFAULT_HAT,
         state: avatar_state
@@ -105,6 +105,11 @@ module Graph
     def validated_color
       value = stored_property("avatar_color")
       value && HEX_COLOR_PATTERN.match?(value) ? value : nil
+    end
+
+    def validated_variant
+      value = stored_property("avatar_variant")
+      Agents::AvatarPalette::VARIANTS.include?(value) ? value : nil
     end
 
     def property_errors

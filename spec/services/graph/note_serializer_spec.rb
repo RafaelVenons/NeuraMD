@@ -92,7 +92,7 @@ RSpec.describe Graph::NoteSerializer do
           properties_data: {
             "avatar_color" => "#ff00aa",
             "avatar_hat" => "cartola",
-            "avatar_variant" => "clawd-v2"
+            "avatar_variant" => "clawd-v1"
           }
         )
         note.reload
@@ -100,7 +100,7 @@ RSpec.describe Graph::NoteSerializer do
         expect(payload[:avatar]).to include(
           color: "#ff00aa",
           hat: "cartola",
-          variant: "clawd-v2"
+          variant: "clawd-v1"
         )
       end
 
@@ -165,6 +165,20 @@ RSpec.describe Graph::NoteSerializer do
           payload = described_class.call(note)
           expect(payload[:avatar][:color]).to eq(expected), "input #{input.inspect}"
         end
+      end
+
+      it "rejects avatar_variant values outside Agents::AvatarPalette::VARIANTS" do
+        note.head_revision.update!(properties_data: {"avatar_variant" => "clawd-prototype-xyz"})
+        note.reload
+        payload = described_class.call(note)
+        expect(payload[:avatar][:variant]).to eq("clawd-v1")
+      end
+
+      it "accepts avatar_variant values listed in Agents::AvatarPalette::VARIANTS" do
+        note.head_revision.update!(properties_data: {"avatar_variant" => "clawd-v1"})
+        note.reload
+        payload = described_class.call(note)
+        expect(payload[:avatar][:variant]).to eq("clawd-v1")
       end
     end
 

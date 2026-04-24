@@ -49,6 +49,20 @@ RSpec.describe Agents::AvatarPalette do
     end
   end
 
+  describe "VARIANTS" do
+    it "is a bounded allow-list starting with clawd-v1" do
+      expect(described_class::VARIANTS).to eq(%w[clawd-v1])
+    end
+
+    it "includes DEFAULT_VARIANT" do
+      expect(described_class::VARIANTS).to include(described_class::DEFAULT_VARIANT)
+    end
+
+    it "is frozen" do
+      expect(described_class::VARIANTS).to be_frozen
+    end
+  end
+
   describe "DEFAULT_VARIANT" do
     it "is clawd-v1 (reserved for future variants)" do
       expect(described_class::DEFAULT_VARIANT).to eq("clawd-v1")
