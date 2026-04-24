@@ -45,6 +45,32 @@ RSpec.describe PropertyDefinition, type: :model do
       expect(subject.errors[:key]).to include("is reserved")
     end
 
+    # Finding round-4 #1: PD keys owned by system seeders cannot be hijacked
+    # by user-created definitions. Otherwise a deploy that seeds these keys
+    # would either overwrite user data silently or block on collision detection.
+    describe "RESERVED_SYSTEM_KEYS guard" do
+      it "rejects avatar_color for non-system PDs" do
+        pd = build(:property_definition, key: "avatar_color", system: false)
+        expect(pd).not_to be_valid
+        expect(pd.errors[:key].join(" ")).to match(/reserved/)
+      end
+
+      it "rejects avatar_hat for non-system PDs" do
+        pd = build(:property_definition, key: "avatar_hat", system: false)
+        expect(pd).not_to be_valid
+      end
+
+      it "rejects avatar_variant for non-system PDs" do
+        pd = build(:property_definition, key: "avatar_variant", system: false)
+        expect(pd).not_to be_valid
+      end
+
+      it "allows system-owned PDs to use reserved keys (the seeder path)" do
+        pd = build(:property_definition, key: "avatar_color", system: true, value_type: "text")
+        expect(pd).to be_valid
+      end
+    end
+
     it "requires a value_type" do
       subject.value_type = nil
       expect(subject).not_to be_valid
@@ -61,6 +87,35 @@ RSpec.describe PropertyDefinition, type: :model do
         subject.config = (vt.include?("enum") ? {"options" => ["a"]} : {})
         expect(subject).to be_valid
       end
+    end
+  end
+
+  describe "text config.pattern validation" do
+    it "accepts a valid regex pattern within the length cap" do
+      pd = build(:property_definition, value_type: "text", config: {"pattern" => "\\A#[0-9a-f]{6}\\z"})
+      expect(pd).to be_valid
+    end
+
+    it "rejects a pattern that exceeds the length cap (DoS surface)" do
+      pd = build(:property_definition, value_type: "text", config: {"pattern" => "a" * (PropertyDefinition::PATTERN_MAX_LENGTH + 1)})
+      expect(pd).not_to be_valid
+      expect(pd.errors[:config].join(" ")).to match(/pattern/i)
+    end
+
+    it "rejects a malformed regex pattern" do
+      pd = build(:property_definition, value_type: "text", config: {"pattern" => "[unclosed"})
+      expect(pd).not_to be_valid
+      expect(pd.errors[:config].join(" ")).to match(/pattern/i)
+    end
+
+    it "accepts text PDs without a pattern (backward compat)" do
+      pd = build(:property_definition, value_type: "text", config: {})
+      expect(pd).to be_valid
+    end
+
+    it "rejects non-string pattern values" do
+      pd = build(:property_definition, value_type: "text", config: {"pattern" => 123})
+      expect(pd).not_to be_valid
     end
   end
 
