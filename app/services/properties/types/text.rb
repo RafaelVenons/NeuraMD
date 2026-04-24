@@ -27,11 +27,16 @@ module Properties
         errors
       end
 
-      # Malformed pattern config is a seeder/migration bug, not a write-time
-      # concern. Logging here would fire on every validation call; swallow and
-      # let the seeder spec catch invalid patterns instead.
+      # Defense in depth: PropertyDefinition validates `config.pattern` at
+      # create/update (length cap + compile check). If a malformed or slow
+      # pattern still reaches here (legacy data, direct SQL), compile with an
+      # explicit timeout so catastrophic backtracking cannot stall requests.
+      # Swallowing failures keeps writes functional — the PD-level validation
+      # is the gate that should reject bad patterns.
+      REGEXP_TIMEOUT_SECONDS = 0.1
+
       def self.safe_regexp(str)
-        Regexp.new(str)
+        Regexp.new(str, timeout: REGEXP_TIMEOUT_SECONDS)
       rescue RegexpError
         nil
       end

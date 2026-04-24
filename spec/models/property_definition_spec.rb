@@ -90,6 +90,35 @@ RSpec.describe PropertyDefinition, type: :model do
     end
   end
 
+  describe "text config.pattern validation" do
+    it "accepts a valid regex pattern within the length cap" do
+      pd = build(:property_definition, value_type: "text", config: {"pattern" => "\\A#[0-9a-f]{6}\\z"})
+      expect(pd).to be_valid
+    end
+
+    it "rejects a pattern that exceeds the length cap (DoS surface)" do
+      pd = build(:property_definition, value_type: "text", config: {"pattern" => "a" * (PropertyDefinition::PATTERN_MAX_LENGTH + 1)})
+      expect(pd).not_to be_valid
+      expect(pd.errors[:config].join(" ")).to match(/pattern/i)
+    end
+
+    it "rejects a malformed regex pattern" do
+      pd = build(:property_definition, value_type: "text", config: {"pattern" => "[unclosed"})
+      expect(pd).not_to be_valid
+      expect(pd.errors[:config].join(" ")).to match(/pattern/i)
+    end
+
+    it "accepts text PDs without a pattern (backward compat)" do
+      pd = build(:property_definition, value_type: "text", config: {})
+      expect(pd).to be_valid
+    end
+
+    it "rejects non-string pattern values" do
+      pd = build(:property_definition, value_type: "text", config: {"pattern" => 123})
+      expect(pd).not_to be_valid
+    end
+  end
+
   describe "enum/multi_enum config validation" do
     it "requires options array for enum" do
       prop = build(:property_definition, value_type: "enum", config: {})

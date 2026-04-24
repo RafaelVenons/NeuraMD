@@ -113,11 +113,19 @@ module Graph
     # minute tick, so live sessions stay within the freshness window; dead
     # sessions fall out without needing the supervisor to complete a mark_ended
     # pass.
+    #
+    # `unknown` is included on purpose — TentacleRuntime uses it when it cannot
+    # confirm the dtach child died (boot race, ownership mismatch). The child
+    # may still be running. Showing those as `sleeping` risks operators
+    # restarting a live tentacle. The freshness gate still applies: unknown
+    # rows past the window are treated as sleeping.
+    LIVE_STATUSES = %w[alive unknown].freeze
+
     def load_alive_tentacle_note_ids(note_ids)
       return Set.new if note_ids.empty?
 
       TentacleSession
-        .alive
+        .where(status: LIVE_STATUSES)
         .where(tentacle_note_id: note_ids.to_a)
         .where("last_seen_at > ?", LIVE_SESSION_FRESHNESS.ago)
         .pluck(:tentacle_note_id)

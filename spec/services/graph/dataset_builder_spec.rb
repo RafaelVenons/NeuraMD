@@ -78,6 +78,31 @@ RSpec.describe Graph::DatasetBuilder do
       expect(payload[:avatar][:state]).to eq("sleeping")
     end
 
+    # Round-5 #2 regression: TentacleRuntime marks sessions `unknown` when it
+    # cannot confirm the dtach child is dead. Those may still be running, so
+    # the graph must treat fresh `unknown` rows as awake — operators restarting
+    # a live tentacle because the graph said "sleeping" is a user-visible bug.
+    it "treats a fresh unknown session as awake (runtime can't confirm death)" do
+      create(:tentacle_session, :unknown, note: agent, last_seen_at: Time.current)
+
+      result = described_class.call(scope: Note.all)
+
+      payload = result[:notes].find { |n| n[:slug] == agent.slug }
+      expect(payload[:avatar][:state]).to eq("awake")
+    end
+
+    it "treats a stale unknown session as sleeping (freshness still applies)" do
+      create(:tentacle_session,
+        :unknown,
+        note: agent,
+        last_seen_at: (Graph::DatasetBuilder::LIVE_SESSION_FRESHNESS + 1.minute).ago)
+
+      result = described_class.call(scope: Note.all)
+
+      payload = result[:notes].find { |n| n[:slug] == agent.slug }
+      expect(payload[:avatar][:state]).to eq("sleeping")
+    end
+
     it "does not emit avatar for non-agent notes" do
       plain = create(:note, :with_head_revision, title: "Plain")
 

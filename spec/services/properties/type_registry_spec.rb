@@ -85,6 +85,18 @@ RSpec.describe "Properties::Types" do
         expect(errors).to be_empty
       end
 
+      # Round-5 #3 regression: regex compile uses a timeout, so even if a
+      # malicious pattern sneaks past create-time validation (direct SQL, legacy
+      # data), matching cannot stall the request path.
+      it "bounds match time — does not hang on catastrophic backtracking patterns" do
+        evil_pattern = "(a+)+$"
+        long_input = "a" * 30 + "b"
+        start = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+        described_class.validate(long_input, {"pattern" => evil_pattern})
+        elapsed = Process.clock_gettime(Process::CLOCK_MONOTONIC) - start
+        expect(elapsed).to be < 1.0
+      end
+
       it "is a no-op when config has no pattern (backwards compat with existing text PDs)" do
         expect(described_class.validate("anything", {})).to be_empty
         expect(described_class.validate("anything", {"pattern" => nil})).to be_empty

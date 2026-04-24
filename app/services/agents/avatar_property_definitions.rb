@@ -52,33 +52,75 @@ module Agents
     ].freeze
 
     def self.ensure!(logger: nil)
-      collisions = SEEDS.map { |attrs| attrs.fetch(:key) }.select do |key|
-        existing = PropertyDefinition.find_by(key: key)
-        existing && !existing.system
-      end
+      ActiveRecord::Base.transaction do
+        handle_collisions!(logger: logger)
 
-      if collisions.any?
-        raise UserOwnedCollisionError,
-          "Refusing to overwrite user-owned PropertyDefinition(s): #{collisions.join(", ")}. " \
-          "These keys are reserved as system-owned by Agents::AvatarPropertyDefinitions. " \
-          "Manual action required: rename the conflicting row(s) or promote them to system:true."
-      end
-
-      SEEDS.each do |attrs|
-        pd = PropertyDefinition.find_or_initialize_by(key: attrs.fetch(:key))
-        pd.assign_attributes(
-          value_type: attrs.fetch(:value_type),
-          label: attrs.fetch(:label),
-          description: attrs.fetch(:description),
-          config: attrs.fetch(:config),
-          system: true,
-          archived: false
-        )
-        if pd.persisted? && pd.changed?
-          logger&.call("avatar_property_definitions: correcting #{attrs[:key].inspect} (was: #{pd.changes.inspect})")
+        SEEDS.each do |attrs|
+          pd = PropertyDefinition.find_or_initialize_by(key: attrs.fetch(:key))
+          pd.assign_attributes(
+            value_type: attrs.fetch(:value_type),
+            label: attrs.fetch(:label),
+            description: attrs.fetch(:description),
+            config: attrs.fetch(:config),
+            system: true,
+            archived: false
+          )
+          if pd.persisted? && pd.changed?
+            logger&.call("avatar_property_definitions: correcting #{attrs[:key].inspect} (was: #{pd.changes.inspect})")
+          end
+          pd.save!
         end
-        pd.save!
       end
+    end
+
+    # Detects user-owned (system: false) PDs sharing a reserved key. Two paths:
+    #
+    # - Default (safe): raise UserOwnedCollisionError. Deploy fails loud,
+    #   operator decides what to do with the data manually.
+    #
+    # - Opt-in via ENV["AVATAR_SEED_RENAME_LEGACY"]="1": rename colliders to
+    #   `<key>_legacy_<epoch>` within the same transaction so the canonical
+    #   key is free for the system-owned row. The legacy row keeps its
+    #   config/value_type/data intact — only the key changes. `save(validate:
+    #   false)` because the PD has RESERVED_SYSTEM_KEYS guard that would
+    #   reject the original key for non-system rows (the row was created
+    #   before the guard existed).
+    #
+    # Opt-in because renaming mutates data operators may not have authorized.
+    # Both paths are transactional — if any step in ensure! fails, rename rolls
+    # back with the rest.
+    def self.handle_collisions!(logger:)
+      collisions = SEEDS.map { |attrs| attrs.fetch(:key) }.filter_map do |key|
+        existing = PropertyDefinition.find_by(key: key)
+        existing if existing && !existing.system
+      end
+      return if collisions.empty?
+
+      if rename_legacy_enabled?
+        rename_timestamp = Time.current.to_i
+        collisions.each do |pd|
+          new_key = "#{pd.key}_legacy_#{rename_timestamp}"
+          logger&.call("avatar_property_definitions: renaming legacy user-owned PD " \
+            "#{pd.key.inspect} → #{new_key.inspect} (id=#{pd.id})")
+          pd.key = new_key
+          pd.save!(validate: false)
+        end
+      else
+        keys = collisions.map(&:key)
+        raise UserOwnedCollisionError,
+          "Refusing to overwrite user-owned PropertyDefinition(s): #{keys.join(", ")}. " \
+          "These keys are reserved as system-owned by Agents::AvatarPropertyDefinitions. " \
+          "Options: (a) rename/remove the conflicting row(s) and re-run; " \
+          "(b) promote them to system:true if the data should live under the new contract; " \
+          "(c) set AVATAR_SEED_RENAME_LEGACY=1 to auto-rename to '<key>_legacy_<timestamp>' " \
+          "(data preserved, key suffixed — note-level properties_data under the old key " \
+          "will still match the new system PD)."
+      end
+    end
+
+    def self.rename_legacy_enabled?
+      value = ENV["AVATAR_SEED_RENAME_LEGACY"].to_s.downcase
+      %w[1 true yes on].include?(value)
     end
   end
 end
