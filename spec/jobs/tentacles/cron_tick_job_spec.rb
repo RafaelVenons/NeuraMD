@@ -110,13 +110,19 @@ RSpec.describe Tentacles::CronTickJob, type: :job do
     end
 
     it "provisions an isolated worktree and passes it to TentacleRuntime.start as cwd" do
-      note = make_cron_note(expr: "* * * * *", cwd: "/home/venom/projects/NeuraMD")
+      # Use a path under the test-suite's allowed prefix (set in rails_helper)
+      # so BootConfig.canonicalize_cwd — which does File.realpath — resolves
+      # successfully on CI. The operator layout /home/venom/... does not exist
+      # on the GitHub Actions runner.
+      cwd = File.join(Tentacles::BootConfig.allowed_cwd_prefixes.first, "cron-repo-#{SecureRandom.hex(4)}")
+      FileUtils.mkdir_p(cwd)
+      note = make_cron_note(expr: "* * * * *", cwd: cwd)
       fake = instance_double(TentacleRuntime::Session, alive?: true, pid: 1, started_at: Time.current)
-      expected_path = WorktreeService.path_for(tentacle_id: note.id, repo_root: "/home/venom/projects/NeuraMD")
+      expected_path = WorktreeService.path_for(tentacle_id: note.id, repo_root: cwd)
 
       expect(WorktreeService).to receive(:ensure).with(
         tentacle_id: note.id,
-        repo_root: Pathname.new("/home/venom/projects/NeuraMD"),
+        repo_root: Pathname.new(cwd),
         worktree_root: nil,
         link_shared: true
       ).and_return(expected_path)
@@ -127,6 +133,8 @@ RSpec.describe Tentacles::CronTickJob, type: :job do
       end
 
       described_class.perform_now
+    ensure
+      FileUtils.remove_entry(cwd) if cwd && File.directory?(cwd)
     end
 
     it "falls back to Rails.root when tentacle_cwd is absent" do

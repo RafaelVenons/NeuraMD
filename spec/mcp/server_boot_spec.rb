@@ -17,12 +17,13 @@ RSpec.describe "MCP Server boot" do
   it "registers all NeuraMD tools" do
     tools = Mcp::Tools.all
     expect(tools).to be_an(Array)
-    expect(tools.length).to eq(18)
+    expect(tools.length).to eq(19)
     expect(tools.map(&:name_value)).to contain_exactly(
       "search_notes", "read_note", "list_tags", "notes_by_tag", "note_graph",
       "recent_changes", "create_note", "update_note", "patch_note", "manage_property",
       "import_markdown", "merge_notes", "find_anemic_notes", "bulk_remove_tag",
-      "send_agent_message", "read_agent_inbox", "spawn_child_tentacle", "route_human_to"
+      "send_agent_message", "read_agent_inbox", "spawn_child_tentacle", "route_human_to",
+      "activate_tentacle_session"
     )
   end
 
@@ -35,6 +36,6 @@ RSpec.describe "MCP Server boot" do
       params: {}
     })
     result = response[:result]
-    expect(result[:tools].length).to eq(18)
+    expect(result[:tools].length).to eq(19)
   end
 end

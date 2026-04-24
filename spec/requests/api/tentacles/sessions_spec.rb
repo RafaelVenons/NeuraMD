@@ -138,11 +138,16 @@ RSpec.describe "API tentacle sessions", type: :request do
 
       it "passes tentacle_cwd as repo_root to WorktreeService and initial_prompt to TentacleRuntime" do
         sign_in user
+        # Operator layout /home/venom/... does not exist on CI; use a path
+        # under the test-suite's allowed prefix (rails_helper) so
+        # BootConfig.canonicalize_cwd resolves successfully.
+        cwd = File.join(Tentacles::BootConfig.allowed_cwd_prefixes.first, "maple-#{SecureRandom.hex(4)}")
+        FileUtils.mkdir_p(cwd)
         note = make_note("Booted")
         Properties::SetService.call(
           note: note,
           changes: {
-            "tentacle_cwd" => "/home/venom/projects/MapledaRapeize",
+            "tentacle_cwd" => cwd,
             "tentacle_initial_prompt" => "Você é Dev Maple. Leia o charter."
           }
         )
@@ -152,8 +157,8 @@ RSpec.describe "API tentacle sessions", type: :request do
           alive?: true, pid: 9001, started_at: Time.utc(2026, 4, 20, 14)
         )
         expect(WorktreeService).to receive(:ensure).with(
-          hash_including(tentacle_id: note.id, repo_root: "/home/venom/projects/MapledaRapeize")
-        ).and_return("/home/venom/projects/MapledaRapeize/tmp/tentacles/#{note.id}")
+          hash_including(tentacle_id: note.id, repo_root: cwd)
+        ).and_return("#{cwd}/tmp/tentacles/#{note.id}")
         expect(TentacleRuntime).to receive(:start).with(
           hash_including(
             tentacle_id: note.id,
@@ -166,6 +171,8 @@ RSpec.describe "API tentacle sessions", type: :request do
           headers: {"CONTENT_TYPE" => "application/json"}
 
         expect(response).to have_http_status(:created)
+      ensure
+        FileUtils.remove_entry(cwd) if cwd && File.directory?(cwd)
       end
 
       it "defaults WorktreeService to Rails.root when tentacle_cwd is unset" do
@@ -191,10 +198,13 @@ RSpec.describe "API tentacle sessions", type: :request do
 
       it "omits initial_prompt when property is not set" do
         sign_in user
+        # See note on /home/venom on the paired test above.
+        cwd = File.join(Tentacles::BootConfig.allowed_cwd_prefixes.first, "cwd-only-#{SecureRandom.hex(4)}")
+        FileUtils.mkdir_p(cwd)
         note = make_note("CwdOnly")
         Properties::SetService.call(
           note: note,
-          changes: {"tentacle_cwd" => "/home/venom/projects/MapledaRapeize"}
+          changes: {"tentacle_cwd" => cwd}
         )
 
         fake = instance_double(TentacleRuntime::Session, alive?: true, pid: 1, started_at: Time.current)
@@ -208,6 +218,8 @@ RSpec.describe "API tentacle sessions", type: :request do
           headers: {"CONTENT_TYPE" => "application/json"}
 
         expect(response).to have_http_status(:created)
+      ensure
+        FileUtils.remove_entry(cwd) if cwd && File.directory?(cwd)
       end
 
       it "returns 422 when stored tentacle_cwd is outside the whitelist" do
