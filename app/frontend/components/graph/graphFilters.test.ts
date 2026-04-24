@@ -1,6 +1,12 @@
 import { describe, it, expect } from "vitest"
 
-import { agentNoteIds, countByType, filterGraph, tagUsageCounts } from "~/components/graph/graphFilters"
+import {
+  agentNoteIds,
+  awakeAgentIds,
+  countByType,
+  filterGraph,
+  tagUsageCounts,
+} from "~/components/graph/graphFilters"
 import type { GraphEdge, GraphNode, GraphTag } from "~/components/graph/types"
 
 function node(id: string, type: GraphNode["type"] = "leaf"): GraphNode {
@@ -122,6 +128,44 @@ describe("agentNoteIds", () => {
 
   it("defaults to the agente-team tag name", () => {
     expect(agentNoteIds(tags, noteTags)).toEqual(new Set(["a", "b"]))
+  })
+})
+
+describe("awakeAgentIds", () => {
+  const agents = new Set(["ag1", "ag2", "ag3"])
+
+  it("returns an empty set when no tentacles are alive", () => {
+    const edges: GraphEdge[] = [edge("t1", "ag1")]
+    expect(awakeAgentIds(agents, new Set(), edges)).toEqual(new Set())
+  })
+
+  it("returns an empty set when there are no agents", () => {
+    const edges: GraphEdge[] = [edge("t1", "ag1")]
+    expect(awakeAgentIds(new Set(), new Set(["t1"]), edges)).toEqual(new Set())
+  })
+
+  it("marks an agent as awake when a linked tentacle is alive (tentacle→agent)", () => {
+    const edges: GraphEdge[] = [edge("t1", "ag1"), edge("t2", "ag2")]
+    const alive = new Set(["t1"])
+    expect(awakeAgentIds(agents, alive, edges)).toEqual(new Set(["ag1"]))
+  })
+
+  it("marks an agent as awake when the edge is reversed (agent→tentacle)", () => {
+    const edges: GraphEdge[] = [edge("ag1", "t1")]
+    const alive = new Set(["t1"])
+    expect(awakeAgentIds(agents, alive, edges)).toEqual(new Set(["ag1"]))
+  })
+
+  it("ignores edges between two agents or two tentacles", () => {
+    const edges: GraphEdge[] = [edge("ag1", "ag2"), edge("t1", "t2")]
+    const alive = new Set(["t1", "t2"])
+    expect(awakeAgentIds(agents, alive, edges)).toEqual(new Set())
+  })
+
+  it("handles multiple alive tentacles fanning out to distinct agents", () => {
+    const edges: GraphEdge[] = [edge("t1", "ag1"), edge("t2", "ag2"), edge("t3", "ag3")]
+    const alive = new Set(["t1", "t3"])
+    expect(awakeAgentIds(agents, alive, edges)).toEqual(new Set(["ag1", "ag3"]))
   })
 })
 

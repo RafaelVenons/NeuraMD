@@ -4,9 +4,11 @@ import { useNavigate } from "react-router-dom"
 import { GraphCanvas } from "~/components/graph/GraphCanvas"
 import { useGraphData } from "~/components/graph/useGraphData"
 import { useTentacleRuntime } from "~/components/graph/useTentacleRuntime"
+import { agentColorMap } from "~/components/graph/agentPalette"
 import {
   AGENT_TEAM_TAG,
   agentNoteIds,
+  awakeAgentIds,
   countByType,
   filterGraph,
   tagUsageCounts,
@@ -36,6 +38,16 @@ export function GraphPage() {
     if (state.status !== "ready") return new Set<string>()
     return agentNoteIds(state.dataset.tags, state.dataset.noteTags)
   }, [state])
+
+  const agentColors = useMemo(() => {
+    if (state.status !== "ready") return new Map<string, string>()
+    return agentColorMap(agents, state.dataset.tags, state.dataset.noteTags)
+  }, [state, agents])
+
+  const awakeAgents = useMemo(() => {
+    if (state.status !== "ready") return new Set<string>()
+    return awakeAgentIds(agents, aliveTentacleIds, state.edges)
+  }, [state, agents, aliveTentacleIds])
 
   const agentTagId = useMemo(() => {
     if (state.status !== "ready") return null
@@ -150,6 +162,8 @@ export function GraphPage() {
           edges={edges}
           aliveTentacleIds={aliveTentacleIds}
           agentNoteIds={agents}
+          agentColors={agentColors}
+          awakeAgentIds={awakeAgents}
           onSelectNote={(slug) => navigate(`/notes/${slug}`)}
         />
       </section>
