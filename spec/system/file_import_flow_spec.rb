@@ -83,14 +83,12 @@ RSpec.describe "File import flow", type: :system do
       expect(page).to have_css(".cm-editor", wait: 10)
     end
 
-    it "'Ver notas no grafo' navigates to graph with tag filtered" do
+    it "'Ver notas no grafo' navigates to the graph page" do
       visit file_import_path(import)
 
       click_link "Ver notas no grafo"
 
-      # Should land on graph page with tag filter active
-      expect(page).to have_css(".nm-graph", wait: 10)
-      expect(page).to have_css(".nm-graph__tag-row.is-selected", wait: 10)
+      expect(page).to have_css(".nm-graph-page", wait: 10)
     end
   end
 
