@@ -16,6 +16,7 @@ module Graph
       links = load_links(note_ids)
       link_counts = build_link_counts(links)
       promise_titles_by_note_id = build_promise_titles_by_note_id(notes)
+      alive_tentacle_note_ids = load_alive_tentacle_note_ids(note_ids)
       link_ids = links.map(&:id)
       note_tag_rows = NoteTag.where(note_id: note_ids.to_a).pluck(:note_id, :tag_id)
       link_tag_rows = LinkTag.where(note_link_id: link_ids).pluck(:note_link_id, :tag_id)
@@ -29,7 +30,8 @@ module Graph
             note,
             incoming_link_count: counts[:incoming],
             outgoing_link_count: counts[:outgoing],
-            promise_titles: promise_titles_by_note_id.fetch(note.id, [])
+            promise_titles: promise_titles_by_note_id.fetch(note.id, []),
+            alive_tentacle_note_ids: alive_tentacle_note_ids
           )
         },
         links: links.map { |link| LinkSerializer.call(link) },
@@ -93,6 +95,16 @@ module Graph
       notes.each_with_object({}) do |note, memo|
         memo[note.id] = promise_titles_for(note)
       end
+    end
+
+    def load_alive_tentacle_note_ids(note_ids)
+      return Set.new if note_ids.empty?
+
+      TentacleSession
+        .alive
+        .where(tentacle_note_id: note_ids.to_a)
+        .pluck(:tentacle_note_id)
+        .to_set
     end
 
     def promise_titles_for(note)
