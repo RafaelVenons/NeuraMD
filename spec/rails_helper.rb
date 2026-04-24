@@ -17,6 +17,18 @@ require "warden/test/helpers"
 
 Rails.root.glob("spec/support/**/*.rb").sort_by(&:to_s).each { |f| require f }
 
+# Tentacles::BootConfig defaults allowed_cwd_prefixes to /home/venom/projects/
+# (the operator's workstation layout). On CI the runner user is `runner` and
+# cannot create or canonicalize paths under /home/venom, so tests that
+# resolve Tentacles::BootConfig.allowed_cwd_prefixes.first (+ fixture mkdir)
+# fail with EACCES. Point the test suite at a writable tmpdir unless the
+# operator has overridden it deliberately.
+ENV["NEURAMD_TENTACLE_CWD_ROOTS"] ||= begin
+  dir = Dir.mktmpdir("neuramd-tentacle-cwd-roots-")
+  at_exit { FileUtils.remove_entry(dir) if File.directory?(dir) }
+  "#{dir}/"
+end
+
 begin
   ActiveRecord::Migration.maintain_test_schema!
 rescue ActiveRecord::PendingMigrationError => e
