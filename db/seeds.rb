@@ -8,6 +8,11 @@
 #     MovieGenre.find_or_create_by!(name: genre_name)
 #   end
 
+# System PropertyDefinitions that the product depends on. Fresh environments
+# bootstrap via db:schema:load + db:seed (data migrations do not replay there),
+# so these must be ensured here. Each seeder is idempotent and safe to re-run.
+Agents::AvatarPropertyDefinitions.ensure!
+
 def ensure_graph_tag(name:, color_hex:)
   Tag.find_or_create_by!(name:) do |tag|
     tag.color_hex = color_hex

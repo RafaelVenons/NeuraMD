@@ -2,6 +2,14 @@ require "set"
 
 module Graph
   class DatasetBuilder
+    # Window inside which a TentacleSession row's last_seen_at qualifies the
+    # agent as "awake" on the graph. Must exceed Tentacles::SupervisorJob's
+    # reap cadence (runs every minute) plus its DB scan threshold
+    # (DB_SCAN_THRESHOLD = 5.minutes), so a truly live-but-idle session is
+    # touched before it falls out of the window. 6 minutes gives the
+    # supervisor a full cycle of slack.
+    LIVE_SESSION_FRESHNESS = 6.minutes
+
     def self.call(scope:)
       new(scope:).call
     end
@@ -16,6 +24,7 @@ module Graph
       links = load_links(note_ids)
       link_counts = build_link_counts(links)
       promise_titles_by_note_id = build_promise_titles_by_note_id(notes)
+      alive_tentacle_note_ids = load_alive_tentacle_note_ids(note_ids)
       link_ids = links.map(&:id)
       note_tag_rows = NoteTag.where(note_id: note_ids.to_a).pluck(:note_id, :tag_id)
       link_tag_rows = LinkTag.where(note_link_id: link_ids).pluck(:note_link_id, :tag_id)
@@ -29,7 +38,8 @@ module Graph
             note,
             incoming_link_count: counts[:incoming],
             outgoing_link_count: counts[:outgoing],
-            promise_titles: promise_titles_by_note_id.fetch(note.id, [])
+            promise_titles: promise_titles_by_note_id.fetch(note.id, []),
+            alive_tentacle_note_ids: alive_tentacle_note_ids
           )
         },
         links: links.map { |link| LinkSerializer.call(link) },
@@ -93,6 +103,33 @@ module Graph
       notes.each_with_object({}) do |note, memo|
         memo[note.id] = promise_titles_for(note)
       end
+    end
+
+    # DB + freshness gate. Cross-worker safe (unlike `TentacleRuntime::SESSIONS`
+    # which is process-local) and dead-session-safe (unlike plain
+    # `TentacleSession.alive` which lingers until `Tentacles::SupervisorJob`'s
+    # sweep). The reader thread touches `last_seen_at` on activity (line 429 of
+    # tentacle_runtime.rb) and the supervisor touches idle-but-live rows each
+    # minute tick, so live sessions stay within the freshness window; dead
+    # sessions fall out without needing the supervisor to complete a mark_ended
+    # pass.
+    #
+    # `unknown` is included on purpose — TentacleRuntime uses it when it cannot
+    # confirm the dtach child died (boot race, ownership mismatch). The child
+    # may still be running. Showing those as `sleeping` risks operators
+    # restarting a live tentacle. The freshness gate still applies: unknown
+    # rows past the window are treated as sleeping.
+    LIVE_STATUSES = %w[alive unknown].freeze
+
+    def load_alive_tentacle_note_ids(note_ids)
+      return Set.new if note_ids.empty?
+
+      TentacleSession
+        .where(status: LIVE_STATUSES)
+        .where(tentacle_note_id: note_ids.to_a)
+        .where("last_seen_at > ?", LIVE_SESSION_FRESHNESS.ago)
+        .pluck(:tentacle_note_id)
+        .to_set
     end
 
     def promise_titles_for(note)
