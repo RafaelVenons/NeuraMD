@@ -9,23 +9,20 @@ RSpec.describe Graph::DatasetBuilder do
     note.reload
   end
 
-  # Stand-in for TentacleRuntime::Session — we only need #alive? for state
-  # derivation. Using a struct avoids coupling specs to the real Session's
-  # PTY/dtach machinery.
-  FakeLiveSession = Struct.new(:alive) { def alive?; alive end }
-
-  def mark_alive(note_id)
-    TentacleRuntime::SESSIONS[note_id] = FakeLiveSession.new(true)
+  # Freshness gate: a session whose last_seen_at is within this window counts
+  # as alive. Must stay in sync with DatasetBuilder::LIVE_SESSION_FRESHNESS.
+  # Specs exercise rows on both sides of the window.
+  def fresh_session_for(note)
+    create(:tentacle_session, note: note, last_seen_at: Time.current)
   end
 
-  def mark_runtime_dead(note_id)
-    TentacleRuntime::SESSIONS[note_id] = FakeLiveSession.new(false)
+  def stale_session_for(note)
+    create(:tentacle_session,
+      note: note,
+      last_seen_at: (Graph::DatasetBuilder::LIVE_SESSION_FRESHNESS + 1.minute).ago)
   end
 
-  before { TentacleRuntime::SESSIONS.clear }
-  after  { TentacleRuntime::SESSIONS.clear }
-
-  describe "avatar state from live runtime (TentacleRuntime::SESSIONS)" do
+  describe "avatar state from DB + freshness gate (cross-worker safe)" do
     let(:agent) do
       n = create(:note, :with_head_revision, title: "Especialista NeuraMD")
       tagged(n, "agente-team", "agente-especialista-neuramd")
@@ -35,9 +32,9 @@ RSpec.describe Graph::DatasetBuilder do
       tagged(n, "agente-team", "agente-rubi")
     end
 
-    it "marks agents with a live runtime session as awake and the rest as sleeping" do
-      mark_alive(agent.id)
-      sleeping_agent # realize without runtime entry
+    it "marks agents with a fresh TentacleSession.alive row as awake" do
+      fresh_session_for(agent)
+      sleeping_agent # no session row
 
       result = described_class.call(scope: Note.all)
 
@@ -46,14 +43,12 @@ RSpec.describe Graph::DatasetBuilder do
       expect(notes_by_slug[sleeping_agent.slug][:avatar][:state]).to eq("sleeping")
     end
 
-    # Regression guard for the adversarial round-2 finding: Supervisor only
-    # sweeps stale `TentacleSession.alive` rows on a 5-min cadence, so a row
-    # can linger with status=alive after the runtime died. Deriving avatar
-    # state from the DB would falsely show operators "awake" exactly when
-    # the runtime is gone.
-    it "treats agents with a stale TentacleSession.alive DB row but no live runtime session as sleeping" do
-      create(:tentacle_session, note: agent) # DB says alive
-      # No SESSIONS[agent.id] — runtime is dead
+    # Regression for round-2 finding (stale alive rows): a session whose
+    # last_seen_at is older than the freshness window is treated as sleeping
+    # even when status=alive lingers in the DB. SupervisorJob will reap it on
+    # the next tick, but the graph must not show awake in the meantime.
+    it "treats agents whose TentacleSession.alive row is stale as sleeping" do
+      stale_session_for(agent)
 
       result = described_class.call(scope: Note.all)
 
@@ -61,8 +56,21 @@ RSpec.describe Graph::DatasetBuilder do
       expect(payload[:avatar][:state]).to eq("sleeping")
     end
 
-    it "treats agents whose runtime session is present but not alive as sleeping" do
-      mark_runtime_dead(agent.id)
+    # Regression for round-4 #2 (process-local SESSIONS): DatasetBuilder must
+    # not consult TentacleRuntime::SESSIONS. Cross-worker correctness depends
+    # on a shared (DB) source.
+    it "ignores in-process TentacleRuntime::SESSIONS (multi-worker safety)" do
+      TentacleRuntime::SESSIONS[agent.id] = Struct.new(:alive).new(true).tap { |s| s.define_singleton_method(:alive?) { true } }
+      # No DB row → must be sleeping even though the in-memory map says alive
+      result = described_class.call(scope: Note.all)
+      payload = result[:notes].find { |n| n[:slug] == agent.slug }
+      expect(payload[:avatar][:state]).to eq("sleeping")
+    ensure
+      TentacleRuntime::SESSIONS.clear
+    end
+
+    it "treats an exited session as sleeping regardless of last_seen_at" do
+      create(:tentacle_session, :exited, note: agent, last_seen_at: Time.current)
 
       result = described_class.call(scope: Note.all)
 
@@ -78,11 +86,11 @@ RSpec.describe Graph::DatasetBuilder do
       expect(result[:notes].first).not_to have_key(:avatar)
     end
 
-    it "does not re-query tentacle_sessions for avatar state (live runtime is the source)" do
+    it "runs the alive-session query once regardless of agent count (N+1 guard)" do
       5.times do |i|
         n = create(:note, :with_head_revision, title: "Agent #{i}")
         tagged(n, "agente-team", "agente-rubi")
-        mark_alive(n.id) if i.even?
+        fresh_session_for(n) if i.even?
       end
 
       queries = []
@@ -95,8 +103,7 @@ RSpec.describe Graph::DatasetBuilder do
         described_class.call(scope: Note.all)
       end
 
-      expect(queries).to be_empty,
-        "expected zero tentacle_sessions queries (runtime is the source), got #{queries.inspect}"
+      expect(queries.size).to eq(1), "expected 1 tentacle_sessions query, got #{queries.size}: #{queries.inspect}"
     end
   end
 end

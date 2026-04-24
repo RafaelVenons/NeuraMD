@@ -52,33 +52,33 @@ RSpec.describe Agents::AvatarPropertyDefinitions do
     end
 
     # Guard against round-3 finding #2: destructive hijack of user-created PDs.
-    # If an environment has a `system: false` PD with the same key (someone
-    # created a custom "avatar_color" field via the PD API before the deploy),
-    # silently overwriting would change the meaning of existing stored values
-    # without rollback. Fail loudly and require operator action instead.
-    it "raises when a user-owned (system: false) PD exists with the same key" do
-      PropertyDefinition.create!(
-        key: "avatar_color",
-        value_type: "text",
-        system: false,
-        archived: false,
-        config: {}
-      )
+    # The model now reserves avatar_* keys for system-only (round-4 #1 fix), so
+    # a matching non-system row can only come from legacy data or direct SQL.
+    # `ensure!` still detects and fails loud — belt-and-suspenders for
+    # environments seeded before the validation landed.
+    def legacy_user_pd!(key)
+      pd = PropertyDefinition.new(key: key, value_type: "text", system: false, config: {})
+      pd.save(validate: false)
+      pd
+    end
+
+    it "raises when a user-owned (system: false) PD exists with the same key (legacy data)" do
+      legacy_user_pd!("avatar_color")
 
       expect { described_class.ensure! }
         .to raise_error(described_class::UserOwnedCollisionError, /avatar_color.*system-owned/i)
     end
 
     it "raises for multiple colliding user-owned keys at once" do
-      PropertyDefinition.create!(key: "avatar_hat", value_type: "text", system: false, config: {})
-      PropertyDefinition.create!(key: "avatar_variant", value_type: "text", system: false, config: {})
+      legacy_user_pd!("avatar_hat")
+      legacy_user_pd!("avatar_variant")
 
       expect { described_class.ensure! }
         .to raise_error(described_class::UserOwnedCollisionError, /avatar_hat|avatar_variant/)
     end
 
     it "does not create any rows when a collision is detected (all-or-nothing)" do
-      PropertyDefinition.create!(key: "avatar_color", value_type: "text", system: false, config: {})
+      legacy_user_pd!("avatar_color")
 
       expect { described_class.ensure! rescue nil }
         .not_to change { PropertyDefinition.where(key: %w[avatar_hat avatar_variant]).count }

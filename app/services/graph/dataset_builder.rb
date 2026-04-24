@@ -2,6 +2,14 @@ require "set"
 
 module Graph
   class DatasetBuilder
+    # Window inside which a TentacleSession row's last_seen_at qualifies the
+    # agent as "awake" on the graph. Must exceed Tentacles::SupervisorJob's
+    # reap cadence (runs every minute) plus its DB scan threshold
+    # (DB_SCAN_THRESHOLD = 5.minutes), so a truly live-but-idle session is
+    # touched before it falls out of the window. 6 minutes gives the
+    # supervisor a full cycle of slack.
+    LIVE_SESSION_FRESHNESS = 6.minutes
+
     def self.call(scope:)
       new(scope:).call
     end
@@ -97,20 +105,23 @@ module Graph
       end
     end
 
-    # Live runtime, not DB. `TentacleSession.alive` rows can linger as `alive`
-    # after the runtime dies until `Tentacles::SupervisorJob` sweeps them (5-min
-    # cadence). Reading from `TentacleRuntime::SESSIONS` — the same source
-    # `Api::Tentacles::RuntimeController#index` uses — is the authoritative
-    # "is this agent actually running right now?" signal.
+    # DB + freshness gate. Cross-worker safe (unlike `TentacleRuntime::SESSIONS`
+    # which is process-local) and dead-session-safe (unlike plain
+    # `TentacleSession.alive` which lingers until `Tentacles::SupervisorJob`'s
+    # sweep). The reader thread touches `last_seen_at` on activity (line 429 of
+    # tentacle_runtime.rb) and the supervisor touches idle-but-live rows each
+    # minute tick, so live sessions stay within the freshness window; dead
+    # sessions fall out without needing the supervisor to complete a mark_ended
+    # pass.
     def load_alive_tentacle_note_ids(note_ids)
       return Set.new if note_ids.empty?
 
-      alive = Set.new
-      TentacleRuntime::SESSIONS.each_pair do |id, session|
-        next unless session&.alive?
-        alive << id if note_ids.include?(id)
-      end
-      alive
+      TentacleSession
+        .alive
+        .where(tentacle_note_id: note_ids.to_a)
+        .where("last_seen_at > ?", LIVE_SESSION_FRESHNESS.ago)
+        .pluck(:tentacle_note_id)
+        .to_set
     end
 
     def promise_titles_for(note)

@@ -45,6 +45,32 @@ RSpec.describe PropertyDefinition, type: :model do
       expect(subject.errors[:key]).to include("is reserved")
     end
 
+    # Finding round-4 #1: PD keys owned by system seeders cannot be hijacked
+    # by user-created definitions. Otherwise a deploy that seeds these keys
+    # would either overwrite user data silently or block on collision detection.
+    describe "RESERVED_SYSTEM_KEYS guard" do
+      it "rejects avatar_color for non-system PDs" do
+        pd = build(:property_definition, key: "avatar_color", system: false)
+        expect(pd).not_to be_valid
+        expect(pd.errors[:key].join(" ")).to match(/reserved/)
+      end
+
+      it "rejects avatar_hat for non-system PDs" do
+        pd = build(:property_definition, key: "avatar_hat", system: false)
+        expect(pd).not_to be_valid
+      end
+
+      it "rejects avatar_variant for non-system PDs" do
+        pd = build(:property_definition, key: "avatar_variant", system: false)
+        expect(pd).not_to be_valid
+      end
+
+      it "allows system-owned PDs to use reserved keys (the seeder path)" do
+        pd = build(:property_definition, key: "avatar_color", system: true, value_type: "text")
+        expect(pd).to be_valid
+      end
+    end
+
     it "requires a value_type" do
       subject.value_type = nil
       expect(subject).not_to be_valid

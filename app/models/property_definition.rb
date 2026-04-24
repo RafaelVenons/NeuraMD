@@ -5,6 +5,14 @@ class PropertyDefinition < ApplicationRecord
   ].freeze
 
   RESERVED_NOTE_COLUMNS = %w[title slug note_kind detected_language deleted_at].freeze
+  # Keys owned by system seeders (Agents::AvatarPropertyDefinitions,
+  # the tentacle_cwd/initial_prompt/workspace migrations). Blocked for
+  # user-created (system: false) PDs so future deploys cannot trip on a
+  # hijacked key. Seeders bypass by setting `system: true`.
+  RESERVED_SYSTEM_KEYS = %w[
+    avatar_color avatar_hat avatar_variant
+    tentacle_cwd tentacle_initial_prompt tentacle_workspace
+  ].freeze
   KEY_FORMAT = /\A[a-z][a-z0-9_]{0,62}\z/
 
   validates :key, presence: true,
@@ -26,6 +34,7 @@ class PropertyDefinition < ApplicationRecord
   def key_not_reserved
     return if key.blank?
     errors.add(:key, "is reserved") if RESERVED_NOTE_COLUMNS.include?(key)
+    errors.add(:key, "is reserved for system seeders") if !system && RESERVED_SYSTEM_KEYS.include?(key)
   end
 
   def config_shape_for_type
