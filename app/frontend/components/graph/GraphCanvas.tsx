@@ -1,5 +1,7 @@
 import { useCallback, useRef, useState } from "react"
 
+import { ClawdAvatar } from "~/components/graph/ClawdAvatar"
+import { DEFAULT_AGENT_COLOR } from "~/components/graph/agentPalette"
 import type { GraphEdge, GraphNode, NodeType } from "~/components/graph/types"
 import { DEFAULT_FORCE_PARAMS, useForceSimulation } from "~/components/graph/useForceSimulation"
 import { useCanvasTransform } from "~/components/graph/useCanvasTransform"
@@ -11,6 +13,8 @@ type Props = {
   selectedId?: string | null
   aliveTentacleIds?: Set<string>
   agentNoteIds?: Set<string>
+  agentColors?: Map<string, string>
+  awakeAgentIds?: Set<string>
 }
 
 const NODE_COLOR: Record<NodeType, string> = {
@@ -20,8 +24,7 @@ const NODE_COLOR: Record<NodeType, string> = {
   tentacle: "#a6e3a1",
 }
 
-const AGENT_COLOR = "#b4a7d6"
-const AGENT_RADIUS_BUMP = 2
+const AGENT_AVATAR_SIZE = 26
 
 const NODE_RADIUS: Record<NodeType, number> = {
   root: 14,
@@ -32,7 +35,16 @@ const NODE_RADIUS: Record<NodeType, number> = {
 
 const CLICK_THRESHOLD = 4
 
-export function GraphCanvas({ nodes, edges, onSelectNote, selectedId, aliveTentacleIds, agentNoteIds }: Props) {
+export function GraphCanvas({
+  nodes,
+  edges,
+  onSelectNote,
+  selectedId,
+  aliveTentacleIds,
+  agentNoteIds,
+  agentColors,
+  awakeAgentIds,
+}: Props) {
   const {
     transform,
     isPanning,
@@ -155,11 +167,13 @@ export function GraphCanvas({ nodes, edges, onSelectNote, selectedId, aliveTenta
           <g>
             {simulatedNodes.map((node) => {
               const isAgent = agentNoteIds?.has(node.id) === true
-              const r = NODE_RADIUS[node.type] + (isAgent ? AGENT_RADIUS_BUMP : 0)
+              const r = NODE_RADIUS[node.type]
               const isSelected = selectedId === node.id
               const isAliveTentacle = node.type === "tentacle" && aliveTentacleIds?.has(node.id) === true
-              const fillColor = isAgent ? AGENT_COLOR : NODE_COLOR[node.type]
               const showLabel = isAgent || node.type === "root" || node.type === "structure"
+              const avatarColor = (isAgent && agentColors?.get(node.id)) || DEFAULT_AGENT_COLOR
+              const avatarState = isAgent && awakeAgentIds?.has(node.id) ? "awake" : "sleeping"
+              const labelOffset = isAgent ? AGENT_AVATAR_SIZE / 2 + 4 : r + 4
               return (
                 <g
                   key={node.id}
@@ -167,6 +181,7 @@ export function GraphCanvas({ nodes, edges, onSelectNote, selectedId, aliveTenta
                   onPointerDown={(e) => handleNodePointerDown(e, node.id)}
                   className="nm-graph-canvas__node"
                   data-agent={isAgent ? "true" : undefined}
+                  data-agent-state={isAgent ? avatarState : undefined}
                 >
                   {isAliveTentacle ? (
                     <circle
@@ -178,12 +193,30 @@ export function GraphCanvas({ nodes, edges, onSelectNote, selectedId, aliveTenta
                       className="nm-graph-canvas__pulse"
                     />
                   ) : null}
-                  <circle
-                    r={r + (isSelected ? 3 : 0)}
-                    fill={fillColor}
-                    stroke={isSelected ? "#ffffff" : isAgent ? "rgba(180,167,214,0.9)" : "rgba(0,0,0,0.35)"}
-                    strokeWidth={isSelected ? 2 : isAgent ? 1.5 : 1}
-                  />
+                  {isAgent ? (
+                    <>
+                      {isSelected ? (
+                        <rect
+                          x={-AGENT_AVATAR_SIZE / 2 - 2}
+                          y={-AGENT_AVATAR_SIZE / 2 - 2}
+                          width={AGENT_AVATAR_SIZE + 4}
+                          height={AGENT_AVATAR_SIZE + 4}
+                          rx={4}
+                          fill="none"
+                          stroke="#ffffff"
+                          strokeWidth={2}
+                        />
+                      ) : null}
+                      <ClawdAvatar state={avatarState} color={avatarColor} size={AGENT_AVATAR_SIZE} />
+                    </>
+                  ) : (
+                    <circle
+                      r={r + (isSelected ? 3 : 0)}
+                      fill={NODE_COLOR[node.type]}
+                      stroke={isSelected ? "#ffffff" : "rgba(0,0,0,0.35)"}
+                      strokeWidth={isSelected ? 2 : 1}
+                    />
+                  )}
                   {isAliveTentacle ? (
                     <circle r={2.5} cx={r - 1} cy={-(r - 1)} fill="#a6e3a1" stroke="#0b0d10" strokeWidth={1}>
                       <title>Tentáculo vivo</title>
@@ -191,7 +224,7 @@ export function GraphCanvas({ nodes, edges, onSelectNote, selectedId, aliveTenta
                   ) : null}
                   {showLabel ? (
                     <text
-                      x={r + 4}
+                      x={labelOffset}
                       y={4}
                       fill="var(--nm-shell-text)"
                       fontSize={11 / transform.scale}

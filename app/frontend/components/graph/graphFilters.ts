@@ -59,6 +59,23 @@ export function agentNoteIds(
   return ids
 }
 
+export function awakeAgentIds(
+  agentIds: Set<string>,
+  aliveTentacleIds: Set<string>,
+  edges: GraphEdge[]
+): Set<string> {
+  if (agentIds.size === 0 || aliveTentacleIds.size === 0) return new Set()
+  const awake = new Set<string>()
+  for (const edge of edges) {
+    if (aliveTentacleIds.has(edge.source) && agentIds.has(edge.target)) {
+      awake.add(edge.target)
+    } else if (aliveTentacleIds.has(edge.target) && agentIds.has(edge.source)) {
+      awake.add(edge.source)
+    }
+  }
+  return awake
+}
+
 export function tagUsageCounts(
   noteTags: { note_id: string; tag_id: string }[],
   visibleNoteIds: Set<string>
