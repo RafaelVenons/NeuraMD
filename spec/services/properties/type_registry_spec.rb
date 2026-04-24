@@ -61,6 +61,41 @@ RSpec.describe "Properties::Types" do
     it "passes for valid text" do
       expect(described_class.validate("hello")).to be_empty
     end
+
+    describe "config.pattern" do
+      let(:hex_pattern) { "\\A#(?:[0-9A-Fa-f]{3}|[0-9A-Fa-f]{6})\\z" }
+
+      it "accepts values matching the pattern" do
+        expect(described_class.validate("#abc", {"pattern" => hex_pattern})).to be_empty
+        expect(described_class.validate("#AABBCC", {"pattern" => hex_pattern})).to be_empty
+      end
+
+      it "rejects values not matching the pattern with a clear error" do
+        errors = described_class.validate("banana", {"pattern" => hex_pattern})
+        expect(errors).to include(/format/i)
+      end
+
+      it "rejects 'rgba(...)' when hex pattern is configured" do
+        errors = described_class.validate("rgba(0,0,0,1)", {"pattern" => hex_pattern})
+        expect(errors).not_to be_empty
+      end
+
+      it "ignores a malformed pattern string instead of crashing writes" do
+        errors = described_class.validate("anything", {"pattern" => "[unclosed"})
+        expect(errors).to be_empty
+      end
+
+      it "is a no-op when config has no pattern (backwards compat with existing text PDs)" do
+        expect(described_class.validate("anything", {})).to be_empty
+        expect(described_class.validate("anything", {"pattern" => nil})).to be_empty
+      end
+
+      it "runs after max-length check — does not flag format when text is oversized" do
+        errors = described_class.validate("a" * 501, {"pattern" => hex_pattern})
+        expect(errors).to include(/too long/)
+        expect(errors).not_to include(/format/i)
+      end
+    end
   end
 
   describe Properties::Types::LongText do
