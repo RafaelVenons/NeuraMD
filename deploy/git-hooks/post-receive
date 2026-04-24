@@ -9,6 +9,9 @@
 #      and drop-ins into /etc/systemd/system/ then daemon-reload.
 #   4. Wait the grace period if any tentacle was alive.
 #   5. Restart web + worker units.
+#   6. Wake the Sentinela de Deploy via S2S — best effort, non-fatal.
+#      Token resolved from AGENT_S2S_TOKEN env or, failing that, from
+#      neuramd-web's merged systemd environment (PR #25).
 #
 # Install once per mirror:
 #   ln -sf /home/rafael/apps/NeuraMD/deploy/git-hooks/post-receive \
@@ -26,6 +29,11 @@
 
 set -euo pipefail
 
+# Captured before any `cd` or `unset GIT_DIR` — lets wake_sentinela_deploy
+# consult the bare repo's authoritative ref even after the hook body has
+# moved into APP_DIR and dropped the git env.
+MIRROR_DIR=$(readlink -f "${GIT_DIR:-$PWD}")
+
 APP_DIR=/home/rafael/apps/NeuraMD
 BRANCH=main
 GRACE_SECONDS=30
@@ -35,8 +43,186 @@ SYSTEMD_DEST=/etc/systemd/system
 UNITS=(neuramd-web neuramd-worker)
 ZERO=0000000000000000000000000000000000000000
 
+SENTINELA_SLUG=sentinela-de-deploy
+SENTINELA_LOCK="${NEURAMD_SENTINELA_LOCK:-/tmp/neuramd-sentinela-wake.lock}"
+SENTINELA_LOCK_TIMEOUT="${NEURAMD_SENTINELA_LOCK_TIMEOUT:-60}"
+APP_HOST="${NEURAMD_APP_HOST:-http://127.0.0.1:3000}"
+# 60 attempts × 2s = 120s. Slow boots (large migrations, cold Puma) are
+# exactly when post-deploy verification is most valuable; dropping the
+# wake after 15s created a detection gap for the degraded case.
+HEALTH_ATTEMPTS="${NEURAMD_HEALTH_ATTEMPTS:-60}"
+HEALTH_DELAY="${NEURAMD_HEALTH_DELAY:-2}"
+
 log() { printf '[autodeploy] %s\n' "$*"; }
 warn() { printf '[autodeploy] WARN: %s\n' "$*" >&2; }
+
+# Poll GET /up until it returns 2xx or attempts are exhausted. Returns 0
+# on success, 1 if /up never came green within the window.
+wait_for_health() {
+  local i
+  for ((i = 1; i <= HEALTH_ATTEMPTS; i++)); do
+    if curl --silent --fail --max-time 2 --output /dev/null "$APP_HOST/up"; then
+      return 0
+    fi
+    sleep "$HEALTH_DELAY"
+  done
+  return 1
+}
+
+# Refuse to transmit the S2S token over plaintext HTTP unless the
+# target is loopback. Mirrors activate_tentacle_session_tool.rb's
+# safe_transport? (commit 02fdedf) so a misconfigured NEURAMD_APP_HOST
+# override cannot leak the bearer token on the wire. HTTPS always
+# passes. Returns 0 if safe, 1 otherwise.
+safe_transport() {
+  local url="$1"
+  local scheme host
+  if [[ "$url" =~ ^([a-zA-Z]+)://(\[[^]]+\]|[^:/]+) ]]; then
+    scheme="${BASH_REMATCH[1]}"
+    host="${BASH_REMATCH[2]}"
+    host="${host#[}"
+    host="${host%]}"
+  else
+    return 1
+  fi
+
+  [[ "$scheme" == "https" ]] && return 0
+  if [[ "$scheme" == "http" ]]; then
+    case "$host" in
+      127.0.0.1|::1|localhost) return 0 ;;
+    esac
+  fi
+  return 1
+}
+
+# Resolve AGENT_S2S_TOKEN. Env wins if the operator pre-exports it;
+# otherwise read from the merged systemd environment of neuramd-web
+# (single source of truth per PR #25 — token lives in the service
+# drop-in, not a parallel token file that could drift).
+resolve_agent_s2s_token() {
+  if [[ -n "${AGENT_S2S_TOKEN:-}" ]]; then
+    printf '%s' "$AGENT_S2S_TOKEN"
+    return 0
+  fi
+  local env
+  env="$(systemctl show neuramd-web.service --property=Environment --value 2>/dev/null)" || return 1
+  [[ -n "$env" ]] || return 1
+  local match
+  match="$(printf '%s\n' "$env" | tr ' ' '\n' | grep -m1 '^AGENT_S2S_TOKEN=')" || return 1
+  printf '%s' "${match#AGENT_S2S_TOKEN=}"
+}
+
+# Issue an authenticated S2S request without placing the bearer token
+# in argv. The config (headers + body) is piped to curl via stdin, so
+# the token lives in this process's memory and the kernel pipe buffer
+# only — it never appears in /proc/<curl-pid>/cmdline where any same-
+# user process could read it.
+#
+# Arguments: method url token [json_body]
+# Response body goes to stdout; exit code matches curl's (--fail means
+# non-2xx returns non-zero).
+curl_s2s() {
+  local method="$1" url="$2" token="$3" body="${4:-}"
+
+  local body_block=""
+  if [[ -n "$body" ]]; then
+    # curl config strings are double-quoted; escape \ and " for the
+    # parser so it un-escapes back to the original JSON body.
+    local escaped="${body//\\/\\\\}"
+    escaped="${escaped//\"/\\\"}"
+    body_block=$'header = "Content-Type: application/json"\n'
+    body_block+="data = \"$escaped\""
+    body_block+=$'\n'
+  fi
+
+  curl --config - <<CFG
+silent
+show-error
+fail
+max-time = 10
+request = "$method"
+header = "X-NeuraMD-Agent-Token: $token"
+${body_block}url = "$url"
+CFG
+}
+
+# Best-effort Sentinela de Deploy wake-up. Any failure (transport
+# check, health check, token lookup, lock timeout, destroy, or activate
+# call) is logged and swallowed — the deploy has already succeeded at
+# this point and a missed wake-up is recoverable via the next deploy
+# or a manual send_agent_message.
+#
+# Flow: under an exclusive flock, destroy any stale session then
+# activate fresh. The lock serializes the destroy+activate pair so two
+# concurrent post-receive invocations cannot interleave their S2S
+# calls — without it, an older deploy's activate could land after a
+# newer deploy's and route stale checks into the fresh session.
+wake_sentinela_deploy() {
+  local sha="$1"
+
+  if ! safe_transport "$APP_HOST"; then
+    warn "sentinela wake: refusing to send S2S token to non-loopback plaintext target ($APP_HOST); use https:// or a loopback address"
+    return 0
+  fi
+
+  if ! wait_for_health; then
+    warn "sentinela wake: $APP_HOST/up not green after $((HEALTH_ATTEMPTS * HEALTH_DELAY))s; skipping"
+    return 0
+  fi
+
+  local token
+  token="$(resolve_agent_s2s_token)" || token=""
+  if [[ -z "$token" ]]; then
+    warn "sentinela wake: AGENT_S2S_TOKEN not found (env or neuramd-web systemd env); skipping"
+    return 0
+  fi
+
+  local base_url="$APP_HOST/api/s2s/tentacles/$SENTINELA_SLUG"
+  local body
+  body="$(printf '{"initial_prompt":"deploy %s concluido, rodar checks"}' "$sha")"
+
+  (
+    if ! flock -x -w "$SENTINELA_LOCK_TIMEOUT" 9; then
+      warn "sentinela wake: lock timeout after ${SENTINELA_LOCK_TIMEOUT}s on $SENTINELA_LOCK; skipping"
+      exit 0
+    fi
+
+    # Stale-SHA guard: the lock only serializes the destroy+activate
+    # pair, but nothing stops an older deploy whose health wait took
+    # longer from eventually acquiring the lock after a newer deploy
+    # has already activated. Consult the mirror's ref (single source
+    # of truth) and skip if our sha is strictly an ancestor — we are
+    # the straggler and must not overwrite the newer deploy's session.
+    local mirror_head=""
+    if mirror_head="$(git -C "$MIRROR_DIR" rev-parse --verify "refs/heads/$BRANCH" 2>/dev/null)"; then
+      if [[ "$mirror_head" != "$sha" ]] && \
+         git -C "$MIRROR_DIR" merge-base --is-ancestor "$sha" "$mirror_head" 2>/dev/null; then
+        log "sentinela wake: my sha ($sha) is ancestor of mirror head ($mirror_head); skipping stale wake"
+        exit 0
+      fi
+    else
+      warn "sentinela wake: could not read $BRANCH ref from $MIRROR_DIR; proceeding without staleness check"
+    fi
+
+    # Destroy first. The controller returns 200 whether or not a
+    # session existed, so both outcomes converge on "no live session"
+    # — the desired pre-state before activate. Non-2xx (network error,
+    # note missing, token wrong) is logged but does not block activate.
+    local destroy_response
+    if destroy_response="$(curl_s2s DELETE "$base_url" "$token" 2>&1)"; then
+      log "sentinela wake: destroy OK ($destroy_response)"
+    else
+      warn "sentinela wake: destroy non-2xx ($destroy_response); continuing to activate"
+    fi
+
+    local activate_response
+    if activate_response="$(curl_s2s POST "$base_url/activate" "$token" "$body" 2>&1)"; then
+      log "sentinela wake: activated ($activate_response)"
+    else
+      warn "sentinela wake: activation failed — $activate_response"
+    fi
+  ) 9>"$SENTINELA_LOCK"
+}
 
 while read -r oldrev newrev refname; do
   [[ "$refname" == "refs/heads/$BRANCH" ]] || continue
@@ -138,5 +324,11 @@ while read -r oldrev newrev refname; do
   fi
 
   sudo -n systemctl restart neuramd-web.service neuramd-worker.service
+
+  # (6) Wake Sentinela de Deploy. Post-restart hook lets the vigia run
+  # its smoke checks against the freshly-booted runtime; silent on
+  # success, routes severity-tagged messages on anomaly.
+  wake_sentinela_deploy "$newrev"
+
   log "$(date --iso-8601=seconds) autodeploy complete"
 done
