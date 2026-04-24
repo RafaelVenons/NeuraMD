@@ -132,6 +132,19 @@ jobs:
           echo "PostgreSQL did not become ready" >&2
           exit 1
 
+      - name: Install file-conversion tools
+        # FileImports::ConvertService shells out to `markitdown` (text/docx)
+        # and `uv run --with pymupdf4llm pdf2md` (PDF). Without them the 5
+        # convert_service_spec cases and the 3 process_job_spec cases that
+        # exercise the pipeline fail — they were red on every main run
+        # before these were provisioned in CI.
+        run: |
+          set -euo pipefail
+          pip install --quiet markitdown[all]
+          curl -LsSf https://astral.sh/uv/install.sh | sh
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
+
       - name: Prepare databases
         run: |
           bundle exec rails db:test:prepare
