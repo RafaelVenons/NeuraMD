@@ -1,24 +1,52 @@
 # frozen_string_literal: true
 
 require "mcp"
+require "base64"
 
 module Mcp
   module Tools
     class ReadNoteTool < MCP::Tool
       extend NoteFinder
 
+      BACKLINK_LIMIT_DEFAULT = 100
+      BACKLINK_LIMIT_MAX = 200
+      NONE_TOKEN = "none"
+
       tool_name "read_note"
-      description "Read a NeuraMD note by slug or alias. Returns full content, tags, aliases, and links. Follows slug redirects and aliases."
+      description "Read a NeuraMD note by slug or alias. Returns full content, tags, aliases, and links. Each link carries both `role` (semantic name, e.g. target_is_child) and `role_token` (1-char token: f/c/b/p/d/v/x or null). Backlinks are unbounded by default; pass `backlink_limit` or `backlink_cursor` to opt into pagination. Follows slug redirects and aliases."
 
       input_schema(
         type: "object",
         properties: {
-          slug: {type: "string", description: "The note slug (URL identifier)"}
+          slug: {type: "string", description: "The note slug (URL identifier)"},
+          backlink_roles: {
+            type: "string",
+            description: "Optional CSV of 1-char role tokens to filter backlinks (e.g. 'p,x'). Use 'none' for backlinks without role. Unknown tokens are silently ignored — if all tokens are unknown, the filter is dropped entirely (no WHERE IN () trap)."
+          },
+          backlink_limit: {
+            type: "integer",
+            description: "Opt-in pagination. When set, caps backlinks per page (max #{BACKLINK_LIMIT_MAX}; values ≤0 fall back to #{BACKLINK_LIMIT_DEFAULT}). Omit (or pass null) to return all backlinks unbounded."
+          },
+          backlink_cursor: {
+            type: "string",
+            description: "Opaque cursor from a previous response (backlinks_next_cursor) to resume pagination. Setting this also enables pagination; limit defaults to #{BACKLINK_LIMIT_DEFAULT} if not provided."
+          },
+          backlinks_updated_since: {
+            type: "string",
+            description: "ISO8601 timestamp. Returns only backlinks whose updated_at is ≥ since. Does not enable pagination."
+          }
         },
         required: ["slug"]
       )
 
-      def self.call(slug:, server_context: nil)
+      def self.call(
+        slug:,
+        backlink_roles: nil,
+        backlink_limit: nil,
+        backlink_cursor: nil,
+        backlinks_updated_since: nil,
+        server_context: nil
+      )
         note = find_note(slug)
         return error_response("Note not found: #{slug}") unless note
 
@@ -27,18 +55,19 @@ module Mcp
             target_slug: link.dst_note.slug,
             target_title: link.dst_note.title,
             role: link.hier_role,
+            role_token: role_token(link.hier_role),
             direction: "outgoing"
           }
         end
 
-        backlinks = note.active_incoming_links.includes(:src_note).map do |link|
-          {
-            source_slug: link.src_note.slug,
-            source_title: link.src_note.title,
-            role: link.hier_role,
-            direction: "incoming"
-          }
-        end
+        backlinks_result = fetch_backlinks(
+          note: note,
+          roles: backlink_roles,
+          limit: backlink_limit,
+          cursor: backlink_cursor,
+          updated_since: backlinks_updated_since
+        )
+        return backlinks_result if backlinks_result.is_a?(MCP::Tool::Response)
 
         unlinked_mentions = Mentions::UnlinkedService.call(note: note).mentions.map do |m|
           {
@@ -67,13 +96,110 @@ module Mcp
           headings: headings,
           blocks: blocks,
           links: outgoing,
-          backlinks: backlinks,
+          backlinks: backlinks_result[:items],
+          backlinks_next_cursor: backlinks_result[:next_cursor],
+          backlinks_has_more: backlinks_result[:has_more],
           unlinked_mentions: unlinked_mentions,
           created_at: note.created_at.iso8601,
           updated_at: note.updated_at.iso8601
         }
 
         MCP::Tool::Response.new([{type: "text", text: data.to_json}])
+      end
+
+      def self.role_token(hier_role)
+        NoteLink::Roles::SEMANTIC_TO_TOKEN[hier_role]
+      end
+
+      def self.fetch_backlinks(note:, roles:, limit:, cursor:, updated_since:)
+        scope = note.active_incoming_links.includes(:src_note)
+
+        role_filter = parse_role_filter(roles)
+        scope = scope.where(hier_role: role_filter) if role_filter
+
+        if updated_since.present?
+          begin
+            since_time = Time.iso8601(updated_since.to_s)
+          rescue ArgumentError
+            return error_response("Invalid backlinks_updated_since (ISO8601 expected): #{updated_since}")
+          end
+          scope = scope.where("note_links.updated_at >= ?", since_time)
+        end
+
+        if cursor.present?
+          cursor_time, cursor_id = decode_cursor(cursor)
+          return error_response("Invalid backlink_cursor") unless cursor_time && cursor_id
+
+          scope = scope.where(
+            "note_links.updated_at < ? OR (note_links.updated_at = ? AND note_links.id < ?)",
+            cursor_time, cursor_time, cursor_id
+          )
+        end
+
+        scope = scope.order(updated_at: :desc, id: :desc)
+        paginate = limit.is_a?(Integer) || cursor.present?
+
+        if paginate
+          effective_limit = clamp_limit(limit)
+          rows = scope.limit(effective_limit + 1).to_a
+          has_more = rows.length > effective_limit
+          rows = rows.first(effective_limit)
+          next_cursor = has_more && rows.any? ? encode_cursor(rows.last.updated_at, rows.last.id) : nil
+        else
+          rows = scope.to_a
+          has_more = false
+          next_cursor = nil
+        end
+
+        items = rows.map do |link|
+          {
+            source_slug: link.src_note.slug,
+            source_title: link.src_note.title,
+            role: link.hier_role,
+            role_token: role_token(link.hier_role),
+            direction: "incoming"
+          }
+        end
+
+        {items: items, next_cursor: next_cursor, has_more: has_more}
+      end
+
+      def self.parse_role_filter(csv)
+        return nil if csv.nil?
+        tokens = csv.to_s.split(",").map(&:strip).reject(&:empty?)
+        return nil if tokens.empty?
+
+        # Unknown tokens are silently ignored. 'none' is the explicit sentinel for NULL
+        # hier_role. If every supplied token is unknown, return nil so the filter is
+        # dropped entirely (vs. producing `WHERE hier_role IN ()`, which would silently
+        # hide all backlinks under client/server version skew).
+        values = tokens.each_with_object([]) do |token, acc|
+          if token == NONE_TOKEN
+            acc << nil
+          elsif (sem = NoteLink::Roles::TOKEN_TO_SEMANTIC[token])
+            acc << sem
+          end
+        end
+        values.empty? ? nil : values
+      end
+
+      def self.clamp_limit(limit)
+        return BACKLINK_LIMIT_DEFAULT unless limit.is_a?(Integer)
+        return BACKLINK_LIMIT_DEFAULT if limit <= 0
+        [limit, BACKLINK_LIMIT_MAX].min
+      end
+
+      def self.encode_cursor(updated_at, id)
+        Base64.strict_encode64("#{updated_at.iso8601(6)}|#{id}")
+      end
+
+      def self.decode_cursor(encoded)
+        raw = Base64.strict_decode64(encoded.to_s)
+        ts, id = raw.split("|", 2)
+        return [nil, nil] if ts.blank? || id.blank?
+        [Time.iso8601(ts), id]
+      rescue ArgumentError
+        [nil, nil]
       end
 
       def self.error_response(message)
