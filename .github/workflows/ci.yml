@@ -137,6 +137,14 @@ jobs:
           bundle exec rails db:test:prepare
           bundle exec rails db:migrate:queue || true
 
+      - name: Precompile assets
+        # System specs render application.html.erb, which pulls tailwind.css
+        # via stylesheet_link_tag. Without precompile, Propshaft raises
+        # MissingAssetError on every request spec that hits the layout.
+        run: bundle exec rails assets:precompile
+        env:
+          RAILS_ENV: test
+
       - name: Run RSpec
         run: bundle exec rspec --format progress --no-color
 
