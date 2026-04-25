@@ -66,9 +66,16 @@ module Tentacles
         cwd: cwd,
         initial_prompt: final_prompt,
         persistence: @persistence,
-        repo_root_fingerprint: current_fingerprint
+        repo_root_fingerprint: current_fingerprint,
+        note_slug: @note.slug
       )
-      Result.new(session: session, reused: false, command: @command, routed_prompt_delivered: false)
+      delivered =
+        if routed_prompt.present?
+          session.respond_to?(:initial_prompt_delivered?) && session.initial_prompt_delivered?
+        else
+          false
+        end
+      Result.new(session: session, reused: false, command: @command, routed_prompt_delivered: delivered)
     end
 
     private

@@ -516,13 +516,16 @@ RSpec.describe TentacleRuntime do
       received = []
       allow(TentacleChannel).to receive(:broadcast_output) { |data:, **| received << data }
 
-      described_class.start(
+      session = described_class.start(
         tentacle_id: tentacle_id,
         command: ["cat"],
         initial_prompt: "hello tentacle"
       )
 
       expect(wait_until { received.join.include?("hello tentacle") }).to be_truthy
+      # Synchronous delivery: by the time start() returns, the prompt
+      # has already been written and the session knows it.
+      expect(session.initial_prompt_delivered?).to be true
     end
 
     it "does not crash when initial_prompt is nil" do
@@ -541,6 +544,76 @@ RSpec.describe TentacleRuntime do
       )
 
       expect(wait_until { received.join.include?(tentacle_id) }).to be_truthy
+    end
+
+    it "exports NEURAMD_AGENT_SLUG and NEURAMD_AGENT_UUID when note_slug is provided" do
+      received = []
+      allow(TentacleChannel).to receive(:broadcast_output) { |data:, **| received << data }
+
+      described_class.start(
+        tentacle_id: tentacle_id,
+        note_slug: "devops",
+        command: ["sh", "-c", "printf 'slug=%s uuid=%s' \"$NEURAMD_AGENT_SLUG\" \"$NEURAMD_AGENT_UUID\""]
+      )
+
+      expect(wait_until { received.join.include?("slug=") }).to be_truthy
+      combined = received.join
+      expect(combined).to include("slug=devops")
+      expect(combined).to include("uuid=#{tentacle_id}")
+    end
+
+    it "leaves NEURAMD_AGENT_SLUG unset when note_slug is omitted (back-compat)" do
+      received = []
+      allow(TentacleChannel).to receive(:broadcast_output) { |data:, **| received << data }
+
+      described_class.start(
+        tentacle_id: tentacle_id,
+        command: ["sh", "-c", "printf 'slug=%s' \"${NEURAMD_AGENT_SLUG:-empty}\""]
+      )
+
+      expect(wait_until { received.join.include?("slug=") }).to be_truthy
+      expect(received.join).to include("slug=empty")
+    end
+
+    it "isolates NEURAMD_AGENT_SLUG between concurrent sessions for different agents" do
+      # Cross-slug regression: two sessions spawned in parallel must each
+      # carry their own NEURAMD_AGENT_SLUG so an agent that boots without
+      # an initial_prompt cannot accidentally read another slug's inbox.
+      tentacle_a = SecureRandom.uuid
+      tentacle_b = SecureRandom.uuid
+      received_a = []
+      received_b = []
+      allow(TentacleChannel).to receive(:broadcast_output) do |tentacle_id:, data:, **|
+        (tentacle_id == tentacle_a ? received_a : received_b) << data
+      end
+
+      [
+        Thread.new do
+          described_class.start(
+            tentacle_id: tentacle_a,
+            note_slug: "devops",
+            command: ["sh", "-c", "printf 'slug=%s' \"$NEURAMD_AGENT_SLUG\""]
+          )
+        end,
+        Thread.new do
+          described_class.start(
+            tentacle_id: tentacle_b,
+            note_slug: "uxui",
+            command: ["sh", "-c", "printf 'slug=%s' \"$NEURAMD_AGENT_SLUG\""]
+          )
+        end
+      ].each(&:join)
+
+      expect(wait_until { received_a.join.include?("slug=") && received_b.join.include?("slug=") }).to be_truthy
+      expect(received_a.join).to include("slug=devops")
+      expect(received_a.join).not_to include("slug=uxui")
+      expect(received_b.join).to include("slug=uxui")
+      expect(received_b.join).not_to include("slug=devops")
+    end
+
+    it "does not mark initial_prompt_delivered when no prompt was provided" do
+      session = described_class.start(tentacle_id: tentacle_id, command: ["sleep", "5"])
+      expect(session.initial_prompt_delivered?).to be false
     end
 
     it "scrubs Rails env vars so a child rspec cannot inherit RAILS_ENV=development" do

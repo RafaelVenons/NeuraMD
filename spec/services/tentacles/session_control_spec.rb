@@ -16,15 +16,48 @@ RSpec.describe Tentacles::SessionControl do
       fake = instance_double(
         TentacleRuntime::Session,
         alive?: true, pid: 9991, started_at: Time.current,
-        cwd: "/tmp/worktree-#{note.id}", repo_root_fingerprint: "fp:1"
+        cwd: "/tmp/worktree-#{note.id}", repo_root_fingerprint: "fp:1",
+        initial_prompt_delivered?: false
       )
       allow(WorktreeService).to receive(:ensure).and_return("/tmp/worktree-#{note.id}")
-      expect(TentacleRuntime).to receive(:start).and_return(fake)
+      expect(TentacleRuntime).to receive(:start).with(hash_including(note_slug: note.slug)).and_return(fake)
 
       result = described_class.activate(note: note, command: ["claude"])
 
       expect(result.reused).to be false
       expect(result.session).to eq(fake)
+      expect(result.routed_prompt_delivered).to be false
+    end
+
+    it "reports routed_prompt_delivered: true on fresh session when the runtime confirms delivery" do
+      fake = instance_double(
+        TentacleRuntime::Session,
+        alive?: true, pid: 9991, started_at: Time.current,
+        cwd: "/tmp/worktree-#{note.id}", repo_root_fingerprint: "fp:1",
+        initial_prompt_delivered?: true
+      )
+      allow(WorktreeService).to receive(:ensure).and_return("/tmp/worktree-#{note.id}")
+      expect(TentacleRuntime).to receive(:start)
+        .with(hash_including(initial_prompt: "wake up", note_slug: note.slug))
+        .and_return(fake)
+
+      result = described_class.activate(note: note, command: ["claude"], initial_prompt: "wake up")
+
+      expect(result.routed_prompt_delivered).to be true
+    end
+
+    it "reports routed_prompt_delivered: false on fresh session when the runtime could not confirm delivery" do
+      fake = instance_double(
+        TentacleRuntime::Session,
+        alive?: true, pid: 9991, started_at: Time.current,
+        cwd: "/tmp/worktree-#{note.id}", repo_root_fingerprint: "fp:1",
+        initial_prompt_delivered?: false
+      )
+      allow(WorktreeService).to receive(:ensure).and_return("/tmp/worktree-#{note.id}")
+      expect(TentacleRuntime).to receive(:start).and_return(fake)
+
+      result = described_class.activate(note: note, command: ["claude"], initial_prompt: "wake up")
+
       expect(result.routed_prompt_delivered).to be false
     end
 
