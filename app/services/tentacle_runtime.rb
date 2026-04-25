@@ -10,6 +10,14 @@ class TentacleRuntime
   # through the persist-failure cleanup path.
   START_MUTEXES = Concurrent::Map.new
   INITIAL_PROMPT_BOOT_DELAY = 1.5
+  # After first PTY output (banner / TUI splash), wait for output to be
+  # quiet for this many seconds before writing the prompt. Without it
+  # we race the Claude Code TUI: bytes written between the splash and
+  # the readline prompt being up are eaten by the early state, never
+  # reaching the agent. 3/3 ocorrências do bug initial_prompt
+  # observadas em 17h de campo (2026-04-23/24) seguiam esse padrão.
+  INITIAL_PROMPT_QUIET_GRACE = 0.8
+  INITIAL_PROMPT_QUIET_MAX_WAIT = 3.0
   # Marker file written under NEURAMD_TENTACLE_RUNTIME_DIR once
   # bootstrap_sessions! has finished a pass. SupervisorJob only sweeps
   # orphan sockets after this file exists so a tick that fires before
@@ -39,7 +47,7 @@ class TentacleRuntime
 
     def start(tentacle_id:, command:, cwd: nil, env: {}, on_exit: nil, persistence: nil,
               initial_prompt: nil, context_warning_ratio: nil, context_window_tokens: nil,
-              repo_root_fingerprint: nil)
+              repo_root_fingerprint: nil, note_slug: nil)
       existing = SESSIONS[tentacle_id]
       return existing if existing&.alive?
 
@@ -65,10 +73,11 @@ class TentacleRuntime
           persistence_descriptor: descriptor,
           context_warning_ratio: context_warning_ratio,
           context_window_tokens: context_window_tokens,
-          repo_root_fingerprint: repo_root_fingerprint
+          repo_root_fingerprint: repo_root_fingerprint,
+          note_slug: note_slug
         )
         SESSIONS[tentacle_id] = session
-        schedule_initial_prompt(session, initial_prompt) if initial_prompt.present?
+        deliver_initial_prompt(session, initial_prompt) if initial_prompt.present?
         Neuramd::Metrics.emit("tentacle_spawn", {tentacle_id: tentacle_id.to_s, command: Array(command).first})
         session
       end
@@ -76,15 +85,23 @@ class TentacleRuntime
 
     private
 
-    def schedule_initial_prompt(session, prompt)
-      Thread.new do
-        Rails.application.executor.wrap do
-          session.wait_for_first_output(timeout: INITIAL_PROMPT_BOOT_DELAY)
-          session.write("#{prompt}\n")
-        rescue StandardError => e
-          Rails.logger.error("TentacleRuntime initial_prompt failed: #{e.class}: #{e.message}")
-        end
-      end
+    # Synchronous delivery of the initial_prompt to the session's PTY.
+    # Two-phase wait so the prompt actually lands inside Claude Code's
+    # readline buffer instead of getting eaten by the splash/TUI init:
+    #   1. wait_for_first_output: PTY produced anything (banner / TUI start)
+    #   2. wait_for_quiet: output stream has been silent for QUIET_GRACE
+    #      seconds (capped at QUIET_MAX_WAIT) — TUI finished drawing.
+    # Sets session#initial_prompt_delivered? on success so SessionControl
+    # can return an honest routed_prompt_delivered flag instead of the
+    # previous hardcoded `false` for new sessions. Errors are logged and
+    # swallowed: a slow PTY must not break the activate API call.
+    def deliver_initial_prompt(session, prompt)
+      session.wait_for_first_output(timeout: INITIAL_PROMPT_BOOT_DELAY)
+      session.wait_for_quiet(grace: INITIAL_PROMPT_QUIET_GRACE, max_wait: INITIAL_PROMPT_QUIET_MAX_WAIT)
+      session.write("#{prompt}\n")
+      session.mark_initial_prompt_delivered!
+    rescue StandardError => e
+      Rails.logger.error("TentacleRuntime initial_prompt failed: #{e.class}: #{e.message}")
     end
 
     public
@@ -287,17 +304,18 @@ class TentacleRuntime
     DEFAULT_CONTEXT_WARNING_RATIO = 0.70
     TOKEN_BYTES_RATIO = 4
 
-    attr_reader :tentacle_id, :pid, :started_at, :dtach, :cwd, :repo_root_fingerprint
+    attr_reader :tentacle_id, :pid, :started_at, :dtach, :cwd, :repo_root_fingerprint, :note_slug
 
     def initialize(tentacle_id:, command:, cwd: nil, env: {}, on_exit: nil,
                    context_warning_ratio: nil, context_window_tokens: nil,
                    session_record: nil, persistence_descriptor: nil,
-                   repo_root_fingerprint: nil)
+                   repo_root_fingerprint: nil, note_slug: nil)
       @tentacle_id = tentacle_id
       @command = command
       @cwd = cwd
       @repo_root_fingerprint = repo_root_fingerprint
-      @env = self.class.default_env.merge(env).merge("NEURAMD_TENTACLE_ID" => tentacle_id.to_s)
+      @note_slug = note_slug.presence
+      @env = build_child_env(env, tentacle_id, @note_slug)
       @on_exit = on_exit
       @persistence_descriptor = persistence_descriptor
       @transcript = +""
@@ -308,6 +326,8 @@ class TentacleRuntime
       @boot_mutex = Mutex.new
       @boot_cv = ConditionVariable.new
       @booted = false
+      @last_output_at = nil
+      @initial_prompt_delivered = false
       @context_warning_ratio = (context_warning_ratio || DEFAULT_CONTEXT_WARNING_RATIO).to_f
       @context_window_tokens = (context_window_tokens || DEFAULT_CONTEXT_WINDOW_TOKENS).to_i
       @context_warning_fired = false
@@ -320,6 +340,21 @@ class TentacleRuntime
       start_reader
     end
 
+    # Identity grounding for the spawned tentacle — env vars an agent
+    # can read the moment it boots, independent of any initial_prompt
+    # that may or may not have made it through the PTY race window.
+    # Without these, an agent woken by activate_tentacle_session whose
+    # prompt got eaten cannot distinguish itself from any other slug
+    # the human happens to mention next, and starts answering on behalf
+    # of the wrong agent (cross-slug confusion incident, 2026-04-23).
+    def build_child_env(extra_env, tentacle_id, slug)
+      base = self.class.default_env.merge(extra_env)
+      base["NEURAMD_TENTACLE_ID"] = tentacle_id.to_s
+      base["NEURAMD_AGENT_UUID"] = tentacle_id.to_s
+      base["NEURAMD_AGENT_SLUG"] = slug if slug
+      base
+    end
+
     def dtach_mode?
       !@dtach.nil?
     end
@@ -329,6 +364,36 @@ class TentacleRuntime
         next if @booted
         @boot_cv.wait(@boot_mutex, timeout)
       end
+    end
+
+    # Wait until the output stream has been silent for `grace` seconds,
+    # capped by `max_wait` total. Used after wait_for_first_output to
+    # let the TUI finish drawing before we write the prompt — solves
+    # the race where bytes land in Claude Code's pre-readline buffer
+    # and get discarded. Returns true when quiet was observed, false
+    # when max_wait elapsed without ever quieting. When no output has
+    # ever arrived, treat the stream as already quiet so callers can
+    # proceed (the wait_for_first_output preceding this already paid
+    # the boot-delay budget).
+    def wait_for_quiet(grace:, max_wait:)
+      deadline = Time.current + max_wait
+      loop do
+        last = @last_output_at
+        return true if last.nil?
+        elapsed_quiet = Time.current - last
+        return true if elapsed_quiet >= grace
+        remaining = deadline - Time.current
+        return false if remaining <= 0
+        sleep [grace - elapsed_quiet, remaining, 0.05].min
+      end
+    end
+
+    def initial_prompt_delivered?
+      @initial_prompt_delivered
+    end
+
+    def mark_initial_prompt_delivered!
+      @initial_prompt_delivered = true
     end
 
     def transcript
@@ -625,6 +690,7 @@ class TentacleRuntime
         end
         @transcript.bytesize + @transcript_dropped_bytes
       end
+      @last_output_at = Time.current
       check_context_warning!(total_bytes)
     end
 

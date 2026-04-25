@@ -355,10 +355,11 @@ RSpec.describe "API tentacle sessions", type: :request do
         sign_in user
         note = make_note("Routed")
 
-        fake = instance_double(TentacleRuntime::Session, alive?: true, pid: 1, started_at: Time.current)
+        fake = instance_double(TentacleRuntime::Session, alive?: true, pid: 1, started_at: Time.current, initial_prompt_delivered?: true)
         allow(WorktreeService).to receive(:ensure).and_return("/stub/worktree")
         expect(TentacleRuntime).to receive(:start) do |**kwargs|
           expect(kwargs[:initial_prompt]).to eq("Implement OAuth Discord.")
+          expect(kwargs[:note_slug]).to eq(note.slug)
           fake
         end
 
@@ -367,6 +368,7 @@ RSpec.describe "API tentacle sessions", type: :request do
           headers: {"CONTENT_TYPE" => "application/json"}
 
         expect(response).to have_http_status(:created)
+        expect(response.parsed_body["routed_prompt_delivered"]).to eq(true)
       end
 
       it "merges boot config prompt with routed initial_prompt on fresh start" do
@@ -377,7 +379,7 @@ RSpec.describe "API tentacle sessions", type: :request do
           changes: {"tentacle_initial_prompt" => "You are the Especialista."}
         )
 
-        fake = instance_double(TentacleRuntime::Session, alive?: true, pid: 1, started_at: Time.current)
+        fake = instance_double(TentacleRuntime::Session, alive?: true, pid: 1, started_at: Time.current, initial_prompt_delivered?: true)
         allow(WorktreeService).to receive(:ensure).and_return("/stub/worktree")
         expect(TentacleRuntime).to receive(:start) do |**kwargs|
           expect(kwargs[:initial_prompt]).to eq("You are the Especialista.\n\nImplement OAuth Discord.")

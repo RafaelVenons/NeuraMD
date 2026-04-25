@@ -39,7 +39,7 @@ module Api
         if result.reused
           render json: serialize_session(@note, result.session, reused: true, boot_config_applied: false, routed_prompt_delivered: result.routed_prompt_delivered), status: :ok
         else
-          render json: serialize_session(@note, result.session, command_override: command, reused: false, boot_config_applied: true), status: :created
+          render json: serialize_session(@note, result.session, command_override: command, reused: false, boot_config_applied: true, routed_prompt_delivered: result.routed_prompt_delivered), status: :created
         end
       rescue ::Tentacles::SessionControl::InvalidBootConfig => e
         render json: {error: e.message}, status: :unprocessable_entity
