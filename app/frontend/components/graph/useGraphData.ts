@@ -9,7 +9,7 @@ export type GraphDataState =
   | { status: "ready"; dataset: GraphDataset; nodes: GraphNode[]; edges: GraphEdge[] }
   | { status: "error"; error: ApiError | Error }
 
-export function useGraphData(url = "/api/graph"): GraphDataState {
+export function useGraphData(url = "/api/graph", refreshKey: number = 0): GraphDataState {
   const [state, setState] = useState<GraphDataState>({ status: "loading" })
 
   useEffect(() => {
@@ -32,7 +32,7 @@ export function useGraphData(url = "/api/graph"): GraphDataState {
     return () => {
       cancelled = true
     }
-  }, [url])
+  }, [url, refreshKey])
 
   return state
 }

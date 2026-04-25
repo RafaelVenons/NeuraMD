@@ -1,14 +1,25 @@
 import type { SVGProps } from "react"
 
-export type ClawdState = "awake" | "sleeping"
+import type { AvatarHat, AvatarState } from "~/components/graph/types"
+
+export type ClawdState = AvatarState
 
 type Props = {
-  state: ClawdState
+  state: AvatarState
   color: string
+  hat?: AvatarHat
   size?: number
+  animateZzz?: boolean
 } & Pick<SVGProps<SVGGElement>, "pointerEvents">
 
-export function ClawdAvatar({ state, color, size = 22, pointerEvents }: Props) {
+export function ClawdAvatar({
+  state,
+  color,
+  hat = "none",
+  size = 22,
+  pointerEvents,
+  animateZzz = false,
+}: Props) {
   const s = size / 10
   const offset = -size / 2
 
@@ -63,12 +74,41 @@ export function ClawdAvatar({ state, color, size = 22, pointerEvents }: Props) {
             stroke={color}
             strokeWidth={s * 0.2}
             paintOrder="stroke"
+            className={animateZzz ? "nm-clawd-zzz" : undefined}
+            data-testid="clawd-zzz"
           >
             z
           </text>
         </g>
       )}
       <rect x={s * 4.2} y={s * 7} width={s * 1.6} height={s * 0.5} fill="#0b0d10" />
+      <ClawdHat hat={hat} s={s} />
     </g>
   )
+}
+
+function ClawdHat({ hat, s }: { hat: AvatarHat; s: number }) {
+  if (hat === "none") return null
+
+  if (hat === "cartola") {
+    return (
+      <g data-testid="clawd-hat-cartola">
+        <rect x={s * 2.5} y={s * 0.2} width={s * 5} height={s * 0.4} fill="#0b0d10" />
+        <rect x={s * 3.5} y={s * -1.4} width={s * 3} height={s * 1.6} fill="#0b0d10" />
+      </g>
+    )
+  }
+
+  if (hat === "chef") {
+    return (
+      <g data-testid="clawd-hat-chef">
+        <rect x={s * 2.5} y={s * 0.5} width={s * 5} height={s * 0.5} fill="#ffffff" stroke="#0b0d10" strokeWidth={s * 0.2} />
+        <rect x={s * 3} y={s * -1.2} width={s * 4} height={s * 1.7} fill="#ffffff" stroke="#0b0d10" strokeWidth={s * 0.2} rx={s * 0.6} />
+        <rect x={s * 3.4} y={s * -1.6} width={s * 1.4} height={s * 0.6} fill="#ffffff" stroke="#0b0d10" strokeWidth={s * 0.2} rx={s * 0.4} />
+        <rect x={s * 5.2} y={s * -1.8} width={s * 1.4} height={s * 0.7} fill="#ffffff" stroke="#0b0d10" strokeWidth={s * 0.2} rx={s * 0.4} />
+      </g>
+    )
+  }
+
+  return null
 }
