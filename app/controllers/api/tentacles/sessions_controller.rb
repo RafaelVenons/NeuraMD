@@ -36,6 +36,11 @@ module Api
           persistence: {kind: "web", author_id: current_user&.id}
         )
 
+        ::Tasks::ActivationNotifier.notify_if_external(
+          target_note: @note,
+          requested_by: params[:requested_by]
+        )
+
         if result.reused
           render json: serialize_session(@note, result.session, reused: true, boot_config_applied: false, routed_prompt_delivered: result.routed_prompt_delivered), status: :ok
         else

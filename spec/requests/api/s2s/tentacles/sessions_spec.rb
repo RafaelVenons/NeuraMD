@@ -161,6 +161,53 @@ RSpec.describe "API S2S tentacle sessions", type: :request do
       expect(response.parsed_body["reused"]).to eq(true)
     end
 
+    it "messages the gerente when requested_by is present and != gerente" do
+      gerente = create(:note, :with_head_revision, title: "Gerente", slug: "gerente")
+      requester = create(:note, :with_head_revision, title: "Especialista", slug: "especialista-neuramd")
+      tag = Tag.find_or_create_by!(name: "agente-team") { |t| t.tag_scope = "note" }
+      [gerente, requester].each { |n| n.tags << tag unless n.tags.include?(tag) }
+      note = make_agent_note
+      existing_cwd = WorktreeService.path_for(tentacle_id: note.id, repo_root: Rails.root)
+      fresh_fp = Tentacles::BootConfig.repo_root_fingerprint(Rails.root)
+      existing = instance_double(
+        TentacleRuntime::Session,
+        alive?: true, pid: 9, started_at: Time.current,
+        cwd: existing_cwd, repo_root_fingerprint: fresh_fp
+      )
+      TentacleRuntime::SESSIONS[note.id] = existing
+
+      expect {
+        post "/api/s2s/tentacles/#{note.slug}/activate",
+          params: {command: "claude", requested_by: requester.slug}.to_json, headers: headers
+      }.to change { AgentMessage.where(to_note: gerente).count }.by(1)
+
+      expect(response).to have_http_status(:ok)
+      msg = AgentMessage.where(to_note: gerente).order(created_at: :desc).first
+      expect(msg.from_note_id).to eq(requester.id)
+      expect(msg.content).to include(note.slug)
+      expect(msg.content).to include(requester.slug)
+    end
+
+    it "is silent when requested_by equals 'gerente'" do
+      create(:note, :with_head_revision, title: "Gerente", slug: "gerente")
+      note = make_agent_note
+      existing_cwd = WorktreeService.path_for(tentacle_id: note.id, repo_root: Rails.root)
+      fresh_fp = Tentacles::BootConfig.repo_root_fingerprint(Rails.root)
+      existing = instance_double(
+        TentacleRuntime::Session,
+        alive?: true, pid: 9, started_at: Time.current,
+        cwd: existing_cwd, repo_root_fingerprint: fresh_fp
+      )
+      TentacleRuntime::SESSIONS[note.id] = existing
+
+      expect {
+        post "/api/s2s/tentacles/#{note.slug}/activate",
+          params: {command: "claude", requested_by: "gerente"}.to_json, headers: headers
+      }.not_to change { AgentMessage.count }
+
+      expect(response).to have_http_status(:ok)
+    end
+
     it "writes routed initial_prompt when reusing an alive session" do
       note = make_agent_note
       existing_cwd = WorktreeService.path_for(tentacle_id: note.id, repo_root: Rails.root)

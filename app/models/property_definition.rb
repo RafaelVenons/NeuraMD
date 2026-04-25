@@ -12,6 +12,7 @@ class PropertyDefinition < ApplicationRecord
   RESERVED_SYSTEM_KEYS = %w[
     avatar_color avatar_hat avatar_variant
     tentacle_cwd tentacle_initial_prompt tentacle_workspace
+    claimed_by claimed_at closed_at closed_status queue_after claim_authority
   ].freeze
   KEY_FORMAT = /\A[a-z][a-z0-9_]{0,62}\z/
 

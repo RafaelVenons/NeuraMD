@@ -7,6 +7,11 @@ RSpec.describe Mcp::Tools::ActivateTentacleSessionTool do
   before do
     credentials = Rails.application.credentials
     allow(credentials).to receive(:agent_s2s_token).and_return(token)
+    @previous_slug = ENV.delete("NEURAMD_AGENT_SLUG")
+  end
+
+  after do
+    @previous_slug.nil? ? ENV.delete("NEURAMD_AGENT_SLUG") : ENV["NEURAMD_AGENT_SLUG"] = @previous_slug
   end
 
   it "has correct tool metadata" do
@@ -42,6 +47,29 @@ RSpec.describe Mcp::Tools::ActivateTentacleSessionTool do
 
       described_class.call(slug: "uxui", command: "claude", initial_prompt: "wake up")
       expect(payloads.first).to eq({command: "claude", initial_prompt: "wake up"})
+    end
+
+    it "auto-attaches requested_by from NEURAMD_AGENT_SLUG when set" do
+      ENV["NEURAMD_AGENT_SLUG"] = "especialista-neuramd"
+      payloads = []
+      allow(described_class).to receive(:post_json) do |_uri, payload, _token|
+        payloads << payload
+        [{activated: true, reused: false}.to_json, 201]
+      end
+
+      described_class.call(slug: "uxui", command: "claude")
+      expect(payloads.first).to include(requested_by: "especialista-neuramd")
+    end
+
+    it "omits requested_by when NEURAMD_AGENT_SLUG is unset (back-compat)" do
+      payloads = []
+      allow(described_class).to receive(:post_json) do |_uri, payload, _token|
+        payloads << payload
+        [{activated: true, reused: false}.to_json, 201]
+      end
+
+      described_class.call(slug: "uxui", command: "claude")
+      expect(payloads.first).not_to have_key(:requested_by)
     end
 
     it "defaults command to claude and coerces unknown commands to claude" do
