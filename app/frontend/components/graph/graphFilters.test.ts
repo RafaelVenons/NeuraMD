@@ -100,19 +100,24 @@ describe("filterGraph", () => {
 
 describe("agentNoteIds", () => {
   const tags: GraphTag[] = [
+    { id: "agente", name: "agente" },
     { id: "team", name: "agente-team" },
     { id: "gerente", name: "agente-gerente" },
     { id: "other", name: "shop" },
   ]
   const noteTags = [
+    { note_id: "a", tag_id: "agente" },
     { note_id: "a", tag_id: "team" },
     { note_id: "a", tag_id: "gerente" },
+    { note_id: "b", tag_id: "agente" },
     { note_id: "b", tag_id: "team" },
+    // Bug-style note: carries the umbrella but is NOT a charter.
+    { note_id: "x", tag_id: "team" },
     { note_id: "c", tag_id: "other" },
   ]
 
   it("returns note ids that carry the agent tag by name", () => {
-    const result = agentNoteIds(tags, noteTags, "agente-team")
+    const result = agentNoteIds(tags, noteTags, "agente")
     expect(result).toEqual(new Set(["a", "b"]))
   })
 
@@ -122,12 +127,19 @@ describe("agentNoteIds", () => {
   })
 
   it("returns an empty set when no note carries the tag", () => {
-    const result = agentNoteIds(tags, [], "agente-team")
+    const result = agentNoteIds(tags, [], "agente")
     expect(result).toEqual(new Set())
   })
 
-  it("defaults to the agente-team tag name", () => {
+  it("defaults to the dedicated agente tag", () => {
     expect(agentNoteIds(tags, noteTags)).toEqual(new Set(["a", "b"]))
+  })
+
+  // Regression: until commit X charters were keyed on the umbrella
+  // "agente-team", which also tags briefings/bugs/EPICs (40 notes vs 17
+  // real charters). Default must NOT pick up the umbrella anymore.
+  it("ignores notes that only carry the umbrella agente-team", () => {
+    expect(agentNoteIds(tags, noteTags)).not.toContain("x")
   })
 })
 

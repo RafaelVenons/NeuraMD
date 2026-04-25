@@ -1,6 +1,6 @@
 import type { GraphEdge, GraphNode, GraphTag, NodeType } from "~/components/graph/types"
 
-export const AGENT_TEAM_TAG = "agente-team"
+export const AGENT_TAG = "agente"
 
 export type TypeCounts = { root: number; structure: number; leaf: number; tentacle: number }
 
@@ -50,7 +50,7 @@ export function filterGraph(
 export function agentNoteIds(
   tags: GraphTag[],
   noteTags: { note_id: string; tag_id: string }[],
-  agentTagName: string = AGENT_TEAM_TAG
+  agentTagName: string = AGENT_TAG
 ): Set<string> {
   const tagId = tags.find((t) => t.name === agentTagName)?.id
   if (!tagId) return new Set()

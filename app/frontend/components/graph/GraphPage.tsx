@@ -6,7 +6,7 @@ import { useGraphData } from "~/components/graph/useGraphData"
 import { useTentacleRuntime } from "~/components/graph/useTentacleRuntime"
 import { agentColorMap } from "~/components/graph/agentPalette"
 import {
-  AGENT_TEAM_TAG,
+  AGENT_TAG,
   agentNoteIds,
   awakeAgentIds,
   countByType,
@@ -51,7 +51,7 @@ export function GraphPage() {
 
   const agentTagId = useMemo(() => {
     if (state.status !== "ready") return null
-    return state.dataset.tags.find((t) => t.name === AGENT_TEAM_TAG)?.id ?? null
+    return state.dataset.tags.find((t) => t.name === AGENT_TAG)?.id ?? null
   }, [state])
 
   const isAgentsPresetActive =
