@@ -22,7 +22,11 @@ module Mcp
         ReadAgentInboxTool,
         SpawnChildTentacleTool,
         ActivateTentacleSessionTool,
-        RouteHumanToTool
+        RouteHumanToTool,
+        AssignTaskTool,
+        MyTasksTool,
+        ReleaseTaskTool,
+        TaskHistoryTool
       ]
     end
   end

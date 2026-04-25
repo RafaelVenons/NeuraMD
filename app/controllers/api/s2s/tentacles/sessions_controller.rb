@@ -30,6 +30,11 @@ module Api
             persistence: {kind: "s2s"}
           )
 
+          ::Tasks::ActivationNotifier.notify_if_external(
+            target_note: @note,
+            requested_by: params[:requested_by]
+          )
+
           status = result.reused ? :ok : :created
           render json: serialize(@note, result, command: command), status: status
         rescue ::Tentacles::SessionControl::InvalidBootConfig => e

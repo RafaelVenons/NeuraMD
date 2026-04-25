@@ -59,6 +59,15 @@ module Mcp
         payload = {command: command_value}
         payload[:initial_prompt] = initial_prompt if initial_prompt.present?
 
+        # Camada 1 — auto-attach caller identity so the controller can
+        # notify the gerente when an external agent wakes a session.
+        # Identity comes from NEURAMD_AGENT_SLUG (set at spawn by
+        # Tentacles::SessionControl). Unset = pre-PR-33 sessions; the
+        # controller treats absence as "unknown" requestor and still
+        # notifies the gerente.
+        agent_slug = ENV["NEURAMD_AGENT_SLUG"].to_s.strip
+        payload[:requested_by] = agent_slug unless agent_slug.empty?
+
         body, status = post_json(uri, payload, token.to_s)
         parsed = safe_parse(body)
 
