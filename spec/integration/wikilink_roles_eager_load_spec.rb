@@ -139,5 +139,39 @@ RSpec.describe "Wikilink roles — eager load audit" do
         "slug" => parent.slug, "title" => parent.title, "relation" => "parent"
       )
     end
+
+    # Adversarial case raised by Codex review of the first eager-load
+    # attempt: low anemia ratio + heavy link graph. The first fix
+    # preloaded link associations on every active note in the scan
+    # batch, so a workspace with one anemic note and many richly
+    # linked non-anemic notes paid a huge preload cost for nothing.
+    # Two-phase fix should keep total query count bounded by candidate
+    # count + a constant, NOT by total notes scanned or their links.
+    it "does not preload links for non-anemic notes (adversarial: low anemia, high link density)" do
+      # 1 anemic note (no links)
+      anemic_lone = create(:note, title: "Lone Anemic")
+      rev = create(:note_revision, note: anemic_lone, content_markdown: "x")
+      anemic_lone.update_columns(head_revision_id: rev.id)
+
+      baseline = QueryCounter.count { described_class.call(max_lines: 10, limit: 50) }
+
+      # Add 15 NON-anemic notes (above threshold) each with many
+      # outgoing + incoming links. Old fix would preload all of these.
+      15.times do |i|
+        rich = create(:note, title: "Rich #{i}")
+        rev = create(:note_revision, note: rich, content_markdown: "line\n" * 50)
+        rich.update_columns(head_revision_id: rev.id)
+        10.times { |j| make_link(src: rich, dst: make_note("Rich#{i}Dst#{j}")) }
+        10.times { |j| make_link(src: make_note("Rich#{i}Src#{j}"), dst: rich) }
+      end
+
+      scaled = QueryCounter.count { described_class.call(max_lines: 10, limit: 50) }
+
+      # The single anemic note is unchanged; the scan loops over far
+      # more notes but should not preload any of their links.
+      # Allow modest growth for the head_revision/tags page through
+      # find_each, but reject the link preload regression.
+      expect(scaled - baseline).to be <= 8
+    end
   end
 end

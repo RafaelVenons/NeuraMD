@@ -18,34 +18,65 @@ module Mcp
       )
 
       def self.call(max_lines: 10, tag: nil, limit: 30, server_context: nil)
-        # Eager-load the merge-target lookup paths up front so
-        # suggest_merge_target can pick from in-memory associations
-        # instead of issuing find_by + dst_note/src_note round-trips
-        # per anemic note (was ~6 queries per match before).
-        scope = Note.active.includes(
-          :head_revision,
-          :tags,
-          {active_outgoing_links: :dst_note},
-          {active_incoming_links: :src_note}
-        )
+        # Two-phase to avoid two opposite footguns:
+        #   1. The original code did N+1 in suggest_merge_target — one
+        #      find_by + .dst_note/.src_note pair per anemic match.
+        #   2. Naive eager-loading the link graph in the outer scan
+        #      preloads incoming/outgoing links + neighbour notes for
+        #      EVERY active note, even non-anemic ones with hundreds
+        #      of links. In a workspace where most notes are not
+        #      anemic but heavily linked, that is much worse than
+        #      the N+1 it replaces (large preload queries + memory).
+        # Phase 1 streams the cheap scan (head_revision + tags only)
+        # and stops as soon as `limit` anemic candidates are gathered.
+        # Phase 2 reloads ONLY those candidates with the link
+        # associations needed by suggest_merge_target. Cost scales
+        # with the candidate count, not the workspace size.
+        candidates = collect_anemic_candidates(max_lines: max_lines, tag: tag, limit: limit)
+        enriched = enrich_with_links(candidates.map(&:first))
+
+        anemic = candidates.map do |(note, lines)|
+          rich = enriched[note.id] || note
+          {
+            slug: rich.slug,
+            title: rich.title,
+            content_lines: lines,
+            tags: rich.tags.map(&:name),
+            merge_target: suggest_merge_target(rich)
+          }
+        end
+
+        data = {anemic_notes: anemic, count: anemic.size, threshold: max_lines}
+        MCP::Tool::Response.new([{type: "text", text: data.to_json}])
+      end
+
+      def self.collect_anemic_candidates(max_lines:, tag:, limit:)
+        scope = Note.active.includes(:head_revision, :tags)
         scope = scope.joins(:tags).where(tags: {name: tag.downcase}) if tag.present?
 
-        anemic = scope.find_each.filter_map { |note|
+        candidates = []
+        scope.find_each do |note|
           content = note.head_revision&.content_markdown.to_s
           lines = content_lines(content)
           next if lines >= max_lines
 
-          {
-            slug: note.slug,
-            title: note.title,
-            content_lines: lines,
-            tags: note.tags.map(&:name),
-            merge_target: suggest_merge_target(note)
-          }
-        }.first(limit)
+          candidates << [note, lines]
+          break if candidates.size >= limit
+        end
+        candidates
+      end
 
-        data = {anemic_notes: anemic, count: anemic.size, threshold: max_lines}
-        MCP::Tool::Response.new([{type: "text", text: data.to_json}])
+      def self.enrich_with_links(notes)
+        return {} if notes.empty?
+
+        Note.where(id: notes.map(&:id))
+          .includes(
+            :head_revision,
+            :tags,
+            {active_outgoing_links: :dst_note},
+            {active_incoming_links: :src_note}
+          )
+          .index_by(&:id)
       end
 
       # Picks the best merge candidate from the in-memory eager-loaded
