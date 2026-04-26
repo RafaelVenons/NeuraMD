@@ -17,6 +17,7 @@ RSpec.describe Tentacles::SessionControl do
         TentacleRuntime::Session,
         alive?: true, pid: 9991, started_at: Time.current,
         cwd: "/tmp/worktree-#{note.id}", repo_root_fingerprint: "fp:1",
+        pre_persistence_fingerprint?: false,
         initial_prompt_delivered?: false
       )
       allow(WorktreeService).to receive(:ensure).and_return("/tmp/worktree-#{note.id}")
@@ -34,6 +35,7 @@ RSpec.describe Tentacles::SessionControl do
         TentacleRuntime::Session,
         alive?: true, pid: 9991, started_at: Time.current,
         cwd: "/tmp/worktree-#{note.id}", repo_root_fingerprint: "fp:1",
+        pre_persistence_fingerprint?: false,
         initial_prompt_delivered?: true
       )
       allow(WorktreeService).to receive(:ensure).and_return("/tmp/worktree-#{note.id}")
@@ -51,6 +53,7 @@ RSpec.describe Tentacles::SessionControl do
         TentacleRuntime::Session,
         alive?: true, pid: 9991, started_at: Time.current,
         cwd: "/tmp/worktree-#{note.id}", repo_root_fingerprint: "fp:1",
+        pre_persistence_fingerprint?: false,
         initial_prompt_delivered?: false
       )
       allow(WorktreeService).to receive(:ensure).and_return("/tmp/worktree-#{note.id}")
@@ -67,7 +70,8 @@ RSpec.describe Tentacles::SessionControl do
       existing = instance_double(
         TentacleRuntime::Session,
         alive?: true, pid: 1, started_at: Time.current,
-        cwd: existing_cwd, repo_root_fingerprint: fresh_fp
+        cwd: existing_cwd, repo_root_fingerprint: fresh_fp,
+        pre_persistence_fingerprint?: false
       )
       TentacleRuntime::SESSIONS[note.id] = existing
 
@@ -85,7 +89,8 @@ RSpec.describe Tentacles::SessionControl do
       existing = instance_double(
         TentacleRuntime::Session,
         alive?: true, pid: 1, started_at: Time.current,
-        cwd: existing_cwd, repo_root_fingerprint: fresh_fp
+        cwd: existing_cwd, repo_root_fingerprint: fresh_fp,
+        pre_persistence_fingerprint?: false
       )
       TentacleRuntime::SESSIONS[note.id] = existing
 
@@ -100,7 +105,8 @@ RSpec.describe Tentacles::SessionControl do
       existing = instance_double(
         TentacleRuntime::Session,
         alive?: true, pid: 1, started_at: Time.current,
-        cwd: stale_cwd, repo_root_fingerprint: nil
+        cwd: stale_cwd, repo_root_fingerprint: nil,
+        pre_persistence_fingerprint?: false
       )
       TentacleRuntime::SESSIONS[note.id] = existing
 
@@ -118,7 +124,8 @@ RSpec.describe Tentacles::SessionControl do
       existing = instance_double(
         TentacleRuntime::Session,
         alive?: true, pid: 1, started_at: Time.current,
-        cwd: existing_cwd, repo_root_fingerprint: stale_fp
+        cwd: existing_cwd, repo_root_fingerprint: stale_fp,
+        pre_persistence_fingerprint?: false
       )
       TentacleRuntime::SESSIONS[note.id] = existing
 
@@ -127,6 +134,47 @@ RSpec.describe Tentacles::SessionControl do
       }.to raise_error(Tentacles::SessionControl::StaleSession) { |err|
         expect(err.reason).to eq("repo_identity_changed")
       }
+    end
+
+    it "raises StaleSession reason fingerprint_unrecoverable when a post-fix reattached session lost its fingerprint" do
+      # Reattached sessions whose fingerprint key WAS persisted but
+      # came back nil cannot be identity-verified — fail closed
+      # instead of routing input to a possibly-stale repo identity.
+      existing_cwd = WorktreeService.path_for(tentacle_id: note.id, repo_root: Rails.root)
+      existing = instance_double(
+        TentacleRuntime::Session,
+        alive?: true, pid: 1, started_at: Time.current,
+        cwd: existing_cwd, repo_root_fingerprint: nil,
+        pre_persistence_fingerprint?: false
+      )
+      TentacleRuntime::SESSIONS[note.id] = existing
+
+      expect {
+        described_class.activate(note: note, command: ["claude"])
+      }.to raise_error(Tentacles::SessionControl::StaleSession) { |err|
+        expect(err.reason).to eq("fingerprint_unrecoverable")
+      }
+    end
+
+    it "allows reuse of a legacy reattached session (predates fingerprint persistence) and logs a warning" do
+      # Pre-fix records were written before persist_tentacle_session_record!
+      # started always-recording the fingerprint key. Failing them closed
+      # would strand every alive tentacle on deploy. Allow the reuse on a
+      # one-time, log-loud basis — the next stop rotates the record.
+      existing_cwd = WorktreeService.path_for(tentacle_id: note.id, repo_root: Rails.root)
+      existing = instance_double(
+        TentacleRuntime::Session,
+        alive?: true, pid: 1, started_at: Time.current,
+        cwd: existing_cwd, repo_root_fingerprint: nil,
+        pre_persistence_fingerprint?: true
+      )
+      TentacleRuntime::SESSIONS[note.id] = existing
+
+      expect(Rails.logger).to receive(:warn).with(/legacy session.*without fingerprint verification/)
+
+      result = described_class.activate(note: note, command: ["claude"])
+      expect(result.reused).to be(true)
+      expect(result.session).to eq(existing)
     end
 
     it "raises InvalidBootConfig when tentacle_workspace cannot resolve" do

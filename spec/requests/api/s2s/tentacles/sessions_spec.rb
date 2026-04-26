@@ -148,7 +148,8 @@ RSpec.describe "API S2S tentacle sessions", type: :request do
       existing = instance_double(
         TentacleRuntime::Session,
         alive?: true, pid: 9, started_at: Time.current,
-        cwd: existing_cwd, repo_root_fingerprint: fresh_fp
+        cwd: existing_cwd, repo_root_fingerprint: fresh_fp,
+        pre_persistence_fingerprint?: false
       )
       TentacleRuntime::SESSIONS[note.id] = existing
 
@@ -168,7 +169,8 @@ RSpec.describe "API S2S tentacle sessions", type: :request do
       existing = instance_double(
         TentacleRuntime::Session,
         alive?: true, pid: 9, started_at: Time.current,
-        cwd: existing_cwd, repo_root_fingerprint: fresh_fp
+        cwd: existing_cwd, repo_root_fingerprint: fresh_fp,
+        pre_persistence_fingerprint?: false
       )
       TentacleRuntime::SESSIONS[note.id] = existing
 
@@ -187,7 +189,8 @@ RSpec.describe "API S2S tentacle sessions", type: :request do
       existing = instance_double(
         TentacleRuntime::Session,
         alive?: true, pid: 9, started_at: Time.current,
-        cwd: stale_cwd, repo_root_fingerprint: nil
+        cwd: stale_cwd, repo_root_fingerprint: nil,
+        pre_persistence_fingerprint?: false
       )
       TentacleRuntime::SESSIONS[note.id] = existing
 
@@ -197,6 +200,23 @@ RSpec.describe "API S2S tentacle sessions", type: :request do
       expect(response).to have_http_status(:conflict)
       expect(response.parsed_body["stale_boot_config"]).to eq(true)
       expect(response.parsed_body["stale_reason"]).to eq("cwd_changed")
+    end
+
+    it "returns 409 with dirty_worktree: true when the worktree refresh refuses uncommitted changes" do
+      note = make_agent_note
+      allow(WorktreeService).to receive(:ensure).and_raise(
+        WorktreeService::DirtyWorktreeError, "refusing to refresh: WIP detected"
+      )
+      expect(TentacleRuntime).not_to receive(:start)
+
+      post "/api/s2s/tentacles/#{note.slug}/activate",
+        params: {}.to_json, headers: headers
+
+      expect(response).to have_http_status(:conflict)
+      body = response.parsed_body
+      expect(body["dirty_worktree"]).to eq(true)
+      expect(body["error"]).to match(/uncommitted local changes/i)
+      expect(body["detail"]).to include("WIP detected")
     end
 
     it "returns 422 when the note's tentacle_workspace does not resolve" do
@@ -251,7 +271,8 @@ RSpec.describe "API S2S tentacle sessions", type: :request do
       existing = instance_double(
         TentacleRuntime::Session,
         alive?: true, pid: 9, started_at: Time.current,
-        cwd: stale_cwd, repo_root_fingerprint: nil
+        cwd: stale_cwd, repo_root_fingerprint: nil,
+        pre_persistence_fingerprint?: false
       )
       TentacleRuntime::SESSIONS[note.id] = existing
 

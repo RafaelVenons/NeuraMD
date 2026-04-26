@@ -87,6 +87,25 @@ RSpec.describe TentacleRuntime do
       expect(record.command).to eq("sleep 30")
     end
 
+    it "persists repo_root_fingerprint into TentacleSession.metadata so reattach can verify identity" do
+      described_class.start(
+        tentacle_id: tentacle_id,
+        command: ["sleep", "30"],
+        repo_root_fingerprint: "fp:abc123"
+      )
+
+      record = TentacleSession.alive.find_by(tentacle_note_id: tentacle_id)
+      expect(record.metadata["repo_root_fingerprint"]).to eq("fp:abc123")
+    end
+
+    it "always records the repo_root_fingerprint key (possibly nil) so reattach can distinguish legacy records from post-fix unverifiable ones" do
+      described_class.start(tentacle_id: tentacle_id, command: ["sleep", "30"])
+
+      record = TentacleSession.alive.find_by(tentacle_note_id: tentacle_id)
+      expect(record.metadata).to have_key("repo_root_fingerprint")
+      expect(record.metadata["repo_root_fingerprint"]).to be_nil
+    end
+
     it "attaches via PTY.spawn on dtach -a so resize ioctl propagates" do
       expect(PTY).to receive(:spawn).with("dtach", "-a", wrapper.socket_path, "-E", "-z")
       described_class.start(tentacle_id: tentacle_id, command: ["sleep", "30"])
@@ -444,6 +463,55 @@ RSpec.describe TentacleRuntime do
         create(:tentacle_session, :exited, tentacle_note_id: note.id, dtach_socket: wrapper.socket_path)
         expect(wrapper).not_to receive(:socket_exists?)
         expect(described_class.bootstrap_sessions!).to eq(0)
+      end
+
+      it "restores repo_root_fingerprint from metadata so the reused session can be identity-verified" do
+        create(:tentacle_session,
+          tentacle_note_id: note.id,
+          dtach_socket: wrapper.socket_path,
+          command: "bash -l",
+          metadata: {"repo_root_fingerprint" => "fp:abc123"})
+        allow(wrapper).to receive(:socket_exists?).and_return(true)
+        allow(wrapper).to receive(:alive?).and_return(true)
+
+        described_class.bootstrap_sessions!
+
+        session = described_class::SESSIONS[note.id]
+        expect(session).not_to be_nil
+        expect(session.repo_root_fingerprint).to eq("fp:abc123")
+        expect(session.pre_persistence_fingerprint?).to be(false)
+      end
+
+      it "flags reattached sessions whose metadata predates fingerprint persistence as legacy" do
+        create(:tentacle_session,
+          tentacle_note_id: note.id,
+          dtach_socket: wrapper.socket_path,
+          command: "bash -l",
+          metadata: {})
+        allow(wrapper).to receive(:socket_exists?).and_return(true)
+        allow(wrapper).to receive(:alive?).and_return(true)
+
+        described_class.bootstrap_sessions!
+
+        session = described_class::SESSIONS[note.id]
+        expect(session.repo_root_fingerprint).to be_nil
+        expect(session.pre_persistence_fingerprint?).to be(true)
+      end
+
+      it "does not flag post-fix sessions whose persisted fingerprint is explicitly nil" do
+        create(:tentacle_session,
+          tentacle_note_id: note.id,
+          dtach_socket: wrapper.socket_path,
+          command: "bash -l",
+          metadata: {"repo_root_fingerprint" => nil})
+        allow(wrapper).to receive(:socket_exists?).and_return(true)
+        allow(wrapper).to receive(:alive?).and_return(true)
+
+        described_class.bootstrap_sessions!
+
+        session = described_class::SESSIONS[note.id]
+        expect(session.repo_root_fingerprint).to be_nil
+        expect(session.pre_persistence_fingerprint?).to be(false)
       end
 
       it "reconstructs an on_exit callback from the stored persistence descriptor so a natural exit after reattach still persists the transcript" do

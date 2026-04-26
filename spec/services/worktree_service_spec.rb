@@ -602,6 +602,39 @@ RSpec.describe WorktreeService do
         described_class.ensure(tentacle_id: tentacle_id, repo_root: repo_root, link_shared: true)
       }.not_to raise_error
     end
+
+    it "refuses to refresh when the worktree has uncommitted modifications and preserves them" do
+      # First ensure: creates the worktree and refreshes (clean state).
+      path = described_class.ensure(tentacle_id: tentacle_id, repo_root: repo_root, link_shared: true)
+      readme = File.join(path, "README.md")
+      File.write(readme, "WIP edits the agent has not committed yet\n")
+
+      add_remote_commit("Platform update while worktree is dirty")
+
+      # Second ensure must NOT silently `git reset --hard origin/main`
+      # over the agent's uncommitted work — that path destroyed data.
+      expect {
+        described_class.ensure(tentacle_id: tentacle_id, repo_root: repo_root, link_shared: true)
+      }.to raise_error(WorktreeService::DirtyWorktreeError, /dirty|uncommitted/i)
+
+      expect(File.read(readme)).to eq("WIP edits the agent has not committed yet\n")
+    end
+
+    it "refuses to refresh when the worktree has staged changes and preserves them" do
+      path = described_class.ensure(tentacle_id: tentacle_id, repo_root: repo_root, link_shared: true)
+      File.write(File.join(path, "README.md"), "staged but not committed\n")
+      Open3.capture2e("git", "-C", path, "add", "README.md")
+
+      add_remote_commit("Platform update while change is staged")
+
+      expect {
+        described_class.ensure(tentacle_id: tentacle_id, repo_root: repo_root, link_shared: true)
+      }.to raise_error(WorktreeService::DirtyWorktreeError)
+
+      expect(File.read(File.join(path, "README.md"))).to eq("staged but not committed\n")
+      _out, status = Open3.capture2e("git", "-C", path, "diff", "--cached", "--quiet")
+      expect(status.success?).to be(false), "expected staged change to remain in the index"
+    end
   end
 
   describe ".remove with worktree_root:" do

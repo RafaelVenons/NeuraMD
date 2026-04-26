@@ -262,18 +262,31 @@ class TentacleRuntime
       command = Shellwords.split(record.command.to_s)
       command = [record.command.to_s] if command.empty?
 
-      descriptor = record.metadata.is_a?(Hash) ? record.metadata["persistence"] : nil
+      metadata = record.metadata.is_a?(Hash) ? record.metadata : {}
+      descriptor = metadata["persistence"]
       reconstructed_on_exit =
         if descriptor
           Persistence.build_on_exit(descriptor, tentacle_id: record.tentacle_note_id)
         end
+
+      # "Key absent" means the record was written before
+      # persist_tentacle_session_record! started always-writing the
+      # fingerprint key. Such records cannot be identity-verified, but
+      # they must not be stranded on deploy — the legacy flag tells
+      # SessionControl#assert_session_fresh! to log + allow reuse
+      # instead of rejecting them as unverifiable. Post-fix records
+      # always carry the key (possibly with a nil value), so a true
+      # nil there is genuine and still triggers fail-closed.
+      pre_persistence = !metadata.key?("repo_root_fingerprint")
 
       session = Session.new(
         tentacle_id: record.tentacle_note_id,
         command: command,
         cwd: record.cwd,
         session_record: record,
-        on_exit: reconstructed_on_exit
+        on_exit: reconstructed_on_exit,
+        repo_root_fingerprint: metadata["repo_root_fingerprint"],
+        pre_persistence_fingerprint: pre_persistence
       )
       SESSIONS[record.tentacle_note_id] = session
       record.touch_seen!
@@ -309,11 +322,13 @@ class TentacleRuntime
     def initialize(tentacle_id:, command:, cwd: nil, env: {}, on_exit: nil,
                    context_warning_ratio: nil, context_window_tokens: nil,
                    session_record: nil, persistence_descriptor: nil,
-                   repo_root_fingerprint: nil, note_slug: nil)
+                   repo_root_fingerprint: nil, note_slug: nil,
+                   pre_persistence_fingerprint: false)
       @tentacle_id = tentacle_id
       @command = command
       @cwd = cwd
       @repo_root_fingerprint = repo_root_fingerprint
+      @pre_persistence_fingerprint = pre_persistence_fingerprint
       @note_slug = note_slug.presence
       @env = build_child_env(env, tentacle_id, @note_slug)
       @on_exit = on_exit
@@ -394,6 +409,14 @@ class TentacleRuntime
 
     def mark_initial_prompt_delivered!
       @initial_prompt_delivered = true
+    end
+
+    # True when this Session was reattached from a TentacleSession record
+    # whose metadata predates the always-write of `repo_root_fingerprint`.
+    # SessionControl uses this to log + allow reuse instead of rejecting
+    # the session as unverifiable on the first reattach after deploy.
+    def pre_persistence_fingerprint?
+      @pre_persistence_fingerprint
     end
 
     def transcript
@@ -608,7 +631,17 @@ class TentacleRuntime
     end
 
     def persist_tentacle_session_record!
-      metadata = @persistence_descriptor ? {"persistence" => @persistence_descriptor} : {}
+      metadata = {}
+      metadata["persistence"] = @persistence_descriptor if @persistence_descriptor
+      # Persisted alongside `persistence` so reattach after a Puma
+      # restart / autodeploy can rebuild the in-memory @repo_root_fingerprint
+      # — without it, SessionControl#assert_session_fresh! sees nil and
+      # silently skips the cross-repo guard. The key is ALWAYS written
+      # (even when the value is nil) so reattach can distinguish
+      # post-fix sessions from genuinely-legacy ones whose record predates
+      # this persistence and which must be allowed to reuse without a
+      # fingerprint to compare against.
+      metadata["repo_root_fingerprint"] = @repo_root_fingerprint
       TentacleSession.create!(
         tentacle_note_id: @tentacle_id,
         pid: @dtach.pid,

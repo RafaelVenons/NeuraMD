@@ -51,6 +51,17 @@ module Api
           current_cwd: e.current_cwd,
           desired_cwd: e.desired_cwd
         }, status: :conflict
+      rescue ::WorktreeService::DirtyWorktreeError => e
+        # Fail-closed signal from the worktree refresh guard. Surface
+        # as 409 so the client can preserve the agent's uncommitted
+        # work explicitly (commit / stash / push the branch) instead
+        # of bouncing on an unhandled 500.
+        render json: {
+          error: "tentacle worktree has uncommitted local changes; refusing to refresh. " \
+                 "commit, stash, or push the branch from the worktree, then retry.",
+          dirty_worktree: true,
+          detail: e.message
+        }, status: :conflict
       end
 
       def destroy

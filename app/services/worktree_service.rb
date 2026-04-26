@@ -4,6 +4,12 @@ require "fileutils"
 class WorktreeService
   class Error < StandardError; end
 
+  # Raised by refresh_transversal_branch when the worktree carries
+  # uncommitted local changes that a `git reset --hard origin/main`
+  # would silently discard. Fail-closed: caller decides whether to
+  # commit, stash, or wipe explicitly (via `remove` + `ensure`).
+  class DirtyWorktreeError < Error; end
+
   BRANCH_PREFIX = "tentacle/".freeze
 
   class << self
@@ -148,6 +154,11 @@ class WorktreeService
     DEFAULT_REMOTE_BRANCH = "main".freeze
 
     def refresh_transversal_branch(path:, branch:, repo_root:)
+      # Fail-closed before any network/git work: refuse to discard
+      # uncommitted local changes silently. The hard reset below would
+      # destroy them — surface the dirty state so the caller decides.
+      ensure_worktree_clean!(path: path)
+
       # Only fetch once per run — avoids repeated network calls when
       # multiple tentacles spawn back-to-back.
       _out, fetch_status = run_git(["fetch", "origin", DEFAULT_REMOTE_BRANCH, "--quiet"], repo_root: repo_root)
@@ -164,8 +175,29 @@ class WorktreeService
       return if reset_status.success?
 
       Rails.logger.warn("WorktreeService: failed to refresh #{path} on branch #{branch}: #{out}") if defined?(Rails)
+    rescue DirtyWorktreeError
+      raise
     rescue StandardError => e
       Rails.logger.warn("WorktreeService: refresh raised #{e.class}: #{e.message}") if defined?(Rails)
+    end
+
+    # Treats only TRACKED modifications/staged changes as "dirty" —
+    # untracked files survive `git reset --hard` regardless, so they
+    # do not need to gate the refresh.
+    def ensure_worktree_clean!(path:)
+      out, status = Open3.capture2e(
+        "git", "status", "--porcelain", "--untracked-files=no",
+        chdir: path.to_s
+      )
+      # If we can't even run git here, defer to the existing
+      # StandardError swallow — don't synthesize a dirty signal from
+      # a broken probe.
+      return unless status.success?
+      return if out.strip.empty?
+
+      raise DirtyWorktreeError,
+        "refusing to refresh #{path}: worktree has uncommitted local changes; " \
+        "commit, stash, or remove explicitly before re-ensure\n#{out}"
     end
 
     def healthy_symlink_to_source?(target, source)
