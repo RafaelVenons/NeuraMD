@@ -1582,99 +1582,6 @@ body.nm-app-shell #app-root {
   font-size: 12px;
 }
 
-.nm-tentacles-dashboard__layout {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 320px;
-  gap: 16px;
-  flex: 1;
-  min-height: 0;
-}
-
-@media (max-width: 1024px) {
-  .nm-tentacles-dashboard__layout {
-    grid-template-columns: 1fr;
-  }
-}
-
-.nm-tentacles-dashboard__main {
-  display: flex;
-  flex-direction: column;
-  min-height: 0;
-}
-
-.nm-tentacles-dashboard__main .nm-tentacle-mini {
-  flex: 1;
-  min-height: 0;
-}
-
-.nm-tentacles-dashboard__main .nm-tentacle-mini__terminal {
-  flex: 1;
-  min-height: 420px;
-  height: auto;
-}
-
-.nm-tentacles-dashboard__side {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  min-height: 0;
-  overflow: hidden;
-}
-
-.nm-tentacles-dashboard__rest {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  overflow-y: auto;
-  flex: 1;
-  min-height: 0;
-}
-
-.nm-tentacles-dashboard__rest-item {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  padding: 10px 12px;
-  border: 1px solid var(--nm-shell-border);
-  border-radius: 8px;
-  background: rgba(255, 255, 255, 0.02);
-}
-
-.nm-tentacles-dashboard__rest-head {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 8px;
-}
-
-.nm-tentacles-dashboard__rest-head h3 {
-  margin: 0;
-  font-size: 13px;
-  font-weight: 600;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.nm-tentacles-dashboard__rest-actions {
-  display: flex;
-  gap: 8px;
-  align-items: center;
-}
-
-.nm-tentacles-dashboard__rest-link {
-  font-size: 12px;
-  color: #5cc8ff;
-  text-decoration: none;
-}
-
-.nm-tentacles-dashboard__rest-link:hover {
-  text-decoration: underline;
-}
-
 .nm-tentacles-dashboard__minigraph {
   display: flex;
   flex-direction: column;
@@ -1777,6 +1684,138 @@ body.nm-app-shell #app-root {
   border-radius: 6px;
   overflow: hidden;
   background: #0b0b0b;
+}
+
+.nm-tiling {
+  display: grid;
+  flex: 1;
+  min-height: 0;
+  gap: 12px;
+  width: 100%;
+}
+
+.nm-tiling__tile {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  min-width: 0;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  transition: border-color 200ms ease;
+}
+
+.nm-tiling__tile.is-focused {
+  border-color: #5cc8ff;
+  box-shadow: 0 0 0 1px rgba(92, 200, 255, 0.35);
+}
+
+.nm-tiling__tile .nm-tentacle-mini {
+  flex: 1;
+  min-height: 0;
+}
+
+.nm-tiling__tile .nm-tentacle-mini__terminal {
+  flex: 1;
+  min-height: 120px;
+  height: auto;
+}
+
+.nm-tiling__cards-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-content: flex-start;
+  gap: 8px;
+  overflow-y: auto;
+  padding: 4px 0;
+}
+
+.nm-tiling__card {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--nm-shell-border);
+  border-radius: 8px;
+  color: inherit;
+  font-family: inherit;
+  cursor: pointer;
+  text-align: left;
+  min-width: 180px;
+  flex: 1 0 200px;
+  max-width: 280px;
+  transition: background 150ms ease, border-color 150ms ease;
+}
+
+.nm-tiling__card:hover {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: #5cc8ff;
+}
+
+.nm-tiling__card-avatar {
+  display: inline-flex;
+  flex: 0 0 auto;
+}
+
+.nm-tiling__card-body {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  flex: 1;
+}
+
+.nm-tiling__card-title {
+  font-size: 12px;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.nm-tiling__minigraph-slot {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--nm-shell-border);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.02);
+  overflow: hidden;
+  min-height: 0;
+}
+
+.nm-tiling__more {
+  font-size: 11px;
+  color: var(--nm-shell-muted);
+  padding: 6px 12px;
+}
+
+@media (max-width: 767px) {
+  .nm-tiling {
+    overflow-y: auto;
+    scroll-snap-type: y mandatory;
+  }
+
+  .nm-tiling__tile {
+    scroll-snap-align: start;
+    min-height: 60vh;
+  }
+}
+
+.nm-tentacles-dashboard__minigraph-drawer {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--nm-shell-border);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.02);
+  overflow: hidden;
+  height: 220px;
+  flex: 0 0 auto;
+}
+
+.nm-tentacles-dashboard__minigraph-drawer .nm-tentacles-dashboard__minigraph {
+  flex: 1;
+  border: none;
+  border-radius: 0;
 }
 
 .nm-agent-state-badge {
