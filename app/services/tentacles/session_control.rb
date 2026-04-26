@@ -96,11 +96,43 @@ module Tentacles
         existing.repo_root_fingerprint &&
         current_fingerprint &&
         existing.repo_root_fingerprint != current_fingerprint
+      # Sessions whose fingerprint key was never persisted (records
+      # that predate this guard's persistence wiring) are exempt from
+      # the unrecoverable check on a one-time, log-loud basis: they
+      # would otherwise strand every alive tentacle the moment the
+      # patch lands. They will rotate naturally on the next stop and
+      # come back with a real persisted fingerprint.
+      pre_persistence = existing.pre_persistence_fingerprint?
 
-      return unless cwd_stale || repo_stale
+      # Post-fix sessions that nevertheless reattached without a
+      # fingerprint (key present in metadata but value nil) cannot be
+      # verified — fail-closed instead of falling through to the silent
+      # bypass shape PR #21's guard intended to prevent.
+      fingerprint_unrecoverable =
+        current_fingerprint &&
+        existing.repo_root_fingerprint.nil? &&
+        !pre_persistence
+
+      if pre_persistence && current_fingerprint && existing.repo_root_fingerprint.nil?
+        Rails.logger.warn(
+          "[session_control] reusing legacy session for tentacle #{@note.id} without fingerprint verification " \
+          "(record predates fingerprint persistence); will rotate on next stop"
+        )
+      end
+
+      return unless cwd_stale || repo_stale || fingerprint_unrecoverable
+
+      reason =
+        if cwd_stale
+          "cwd_changed"
+        elsif repo_stale
+          "repo_identity_changed"
+        else
+          "fingerprint_unrecoverable"
+        end
 
       raise StaleSession.new(
-        reason: cwd_stale ? "cwd_changed" : "repo_identity_changed",
+        reason: reason,
         current_cwd: existing.cwd.to_s,
         desired_cwd: desired_cwd.to_s
       )

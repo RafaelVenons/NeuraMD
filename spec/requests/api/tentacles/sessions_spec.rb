@@ -271,7 +271,8 @@ RSpec.describe "API tentacle sessions", type: :request do
         existing = instance_double(
           TentacleRuntime::Session,
           alive?: true, pid: 4242, started_at: Time.utc(2026, 4, 20, 10),
-          cwd: existing_cwd, repo_root_fingerprint: fresh_fp
+          cwd: existing_cwd, repo_root_fingerprint: fresh_fp,
+          pre_persistence_fingerprint?: false
         )
         allow(existing).to receive(:instance_variable_get).with(:@command).and_return(%w[claude])
         TentacleRuntime::SESSIONS[note.id] = existing
@@ -303,7 +304,8 @@ RSpec.describe "API tentacle sessions", type: :request do
         existing = instance_double(
           TentacleRuntime::Session,
           alive?: true, pid: 9999, started_at: Time.current,
-          cwd: stale_cwd, repo_root_fingerprint: nil
+          cwd: stale_cwd, repo_root_fingerprint: nil,
+          pre_persistence_fingerprint?: false
         )
         TentacleRuntime::SESSIONS[note.id] = existing
 
@@ -335,7 +337,8 @@ RSpec.describe "API tentacle sessions", type: :request do
         existing = instance_double(
           TentacleRuntime::Session,
           alive?: true, pid: 1234, started_at: Time.current,
-          cwd: existing_cwd, repo_root_fingerprint: stale_fp
+          cwd: existing_cwd, repo_root_fingerprint: stale_fp,
+          pre_persistence_fingerprint?: false
         )
         TentacleRuntime::SESSIONS[note.id] = existing
 
@@ -349,6 +352,29 @@ RSpec.describe "API tentacle sessions", type: :request do
         body = response.parsed_body
         expect(body["stale_boot_config"]).to eq(true)
         expect(body["stale_reason"]).to eq("repo_identity_changed")
+      end
+
+      it "returns 409 with dirty_worktree: true when the worktree refresh refuses uncommitted changes" do
+        sign_in user
+        note = make_note("DirtyWorktree")
+
+        # Simulate WorktreeService.ensure raising the fail-closed signal:
+        # tracked files are modified inside the transversal worktree, so
+        # the refresh cannot proceed without destroying agent work.
+        allow(WorktreeService).to receive(:ensure).and_raise(
+          WorktreeService::DirtyWorktreeError, "refusing to refresh: WIP detected"
+        )
+        expect(TentacleRuntime).not_to receive(:start)
+
+        post "/api/notes/#{note.reload.slug}/tentacle", params: {command: "claude"}.to_json,
+          headers: {"CONTENT_TYPE" => "application/json"}
+
+        expect(response).to have_http_status(:conflict)
+        body = response.parsed_body
+        expect(body["dirty_worktree"]).to eq(true)
+        expect(body["error"]).to match(/uncommitted local changes/i)
+        expect(body["error"]).to match(/commit, stash, or push/i)
+        expect(body["detail"]).to include("WIP detected")
       end
 
       it "passes the routed initial_prompt to TentacleRuntime.start when starting fresh" do
@@ -401,7 +427,8 @@ RSpec.describe "API tentacle sessions", type: :request do
         existing = instance_double(
           TentacleRuntime::Session,
           alive?: true, pid: 5555, started_at: Time.utc(2026, 4, 20, 11),
-          cwd: existing_cwd, repo_root_fingerprint: fresh_fp
+          cwd: existing_cwd, repo_root_fingerprint: fresh_fp,
+          pre_persistence_fingerprint?: false
         )
         allow(existing).to receive(:instance_variable_get).with(:@command).and_return(%w[claude])
         TentacleRuntime::SESSIONS[note.id] = existing
