@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest"
 import { renderToStaticMarkup } from "react-dom/server"
+import type { JSX } from "react"
 
 import { ClawdAvatar } from "~/components/graph/ClawdAvatar"
 
