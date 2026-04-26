@@ -12,6 +12,12 @@
 #   6. Wake the Sentinela de Deploy via S2S — best effort, non-fatal.
 #      Token resolved from AGENT_S2S_TOKEN env or, failing that, from
 #      neuramd-web's merged systemd environment (PR #25).
+#   7. Wake every slug listed in the merged PR's "## Validar pós-deploy
+#      com:" block (best effort). Resolves the PR via gh CLI from the
+#      commit subject's (#N) tail; parses bullets via
+#      deploy/git-hooks/lib/validator_slugs.rb. Sentinela is skipped
+#      here when listed (already woken in step 6); per-slug locks let
+#      different validators wake in parallel.
 #
 # Install once per mirror:
 #   ln -sf /home/rafael/apps/NeuraMD/deploy/git-hooks/post-receive \
@@ -46,6 +52,7 @@ ZERO=0000000000000000000000000000000000000000
 SENTINELA_SLUG=sentinela-de-deploy
 SENTINELA_LOCK="${NEURAMD_SENTINELA_LOCK:-/tmp/neuramd-sentinela-wake.lock}"
 SENTINELA_LOCK_TIMEOUT="${NEURAMD_SENTINELA_LOCK_TIMEOUT:-60}"
+VALIDATOR_LOCK_PREFIX="${NEURAMD_VALIDATOR_LOCK_PREFIX:-/tmp/neuramd-validator-wake}"
 APP_HOST="${NEURAMD_APP_HOST:-http://127.0.0.1:3000}"
 # 60 attempts × 2s = 120s. Slow boots (large migrations, cold Puma) are
 # exactly when post-deploy verification is most valuable; dropping the
@@ -146,17 +153,80 @@ ${body_block}url = "$url"
 CFG
 }
 
+# Lock + stale-SHA + destroy + activate one tentacle session via S2S.
+# Shared between Sentinela (always woken) and validator wakes (driven
+# by the merged PR's "## Validar pós-deploy com:" block). All errors
+# are logged and swallowed — the deploy has already succeeded at this
+# point and a missed wake-up is recoverable via the next deploy or a
+# manual send_agent_message.
+#
+# Args: slug initial_prompt sha token lock_path tag
+#   `tag` is a label used in log lines so concurrent wakes can be
+#   disambiguated in the journal ("sentinela" vs "validator[slug]").
+wake_one_tentacle() {
+  local slug="$1" initial_prompt="$2" sha="$3" token="$4" lock_path="$5" tag="$6"
+  local base_url="$APP_HOST/api/s2s/tentacles/$slug"
+  local body
+  # JSON-escape: backslash and double-quote are the only metachars
+  # that can break a single-line string literal here. `tr` of newlines
+  # to spaces guards against embedded newlines in the prompt body.
+  local escaped="${initial_prompt//\\/\\\\}"
+  escaped="${escaped//\"/\\\"}"
+  escaped="$(printf '%s' "$escaped" | tr '\n' ' ')"
+  body="$(printf '{"initial_prompt":"%s"}' "$escaped")"
+
+  (
+    if ! flock -x -w "$SENTINELA_LOCK_TIMEOUT" 9; then
+      warn "$tag wake: lock timeout after ${SENTINELA_LOCK_TIMEOUT}s on $lock_path; skipping"
+      exit 0
+    fi
+
+    # Stale-SHA guard: the lock only serializes the destroy+activate
+    # pair, but nothing stops an older deploy whose health wait took
+    # longer from eventually acquiring the lock after a newer deploy
+    # has already activated. Consult the mirror's ref (single source
+    # of truth) and skip if our sha is strictly an ancestor — we are
+    # the straggler and must not overwrite the newer deploy's session.
+    local mirror_head=""
+    if mirror_head="$(git -C "$MIRROR_DIR" rev-parse --verify "refs/heads/$BRANCH" 2>/dev/null)"; then
+      if [[ "$mirror_head" != "$sha" ]] && \
+         git -C "$MIRROR_DIR" merge-base --is-ancestor "$sha" "$mirror_head" 2>/dev/null; then
+        log "$tag wake: my sha ($sha) is ancestor of mirror head ($mirror_head); skipping stale wake"
+        exit 0
+      fi
+    else
+      warn "$tag wake: could not read $BRANCH ref from $MIRROR_DIR; proceeding without staleness check"
+    fi
+
+    # Destroy first. The controller returns 200 whether or not a
+    # session existed, so both outcomes converge on "no live session"
+    # — the desired pre-state before activate. Non-2xx (network error,
+    # note missing, token wrong) is logged but does not block activate.
+    local destroy_response
+    if destroy_response="$(curl_s2s DELETE "$base_url" "$token" 2>&1)"; then
+      log "$tag wake: destroy OK ($destroy_response)"
+    else
+      warn "$tag wake: destroy non-2xx ($destroy_response); continuing to activate"
+    fi
+
+    local activate_response
+    if activate_response="$(curl_s2s POST "$base_url/activate" "$token" "$body" 2>&1)"; then
+      log "$tag wake: activated ($activate_response)"
+    else
+      warn "$tag wake: activation failed — $activate_response"
+    fi
+  ) 9>"$lock_path"
+}
+
 # Best-effort Sentinela de Deploy wake-up. Any failure (transport
 # check, health check, token lookup, lock timeout, destroy, or activate
 # call) is logged and swallowed — the deploy has already succeeded at
 # this point and a missed wake-up is recoverable via the next deploy
 # or a manual send_agent_message.
 #
-# Flow: under an exclusive flock, destroy any stale session then
-# activate fresh. The lock serializes the destroy+activate pair so two
-# concurrent post-receive invocations cannot interleave their S2S
-# calls — without it, an older deploy's activate could land after a
-# newer deploy's and route stale checks into the fresh session.
+# Always wakes Sentinela once per deploy regardless of PR contents —
+# Sentinela is the universal post-deploy vigia. PR-specific validators
+# are handled separately by wake_validator_tentacles.
 wake_sentinela_deploy() {
   local sha="$1"
 
@@ -177,51 +247,90 @@ wake_sentinela_deploy() {
     return 0
   fi
 
-  local base_url="$APP_HOST/api/s2s/tentacles/$SENTINELA_SLUG"
-  local body
-  body="$(printf '{"initial_prompt":"deploy %s concluido, rodar checks"}' "$sha")"
+  local prompt
+  prompt="$(printf 'deploy %s concluido, rodar checks' "$sha")"
+  wake_one_tentacle "$SENTINELA_SLUG" "$prompt" "$sha" "$token" "$SENTINELA_LOCK" "sentinela"
+}
 
-  (
-    if ! flock -x -w "$SENTINELA_LOCK_TIMEOUT" 9; then
-      warn "sentinela wake: lock timeout after ${SENTINELA_LOCK_TIMEOUT}s on $SENTINELA_LOCK; skipping"
-      exit 0
-    fi
+# Best-effort wake of every slug listed in the merged PR's
+# "## Validar pós-deploy com:" block. Each slug gets its own lock
+# (so wakes for different slugs run in parallel under the same
+# deploy, but two deploys hitting the same slug serialize). Sentinela
+# is skipped here — it is always woken by wake_sentinela_deploy
+# regardless of PR contents.
+#
+# Skips silently when:
+#   - gh CLI is not installed (manual wake required)
+#   - the deploy commit subject has no (#N) tag and no
+#     "Merge pull request #N" prefix (e.g., direct push without PR)
+#   - gh pr view fails (auth, rate limit, missing PR)
+#   - the PR body has no "## Validar pós-deploy com:" section
+#
+# All failures are logged and never block the deploy.
+wake_validator_tentacles() {
+  local sha="$1"
 
-    # Stale-SHA guard: the lock only serializes the destroy+activate
-    # pair, but nothing stops an older deploy whose health wait took
-    # longer from eventually acquiring the lock after a newer deploy
-    # has already activated. Consult the mirror's ref (single source
-    # of truth) and skip if our sha is strictly an ancestor — we are
-    # the straggler and must not overwrite the newer deploy's session.
-    local mirror_head=""
-    if mirror_head="$(git -C "$MIRROR_DIR" rev-parse --verify "refs/heads/$BRANCH" 2>/dev/null)"; then
-      if [[ "$mirror_head" != "$sha" ]] && \
-         git -C "$MIRROR_DIR" merge-base --is-ancestor "$sha" "$mirror_head" 2>/dev/null; then
-        log "sentinela wake: my sha ($sha) is ancestor of mirror head ($mirror_head); skipping stale wake"
-        exit 0
-      fi
-    else
-      warn "sentinela wake: could not read $BRANCH ref from $MIRROR_DIR; proceeding without staleness check"
-    fi
+  if ! safe_transport "$APP_HOST"; then
+    return 0  # safe_transport already warned in sentinela wake
+  fi
 
-    # Destroy first. The controller returns 200 whether or not a
-    # session existed, so both outcomes converge on "no live session"
-    # — the desired pre-state before activate. Non-2xx (network error,
-    # note missing, token wrong) is logged but does not block activate.
-    local destroy_response
-    if destroy_response="$(curl_s2s DELETE "$base_url" "$token" 2>&1)"; then
-      log "sentinela wake: destroy OK ($destroy_response)"
-    else
-      warn "sentinela wake: destroy non-2xx ($destroy_response); continuing to activate"
-    fi
+  if ! command -v gh >/dev/null 2>&1; then
+    log "validator wake: gh CLI not installed; skipping (deploy hosts must install gh to enable PR-driven wakes)"
+    return 0
+  fi
 
-    local activate_response
-    if activate_response="$(curl_s2s POST "$base_url/activate" "$token" "$body" 2>&1)"; then
-      log "sentinela wake: activated ($activate_response)"
-    else
-      warn "sentinela wake: activation failed — $activate_response"
+  local commit_msg pr_number
+  commit_msg="$(git -C "$MIRROR_DIR" log -1 --format=%B "$sha" 2>/dev/null)" || {
+    warn "validator wake: could not read commit message for $sha from $MIRROR_DIR; skipping"
+    return 0
+  }
+
+  local parser="$APP_DIR/deploy/git-hooks/lib/validator_slugs.rb"
+  if [[ ! -f "$parser" ]]; then
+    warn "validator wake: $parser missing; skipping"
+    return 0
+  fi
+
+  if ! pr_number="$(printf '%s' "$commit_msg" | ruby "$parser" parse-pr-number 2>/dev/null)"; then
+    log "validator wake: no PR number in commit subject (direct push?); skipping"
+    return 0
+  fi
+
+  local pr_body
+  pr_body="$(gh pr view "$pr_number" --json body --jq '.body' 2>/dev/null)" || {
+    warn "validator wake: gh pr view #$pr_number failed (auth/rate-limit/not-found?); skipping"
+    return 0
+  }
+
+  local slugs
+  slugs="$(printf '%s' "$pr_body" | ruby "$parser" parse-slugs 2>/dev/null)"
+  if [[ -z "$slugs" ]]; then
+    log "validator wake: PR #$pr_number has no '## Validar pós-deploy com:' block; skipping"
+    return 0
+  fi
+
+  local token
+  token="$(resolve_agent_s2s_token)" || token=""
+  if [[ -z "$token" ]]; then
+    warn "validator wake: AGENT_S2S_TOKEN not found; skipping"
+    return 0
+  fi
+
+  local prompt
+  prompt="$(printf 'Validador pós-deploy do PR #%s (sha %s). Leia `gh pr view %s` para o checklist em "## Validar pós-deploy com:" e execute o item correspondente ao seu slug.' "$pr_number" "$sha" "$pr_number")"
+
+  while IFS= read -r slug; do
+    [[ -z "$slug" ]] && continue
+    # Sentinela is woken unconditionally upstream — skip the duplicate
+    # destroy+activate so we don't race the always-on wake with the
+    # PR-driven wake (different prompts, same session).
+    if [[ "$slug" == "$SENTINELA_SLUG" ]]; then
+      log "validator wake: skipping $slug (already woken as sentinela)"
+      continue
     fi
-  ) 9>"$SENTINELA_LOCK"
+    local lock_path="${VALIDATOR_LOCK_PREFIX}-${slug}.lock"
+    wake_one_tentacle "$slug" "$prompt" "$sha" "$token" "$lock_path" "validator[$slug]"
+  done <<< "$slugs"
 }
 
 while read -r oldrev newrev refname; do
@@ -329,6 +438,14 @@ while read -r oldrev newrev refname; do
   # its smoke checks against the freshly-booted runtime; silent on
   # success, routes severity-tagged messages on anomaly.
   wake_sentinela_deploy "$newrev"
+
+  # (7) Wake validator tentacles listed in the merged PR's
+  # "## Validar pós-deploy com:" block (best effort). Sentinela is
+  # always woken by step 6; PR-specific validators are layered on top
+  # so PR authors can name extra agents that should run their own
+  # checks (e.g. especialista-neuramd for migration/property checks,
+  # ux-ui for visual regression on routes that changed).
+  wake_validator_tentacles "$newrev"
 
   log "$(date --iso-8601=seconds) autodeploy complete"
 done
