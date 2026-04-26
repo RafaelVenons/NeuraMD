@@ -8,6 +8,8 @@ Rails.application.routes.draw do
 
   get "up" => "rails/health#show", as: :rails_health_check
 
+  match "/mcp", to: "mcp#handle", via: %i[get post delete], as: :mcp_gateway
+
   root to: redirect("/app")
 
   get "/app", to: "app#shell", as: :app_shell

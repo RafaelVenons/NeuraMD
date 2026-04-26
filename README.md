@@ -57,6 +57,85 @@ npx playwright install chromium
 npm run e2e
 ```
 
+## Remote MCP Gateway
+
+The MCP server is also reachable over HTTP at `POST /mcp` for clients that
+can't (or shouldn't) speak stdio. Auth is bearer-token; the whitelist of
+exposed tools and the scope each one requires is declarative.
+
+### Setup
+
+```bash
+# 1. Copy the example config and adjust if needed (defaults expose
+#    read+write note tools; tentacle/agent-mesh tools are commented out).
+cp config/mcp_remote.yml.example config/mcp_remote.yml
+
+# 2. Issue a token. Print-once — store it in your password manager.
+NAME=my-laptop SCOPES=read,write bin/rails mcp:tokens:issue
+
+# 3. (Recommended) Bind only on loopback and front with a TLS reverse
+#    proxy (nginx/caddy). The Rails app itself listens on 0.0.0.0; the
+#    proxy is what makes the gateway reachable on the LAN.
+```
+
+Token management:
+
+```bash
+bin/rails mcp:tokens:list
+ID=<uuid> bin/rails mcp:tokens:revoke
+```
+
+### Talking to the gateway
+
+```bash
+TOKEN="<paste plaintext from issue step>"
+BASE="http://127.0.0.1:3000/mcp"
+
+# initialize handshake
+curl -sS -X POST "$BASE" \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -H "Accept: application/json" \
+  -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"curl","version":"1"}}}'
+
+# list exposed tools
+curl -sS -X POST "$BASE" \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" -H "Accept: application/json" \
+  -d '{"jsonrpc":"2.0","id":2,"method":"tools/list"}'
+
+# call a tool (read scope sufficient for search_notes)
+curl -sS -X POST "$BASE" \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" -H "Accept: application/json" \
+  -d '{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"search_notes","arguments":{"query":"deploy"}}}'
+```
+
+### MCP client config (e.g. Claude Code, Continue, etc.)
+
+For a client that supports Streamable HTTP transport with a bearer header:
+
+```json
+{
+  "mcpServers": {
+    "neuramd-remote": {
+      "transport": "streamable_http",
+      "url": "https://your-host.example/mcp",
+      "headers": { "Authorization": "Bearer <token>" }
+    }
+  }
+}
+```
+
+### Tuning
+
+- `NEURAMD_MCP_RATE_LIMIT_PER_MIN` — per-token throttle (default 60/min)
+- `NEURAMD_MCP_CALL_TIMEOUT_SECONDS` — per-call timeout (default 30s)
+- `config/mcp_remote.yml` — tool whitelist + scope map (see `.example`)
+
+Errors come back JSON-RPC shaped (`-32001` unauthorized / scope, `-32601`
+tool not exposed, `-32603` timeout/internal, `-32000` rate limit).
+
 ## License
 
 Private — all rights reserved.

@@ -1,0 +1,81 @@
+# Remote MCP Gateway whitelist + scope map.
+#
+# Each entry maps an MCP tool_name (as exposed in the protocol) to:
+#   class  — the Ruby class to load (must respond to MCP::Tool interface)
+#   scope  — the minimum McpAccessToken scope required to invoke it
+#
+# Tools NOT listed here are NOT exposed remotely. Stdio tentacles still
+# get the full Mcp::Tools.all set; this file only governs the HTTP gate.
+#
+# Copy to config/mcp_remote.yml and adjust before exposing the gateway.
+tools:
+  search_notes:
+    class: Mcp::Tools::SearchNotesTool
+    scope: read
+  read_note:
+    class: Mcp::Tools::ReadNoteTool
+    scope: read
+  list_tags:
+    class: Mcp::Tools::ListTagsTool
+    scope: read
+  notes_by_tag:
+    class: Mcp::Tools::NotesByTagTool
+    scope: read
+  note_graph:
+    class: Mcp::Tools::NoteGraphTool
+    scope: read
+  recent_changes:
+    class: Mcp::Tools::RecentChangesTool
+    scope: read
+  find_anemic_notes:
+    class: Mcp::Tools::FindAnemicNotesTool
+    scope: read
+  create_note:
+    class: Mcp::Tools::CreateNoteTool
+    scope: write
+  update_note:
+    class: Mcp::Tools::UpdateNoteTool
+    scope: write
+  patch_note:
+    class: Mcp::Tools::PatchNoteTool
+    scope: write
+  manage_property:
+    class: Mcp::Tools::ManagePropertyTool
+    scope: write
+  import_markdown:
+    class: Mcp::Tools::ImportMarkdownTool
+    scope: write
+  merge_notes:
+    class: Mcp::Tools::MergeNotesTool
+    scope: write
+  bulk_remove_tag:
+    class: Mcp::Tools::BulkRemoveTagTool
+    scope: write
+
+  # Tentacle/agent-mesh tools — disabled by default. The agent fabric
+  # is internal; expose remotely only if you understand the implications
+  # (a write-scope leak with these enabled lets external clients spawn
+  # tentacles and inject messages into the agent inbox).
+  # send_agent_message:
+  #   class: Mcp::Tools::SendAgentMessageTool
+  #   scope: tentacle
+  # read_agent_inbox:
+  #   class: Mcp::Tools::ReadAgentInboxTool
+  #   scope: tentacle
+  # spawn_child_tentacle:
+  #   class: Mcp::Tools::SpawnChildTentacleTool
+  #   scope: tentacle
+  # activate_tentacle_session:
+  #   class: Mcp::Tools::ActivateTentacleSessionTool
+  #   scope: tentacle
+  # route_human_to:
+  #   class: Mcp::Tools::RouteHumanToTool
+  #   scope: tentacle
+
+# Per-token rate limit. Each McpAccessToken is throttled separately.
+# Adjust here or via NEURAMD_MCP_RATE_LIMIT_PER_MIN env var.
+rate_limit_per_min: 60
+
+# Per-call timeout (seconds). Long-running tools should be split or
+# moved to a job queue rather than raised here.
+call_timeout_seconds: 30
