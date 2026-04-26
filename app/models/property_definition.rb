@@ -11,7 +11,7 @@ class PropertyDefinition < ApplicationRecord
   # hijacked key. Seeders bypass by setting `system: true`.
   RESERVED_SYSTEM_KEYS = %w[
     avatar_color avatar_hat avatar_variant
-    tentacle_cwd tentacle_initial_prompt tentacle_workspace
+    tentacle_cwd tentacle_initial_prompt tentacle_workspace tentacle_yolo
   ].freeze
   KEY_FORMAT = /\A[a-z][a-z0-9_]{0,62}\z/
 

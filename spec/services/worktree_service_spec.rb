@@ -9,6 +9,12 @@ RSpec.describe WorktreeService do
   let(:tentacle_id) { "11111111-2222-3333-4444-555555555555" }
 
   before do
+    # Skip the bin/mcp-server smoke test by default — most specs do not
+    # provide a runnable script and we don't want to pay 5s timeout each.
+    # The dedicated `.ensure smoke-tests bin/mcp-server` describe below
+    # opts in by deleting the env var.
+    ENV["NEURAMD_DISABLE_MCP_SMOKE"] = "1"
+
     FileUtils.mkdir_p(repo_root)
     run_git("init", "--initial-branch=main")
     run_git("config", "user.email", "spec@neuramd.test")
@@ -18,7 +24,10 @@ RSpec.describe WorktreeService do
     run_git("commit", "-m", "initial")
   end
 
-  after { FileUtils.remove_entry(sandbox) if File.directory?(sandbox) }
+  after do
+    ENV.delete("NEURAMD_DISABLE_MCP_SMOKE")
+    FileUtils.remove_entry(sandbox) if File.directory?(sandbox)
+  end
 
   def run_git(*args)
     out, status = Open3.capture2e({ "GIT_CONFIG_GLOBAL" => "/dev/null", "GIT_CONFIG_SYSTEM" => "/dev/null" },
@@ -655,6 +664,118 @@ RSpec.describe WorktreeService do
       expect(listing).not_to include(path)
       branches = run_git("branch", "--list", "tentacle/#{tentacle_id}")
       expect(branches).to be_empty.or eq("\n")
+    end
+  end
+
+  describe ".write_yolo_settings!" do
+    let(:path) { Pathname.new(Dir.mktmpdir("yolo-target-")) }
+
+    after { FileUtils.remove_entry(path) if File.directory?(path) }
+
+    it "writes a settings.local.json with bypassPermissions under .claude/" do
+      described_class.write_yolo_settings!(path: path)
+
+      target = path.join(".claude/settings.local.json")
+      expect(target.file?).to be(true)
+      payload = JSON.parse(target.read)
+      expect(payload).to eq("permissions" => {"defaultMode" => "bypassPermissions"})
+    end
+
+    it "is idempotent — does not rewrite the file when contents already match" do
+      described_class.write_yolo_settings!(path: path)
+      target = path.join(".claude/settings.local.json")
+      first_mtime = target.mtime
+
+      sleep(0.05)
+      described_class.write_yolo_settings!(path: path)
+      expect(target.mtime).to eq(first_mtime)
+    end
+
+    it "overwrites the file when prior contents drift from the expected payload" do
+      target = path.join(".claude/settings.local.json")
+      FileUtils.mkdir_p(target.parent)
+      File.write(target, '{"permissions":{"defaultMode":"plan"}}')
+
+      described_class.write_yolo_settings!(path: path)
+
+      payload = JSON.parse(target.read)
+      expect(payload.dig("permissions", "defaultMode")).to eq("bypassPermissions")
+    end
+
+    it "no-ops when the worktree path does not exist" do
+      missing = Pathname.new("/tmp/missing-#{SecureRandom.hex(4)}")
+      expect { described_class.write_yolo_settings!(path: missing) }.not_to raise_error
+      expect(missing.exist?).to be(false)
+    end
+  end
+
+  describe ".ensure smoke-tests bin/mcp-server" do
+    before do
+      # Opt back in: the suite-wide before block disables the smoke,
+      # this block flips it back on so we can observe it.
+      ENV.delete("NEURAMD_DISABLE_MCP_SMOKE")
+    end
+
+    after { ENV["NEURAMD_DISABLE_MCP_SMOKE"] = "1" }
+
+    it "logs a structured warning when bin/mcp-server --check exits non-zero" do
+      # Place a stub bin/mcp-server inside the repo_root that fails when
+      # run with --check, mimicking a worktree where Rails fails to
+      # initialize (missing master.key, broken bundle, etc.). Commit so
+      # `git worktree add` carries it into the worktree.
+      script = repo_root.join("bin/mcp-server")
+      FileUtils.mkdir_p(script.parent)
+      File.write(script, <<~SH)
+        #!/bin/bash
+        echo "boom: cannot load Rails" >&2
+        exit 7
+      SH
+      FileUtils.chmod(0o755, script)
+      run_git("add", "bin/mcp-server")
+      run_git("commit", "-m", "stub mcp-server")
+
+      logs = []
+      allow(Rails.logger).to receive(:warn) { |msg| logs << msg }
+
+      described_class.ensure(tentacle_id: tentacle_id, repo_root: repo_root)
+
+      smoke_log = logs.find { |line| line.include?("mcp-server --check failed") }
+      expect(smoke_log).not_to be_nil
+      expect(smoke_log).to include('exit=7')
+      expect(smoke_log).to include("boom: cannot load Rails")
+    end
+
+    it "does not log when bin/mcp-server --check succeeds" do
+      script = repo_root.join("bin/mcp-server")
+      FileUtils.mkdir_p(script.parent)
+      File.write(script, "#!/bin/bash\necho ok\nexit 0\n")
+      FileUtils.chmod(0o755, script)
+      run_git("add", "bin/mcp-server")
+      run_git("commit", "-m", "stub mcp-server ok")
+
+      expect(Rails.logger).not_to receive(:warn).with(/mcp-server/)
+      described_class.ensure(tentacle_id: tentacle_id, repo_root: repo_root)
+    end
+
+    it "skips silently when the worktree carries no bin/mcp-server" do
+      # repo_root has no bin/mcp-server committed (default fixture).
+      # The smoke must short-circuit without raising.
+      expect(Rails.logger).not_to receive(:warn).with(/mcp-server/)
+      described_class.ensure(tentacle_id: tentacle_id, repo_root: repo_root)
+    end
+
+    it "honors NEURAMD_DISABLE_MCP_SMOKE=1 to opt out entirely" do
+      script = repo_root.join("bin/mcp-server")
+      FileUtils.mkdir_p(script.parent)
+      File.write(script, "#!/bin/bash\nexit 99\n")
+      FileUtils.chmod(0o755, script)
+      run_git("add", "bin/mcp-server")
+      run_git("commit", "-m", "stub mcp-server failing")
+
+      ENV["NEURAMD_DISABLE_MCP_SMOKE"] = "1"
+
+      expect(Rails.logger).not_to receive(:warn).with(/mcp-server/)
+      described_class.ensure(tentacle_id: tentacle_id, repo_root: repo_root)
     end
   end
 end

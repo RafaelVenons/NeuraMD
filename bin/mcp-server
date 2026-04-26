@@ -1,8 +1,27 @@
 #!/usr/bin/env -S bash --norc --noprofile
 set -euo pipefail
 
+# `bin/mcp-server --check` boots Rails + the MCP tool registry and exits
+# 0 once they load cleanly, so callers (WorktreeService smoke test) can
+# verify a fresh worktree's runtime without staying open as a stdio
+# server. stderr stays visible in this mode so the smoke test can log a
+# real error instead of an empty failure.
+CHECK_MODE=0
+if [[ "${1:-}" == "--check" ]]; then
+  CHECK_MODE=1
+  shift
+fi
+
 # Ensure mise shims are in PATH for non-interactive spawns (e.g. Claude Code MCP)
 export PATH="$HOME/.local/share/mise/shims:$HOME/.local/bin:$PATH"
+
+# Skip development/test gem groups by default — tentacle worktrees ship
+# with `vendor/bundle` symlinked from the production install, which does
+# not carry rspec-rails / faker / etc. Without this, `require "bundler"`
+# in config/boot.rb fails with `Bundler::GemNotFound` before we ever get
+# to start the MCP server. Caller can override (`BUNDLE_WITHOUT=`) if a
+# dev-mode tentacle needs the extra groups.
+export BUNDLE_WITHOUT="${BUNDLE_WITHOUT:-development:test}"
 
 # Disable zoxide hook noise
 unset _ZO_DATA_DIR 2>/dev/null || true
@@ -10,6 +29,18 @@ export _ZO_DOCTOR=0
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 NEURAMD_DIR="$(dirname "$SCRIPT_DIR")"
+
+if [[ "$CHECK_MODE" -eq 1 ]]; then
+  exec ruby -C "$NEURAMD_DIR" -e '
+ENV["RAILS_ENV"] ||= "development"
+
+require_relative "config/environment"
+require "mcp"
+
+Mcp::Tools.all
+puts "ok"
+'
+fi
 
 exec ruby -C "$NEURAMD_DIR" -e '
 ENV["RAILS_ENV"] ||= "development"

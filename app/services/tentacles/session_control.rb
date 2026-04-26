@@ -60,6 +60,12 @@ module Tentacles
         worktree_root: worktree_root,
         link_shared: link_shared
       )
+      # YOLO opt-in: charters with property `tentacle_yolo=true` get
+      # `defaultMode: bypassPermissions` written into the worktree's
+      # Claude Code settings, so unattended agents (Sentinela de Deploy,
+      # cron tentacles) don't deadlock at the first permission prompt.
+      # Gerente/humans are expected to leave the property unset.
+      WorktreeService.write_yolo_settings!(path: cwd) if yolo_enabled?(@note)
       session = ::TentacleRuntime.start(
         tentacle_id: @note.id,
         command: @command,
@@ -179,6 +185,16 @@ module Tentacles
       return boot if routed.nil? || routed.empty?
       return routed if boot.nil? || boot.empty?
       "#{boot}\n\n#{routed}"
+    end
+
+    # Truthy check that accepts the boolean `true` stored by
+    # Properties::SetService for typed boolean PDs as well as the
+    # string fallbacks ("true"/"1") that earlier ad-hoc writes used
+    # before tentacle_yolo had a system PropertyDefinition.
+    def yolo_enabled?(note)
+      raw = note.current_properties["tentacle_yolo"]
+      return true if raw == true
+      %w[true 1].include?(raw.to_s.strip.downcase)
     end
   end
 end

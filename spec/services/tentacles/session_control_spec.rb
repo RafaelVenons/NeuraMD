@@ -194,5 +194,44 @@ RSpec.describe Tentacles::SessionControl do
         described_class.activate(note: note, command: ["claude"], initial_prompt: "x" * 3000)
       }.to raise_error(Tentacles::SessionControl::InvalidBootConfig, /initial_prompt/)
     end
+
+    describe "tentacle_yolo opt-in" do
+      let(:fake_session) do
+        instance_double(
+          TentacleRuntime::Session,
+          alive?: true, pid: 9991, started_at: Time.current,
+          cwd: "/tmp/worktree-#{note.id}", repo_root_fingerprint: "fp:1",
+          pre_persistence_fingerprint?: false,
+          initial_prompt_delivered?: false
+        )
+      end
+
+      before do
+        PropertyDefinition.find_or_create_by!(key: "tentacle_yolo") do |d|
+          d.value_type = "boolean"
+          d.system = true
+        end
+        allow(WorktreeService).to receive(:ensure).and_return("/tmp/worktree-#{note.id}")
+        allow(TentacleRuntime).to receive(:start).and_return(fake_session)
+      end
+
+      it "writes yolo settings into the worktree when the charter has tentacle_yolo=true" do
+        Properties::SetService.call(note: note, changes: {"tentacle_yolo" => true})
+        expect(WorktreeService).to receive(:write_yolo_settings!).with(path: "/tmp/worktree-#{note.id}")
+
+        described_class.activate(note: note.reload, command: ["claude"])
+      end
+
+      it "does not write yolo settings when tentacle_yolo is unset" do
+        expect(WorktreeService).not_to receive(:write_yolo_settings!)
+        described_class.activate(note: note, command: ["claude"])
+      end
+
+      it "does not write yolo settings when tentacle_yolo is false" do
+        Properties::SetService.call(note: note, changes: {"tentacle_yolo" => false})
+        expect(WorktreeService).not_to receive(:write_yolo_settings!)
+        described_class.activate(note: note.reload, command: ["claude"])
+      end
+    end
   end
 end
