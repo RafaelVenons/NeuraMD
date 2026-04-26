@@ -29,6 +29,7 @@ gem "pg_search"
 
 # MCP (Model Context Protocol)
 gem "mcp"
+gem "rack-attack"
 
 # StandardRB (replaces rubocop-omakase)
 gem "standard", require: false
