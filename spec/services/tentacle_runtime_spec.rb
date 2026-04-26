@@ -543,6 +543,45 @@ RSpec.describe TentacleRuntime do
     end
   end
 
+  describe "Session#wait_for_first_output" do
+    it "returns true when output reached the reader before the timeout" do
+      session = described_class.start(
+        tentacle_id: tentacle_id,
+        command: ["sh", "-c", "printf hi; sleep 5"]
+      )
+      expect(session.wait_for_first_output(timeout: 2)).to be(true)
+    end
+
+    it "returns false when the timeout elapsed without any output" do
+      # Stub the reader so no chunk is ever observed; the runtime must
+      # report `false` so deliver_initial_prompt skips the write.
+      allow_any_instance_of(described_class::Session).to receive(:start_reader)
+      session = described_class.start(tentacle_id: tentacle_id, command: ["sleep", "5"])
+      expect(session.wait_for_first_output(timeout: 0.1)).to be(false)
+    end
+  end
+
+  describe "Session#wait_for_quiet" do
+    it "returns false when no output was ever observed within max_wait" do
+      # `@last_output_at` stays nil — previously this returned `true` and
+      # tricked deliver_initial_prompt into writing into a dead readline
+      # buffer. Must now return `false`.
+      allow_any_instance_of(described_class::Session).to receive(:start_reader)
+      session = described_class.start(tentacle_id: tentacle_id, command: ["sleep", "5"])
+      expect(session.wait_for_quiet(grace: 0.05, max_wait: 0.2)).to be(false)
+    end
+
+    it "returns true once the stream observed output and went quiet for `grace` seconds" do
+      session = described_class.start(
+        tentacle_id: tentacle_id,
+        command: ["sh", "-c", "printf hello; sleep 5"]
+      )
+      # First wait for output to flush so @last_output_at is set.
+      expect(session.wait_for_first_output(timeout: 2)).to be(true)
+      expect(session.wait_for_quiet(grace: 0.1, max_wait: 1.5)).to be(true)
+    end
+  end
+
   describe ".start" do
     it "spawns a subprocess and streams stdout through the channel" do
       received = []
@@ -581,12 +620,17 @@ RSpec.describe TentacleRuntime do
     end
 
     it "writes initial_prompt to stdin after boot when provided" do
+      # Use a command that prints something first (mimicking a Claude Code
+      # banner) so wait_for_first_output observes output before we write
+      # — the runtime now gates the write on that condition. `cat` alone
+      # never emits anything until input arrives, so it would never trip
+      # wait_for_first_output and the prompt would correctly be skipped.
       received = []
       allow(TentacleChannel).to receive(:broadcast_output) { |data:, **| received << data }
 
       session = described_class.start(
         tentacle_id: tentacle_id,
-        command: ["cat"],
+        command: ["sh", "-c", "printf ready; cat"],
         initial_prompt: "hello tentacle"
       )
 
@@ -600,6 +644,45 @@ RSpec.describe TentacleRuntime do
       expect {
         described_class.start(tentacle_id: tentacle_id, command: ["sleep", "5"], initial_prompt: nil)
       }.not_to raise_error
+    end
+
+    it "leaves initial_prompt_delivered=false when the PTY never produces output before the boot timeout" do
+      # Regression: a child that booted slowly used to receive the prompt
+      # against an unready readline buffer (bytes lost) and still reported
+      # routed_prompt_delivered=true. Now the runtime gates the write on
+      # wait_for_first_output reporting `true`. We simulate that by stubbing
+      # the wait so it never sees output, and assert no write was issued.
+      writer_double = StringIO.new
+      allow_any_instance_of(described_class::Session).to receive(:wait_for_first_output).and_return(false)
+      allow_any_instance_of(described_class::Session).to receive(:write) { |_, data| writer_double << data }
+
+      session = described_class.start(
+        tentacle_id: tentacle_id,
+        command: ["sleep", "5"],
+        initial_prompt: "this should never reach the child"
+      )
+
+      expect(session.initial_prompt_delivered?).to be false
+      expect(writer_double.string).to be_empty
+    end
+
+    it "leaves initial_prompt_delivered=false when output booted but never quieted within max_wait" do
+      # Even when the PTY emits something, a TUI that keeps drawing past
+      # QUIET_MAX_WAIT means the readline buffer is still racing the splash;
+      # writing now would lose bytes. Caller must see false and retry.
+      writer_double = StringIO.new
+      allow_any_instance_of(described_class::Session).to receive(:wait_for_first_output).and_return(true)
+      allow_any_instance_of(described_class::Session).to receive(:wait_for_quiet).and_return(false)
+      allow_any_instance_of(described_class::Session).to receive(:write) { |_, data| writer_double << data }
+
+      session = described_class.start(
+        tentacle_id: tentacle_id,
+        command: ["sleep", "5"],
+        initial_prompt: "this should never reach the child"
+      )
+
+      expect(session.initial_prompt_delivered?).to be false
+      expect(writer_double.string).to be_empty
     end
 
     it "exports NEURAMD_TENTACLE_ID in the child process env" do

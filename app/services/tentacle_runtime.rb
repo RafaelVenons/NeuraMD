@@ -86,18 +86,40 @@ class TentacleRuntime
     private
 
     # Synchronous delivery of the initial_prompt to the session's PTY.
-    # Two-phase wait so the prompt actually lands inside Claude Code's
-    # readline buffer instead of getting eaten by the splash/TUI init:
-    #   1. wait_for_first_output: PTY produced anything (banner / TUI start)
-    #   2. wait_for_quiet: output stream has been silent for QUIET_GRACE
-    #      seconds (capped at QUIET_MAX_WAIT) — TUI finished drawing.
-    # Sets session#initial_prompt_delivered? on success so SessionControl
-    # can return an honest routed_prompt_delivered flag instead of the
-    # previous hardcoded `false` for new sessions. Errors are logged and
-    # swallowed: a slow PTY must not break the activate API call.
+    # Two-phase confirmation so the prompt actually lands inside Claude
+    # Code's readline buffer instead of getting eaten by the splash/TUI
+    # init:
+    #   1. wait_for_first_output must report `true` — PTY produced
+    #      something (banner / TUI start). A `false` return means the
+    #      PTY never booted in time, so the `write` would race a
+    #      pre-readline buffer; skip both write and mark.
+    #   2. wait_for_quiet must report `true` — the stream observed
+    #      output and went quiet for QUIET_GRACE seconds (capped at
+    #      QUIET_MAX_WAIT). A `false` return means the TUI never
+    #      finished drawing inside the budget; the prompt would still
+    #      race the early-state buffer, so skip mark even though the
+    #      first phase booted.
+    # Only when both phases confirm do we write and flip
+    # session#initial_prompt_delivered? to true. SessionControl reads
+    # that flag to populate routed_prompt_delivered honestly: callers
+    # that see `false` know the prompt was NOT delivered and can
+    # retry via the alive-session reuse path. Errors are logged and
+    # swallowed — a slow PTY must not break the activate API call.
     def deliver_initial_prompt(session, prompt)
-      session.wait_for_first_output(timeout: INITIAL_PROMPT_BOOT_DELAY)
-      session.wait_for_quiet(grace: INITIAL_PROMPT_QUIET_GRACE, max_wait: INITIAL_PROMPT_QUIET_MAX_WAIT)
+      unless session.wait_for_first_output(timeout: INITIAL_PROMPT_BOOT_DELAY)
+        Rails.logger.warn(
+          "TentacleRuntime initial_prompt skipped for #{session.tentacle_id}: " \
+          "PTY produced no output within #{INITIAL_PROMPT_BOOT_DELAY}s; leaving routed_prompt_delivered=false"
+        )
+        return
+      end
+      unless session.wait_for_quiet(grace: INITIAL_PROMPT_QUIET_GRACE, max_wait: INITIAL_PROMPT_QUIET_MAX_WAIT)
+        Rails.logger.warn(
+          "TentacleRuntime initial_prompt skipped for #{session.tentacle_id}: " \
+          "PTY output never quieted within #{INITIAL_PROMPT_QUIET_MAX_WAIT}s; leaving routed_prompt_delivered=false"
+        )
+        return
+      end
       session.write("#{prompt}\n")
       session.mark_initial_prompt_delivered!
     rescue StandardError => e
@@ -374,10 +396,16 @@ class TentacleRuntime
       !@dtach.nil?
     end
 
+    # Returns true when the PTY produced output (banner / TUI start)
+    # within the timeout, false when the timeout elapsed first. Callers
+    # use this as a hard gate before writing the initial prompt: a
+    # `false` return means the PTY hasn't reached its readline buffer
+    # yet, so any write would be eaten by the early state.
     def wait_for_first_output(timeout:)
       @boot_mutex.synchronize do
-        next if @booted
+        return true if @booted
         @boot_cv.wait(@boot_mutex, timeout)
+        @booted
       end
     end
 
@@ -385,16 +413,24 @@ class TentacleRuntime
     # capped by `max_wait` total. Used after wait_for_first_output to
     # let the TUI finish drawing before we write the prompt — solves
     # the race where bytes land in Claude Code's pre-readline buffer
-    # and get discarded. Returns true when quiet was observed, false
-    # when max_wait elapsed without ever quieting. When no output has
-    # ever arrived, treat the stream as already quiet so callers can
-    # proceed (the wait_for_first_output preceding this already paid
-    # the boot-delay budget).
+    # and get discarded.
+    #
+    # Returns true only when output was observed AND has been quiet for
+    # `grace` seconds. Returns false when `max_wait` elapses without
+    # quieting OR when no output ever arrived (`@last_output_at` nil).
+    # The previous "treat nil as already quiet" shortcut is what made
+    # routed_prompt_delivered fire on dead PTYs — callers must see a
+    # honest `false` so the prompt is not marked delivered.
     def wait_for_quiet(grace:, max_wait:)
       deadline = Time.current + max_wait
       loop do
         last = @last_output_at
-        return true if last.nil?
+        if last.nil?
+          remaining = deadline - Time.current
+          return false if remaining <= 0
+          sleep [remaining, 0.05].min
+          next
+        end
         elapsed_quiet = Time.current - last
         return true if elapsed_quiet >= grace
         remaining = deadline - Time.current
