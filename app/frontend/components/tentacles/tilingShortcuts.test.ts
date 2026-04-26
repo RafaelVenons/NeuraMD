@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest"
 
 import {
+  isEditableShortcutTarget,
   resolveTilingShortcut,
   selectNextTileId,
   selectPreviousTileId,
@@ -101,5 +102,55 @@ describe("resolveTilingShortcut", () => {
   it("returns null for unrecognised Alt+key combinations", () => {
     expect(resolveTilingShortcut(altKey("q"))).toBeNull()
     expect(resolveTilingShortcut(altKey("Tab"))).toBeNull()
+  })
+})
+
+describe("isEditableShortcutTarget", () => {
+  it("returns false for null and non-element targets", () => {
+    expect(isEditableShortcutTarget(null)).toBe(false)
+    expect(isEditableShortcutTarget(document)).toBe(false)
+  })
+
+  it("returns false for non-editable elements like buttons or spans", () => {
+    const button = document.createElement("button")
+    document.body.appendChild(button)
+    expect(isEditableShortcutTarget(button)).toBe(false)
+
+    const span = document.createElement("span")
+    document.body.appendChild(span)
+    expect(isEditableShortcutTarget(span)).toBe(false)
+  })
+
+  it("returns true for input, textarea and select", () => {
+    for (const tag of ["input", "textarea", "select"] as const) {
+      const el = document.createElement(tag)
+      document.body.appendChild(el)
+      expect(isEditableShortcutTarget(el)).toBe(true)
+    }
+  })
+
+  it("returns true for elements inside a contenteditable region", () => {
+    const editor = document.createElement("div")
+    editor.setAttribute("contenteditable", "true")
+    const child = document.createElement("p")
+    editor.appendChild(child)
+    document.body.appendChild(editor)
+    expect(isEditableShortcutTarget(editor)).toBe(true)
+    expect(isEditableShortcutTarget(child)).toBe(true)
+  })
+
+  it("returns true for elements inside an xterm canvas", () => {
+    const term = document.createElement("div")
+    term.className = "xterm"
+    const helpers = document.createElement("div")
+    helpers.className = "xterm-helpers"
+    const helperTextarea = document.createElement("textarea")
+    helperTextarea.className = "xterm-helper-textarea"
+    helpers.appendChild(helperTextarea)
+    term.appendChild(helpers)
+    document.body.appendChild(term)
+    expect(isEditableShortcutTarget(term)).toBe(true)
+    expect(isEditableShortcutTarget(helpers)).toBe(true)
+    expect(isEditableShortcutTarget(helperTextarea)).toBe(true)
   })
 })

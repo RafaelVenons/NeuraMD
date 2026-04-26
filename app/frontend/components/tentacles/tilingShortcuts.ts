@@ -29,6 +29,14 @@ export function selectPreviousTileId(ids: string[], currentId: string | null): s
   return ids[(idx - 1 + ids.length) % ids.length] ?? null
 }
 
+export function isEditableShortcutTarget(target: EventTarget | null): boolean {
+  if (!(target instanceof Element)) return false
+  if (target.closest("input, textarea, select")) return true
+  if (target.closest("[contenteditable=''], [contenteditable=true]")) return true
+  if (target.closest(".xterm")) return true
+  return false
+}
+
 export function resolveTilingShortcut(event: KeyboardEvent): TilingShortcut | null {
   if (!event.altKey) return null
   if (event.ctrlKey || event.metaKey) return null
@@ -57,6 +65,7 @@ export function useTilingShortcuts(handlers: Handlers): void {
     if (typeof window === "undefined") return
 
     const onKey = (event: KeyboardEvent) => {
+      if (isEditableShortcutTarget(event.target)) return
       const shortcut = resolveTilingShortcut(event)
       if (!shortcut) return
       if (shortcut.kind === "focusIndex") {
