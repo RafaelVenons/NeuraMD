@@ -10,6 +10,9 @@ type Props = {
   nodes: GraphNode[]
   edges: GraphEdge[]
   onSelectNote?: (slug: string) => void
+  // When provided, agent clicks invoke this instead of `onSelectNote`.
+  // Lets the host (GraphPage) open the avatar editor in place of navigating.
+  onAgentClick?: (node: GraphNode, screen: { x: number; y: number }) => void
   selectedId?: string | null
   aliveTentacleIds?: Set<string>
   agentNoteIds?: Set<string>
@@ -39,6 +42,7 @@ export function GraphCanvas({
   nodes,
   edges,
   onSelectNote,
+  onAgentClick,
   selectedId,
   aliveTentacleIds,
   agentNoteIds,
@@ -105,7 +109,14 @@ export function GraphCanvas({
         reheat()
         if (wasClick) {
           const node = simulatedNodes.find((n) => n.id === dragNodeId)
-          if (node) onSelectNote?.(node.note.slug)
+          if (node) {
+            const isAgent = agentNoteIds?.has(node.id) === true
+            if (isAgent && onAgentClick) {
+              onAgentClick(node, { x: e.clientX, y: e.clientY })
+            } else {
+              onSelectNote?.(node.note.slug)
+            }
+          }
         }
         setDragNodeId(null)
         dragStartRef.current = null
@@ -113,7 +124,16 @@ export function GraphCanvas({
       }
       handleCanvasPointerUp(e)
     },
-    [dragNodeId, unpinNode, reheat, handleCanvasPointerUp, simulatedNodes, onSelectNote]
+    [
+      dragNodeId,
+      unpinNode,
+      reheat,
+      handleCanvasPointerUp,
+      simulatedNodes,
+      onSelectNote,
+      onAgentClick,
+      agentNoteIds,
+    ]
   )
 
   const nodeById = new Map(simulatedNodes.map((n) => [n.id, n]))
@@ -171,8 +191,12 @@ export function GraphCanvas({
               const isSelected = selectedId === node.id
               const isAliveTentacle = node.type === "tentacle" && aliveTentacleIds?.has(node.id) === true
               const showLabel = isAgent || node.type === "root" || node.type === "structure"
-              const avatarColor = (isAgent && agentColors?.get(node.id)) || DEFAULT_AGENT_COLOR
-              const avatarState = isAgent && awakeAgentIds?.has(node.id) ? "awake" : "sleeping"
+              const avatar = isAgent ? node.note.avatar ?? null : null
+              const avatarColor =
+                avatar?.color || (isAgent && agentColors?.get(node.id)) || DEFAULT_AGENT_COLOR
+              const avatarState =
+                avatar?.state ?? (isAgent && awakeAgentIds?.has(node.id) ? "awake" : "sleeping")
+              const avatarHat = avatar?.hat ?? "none"
               const labelOffset = isAgent ? AGENT_AVATAR_SIZE / 2 + 4 : r + 4
               return (
                 <g
@@ -207,7 +231,13 @@ export function GraphCanvas({
                           strokeWidth={2}
                         />
                       ) : null}
-                      <ClawdAvatar state={avatarState} color={avatarColor} size={AGENT_AVATAR_SIZE} />
+                      <ClawdAvatar
+                        state={avatarState}
+                        color={avatarColor}
+                        hat={avatarHat}
+                        size={AGENT_AVATAR_SIZE}
+                        animateZzz
+                      />
                     </>
                   ) : (
                     <circle

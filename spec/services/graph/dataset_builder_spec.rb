@@ -25,11 +25,11 @@ RSpec.describe Graph::DatasetBuilder do
   describe "avatar state from DB + freshness gate (cross-worker safe)" do
     let(:agent) do
       n = create(:note, :with_head_revision, title: "Especialista NeuraMD")
-      tagged(n, "agente-team", "agente-especialista-neuramd")
+      tagged(n, "agente", "agente-especialista-neuramd")
     end
     let(:sleeping_agent) do
       n = create(:note, :with_head_revision, title: "Sleeping Agent")
-      tagged(n, "agente-team", "agente-rubi")
+      tagged(n, "agente", "agente-rubi")
     end
 
     it "marks agents with a fresh TentacleSession.alive row as awake" do
@@ -114,7 +114,7 @@ RSpec.describe Graph::DatasetBuilder do
     it "runs the alive-session query once regardless of agent count (N+1 guard)" do
       5.times do |i|
         n = create(:note, :with_head_revision, title: "Agent #{i}")
-        tagged(n, "agente-team", "agente-rubi")
+        tagged(n, "agente", "agente-rubi")
         fresh_session_for(n) if i.even?
       end
 

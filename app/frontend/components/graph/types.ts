@@ -1,5 +1,16 @@
 export type NodeType = "root" | "structure" | "leaf" | "tentacle"
 
+export type AvatarHat = "none" | "cartola" | "chef"
+export type AvatarVariant = "clawd-v1"
+export type AvatarState = "awake" | "sleeping"
+
+export type GraphAvatar = {
+  variant: AvatarVariant
+  color: string
+  hat: AvatarHat
+  state: AvatarState
+}
+
 export type GraphNote = {
   id: string
   slug: string
@@ -15,6 +26,7 @@ export type GraphNote = {
   updated_at?: string | null
   created_at?: string | null
   properties?: Record<string, unknown>
+  avatar?: GraphAvatar | null
 }
 
 export type GraphLink = {

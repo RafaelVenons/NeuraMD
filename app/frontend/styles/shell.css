@@ -433,6 +433,155 @@ body.nm-app-shell #app-root {
   100% { transform: scale(0.85); opacity: 0; }
 }
 
+/* Sleeping Clawd's "z" floats up and fades. Wrapped in
+   prefers-reduced-motion: no-preference so users who opted out get a
+   static avatar — accessibility requirement from the briefing. */
+@media (prefers-reduced-motion: no-preference) {
+  .nm-clawd-zzz {
+    transform-origin: center;
+    transform-box: fill-box;
+    animation: nm-clawd-zzz 2.4s ease-in-out infinite;
+  }
+}
+
+@keyframes nm-clawd-zzz {
+  0% { transform: translate(0, 0) scale(1); opacity: 0.85; }
+  50% { transform: translate(0.6px, -1.6px) scale(1.05); opacity: 1; }
+  100% { transform: translate(1.4px, -3.2px) scale(0.95); opacity: 0; }
+}
+
+.nm-avatar-editor {
+  z-index: 1100;
+  background: var(--nm-shell-panel);
+  border: 1px solid var(--nm-shell-border);
+  border-radius: 10px;
+  padding: 14px 14px 12px;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.45);
+  color: var(--nm-shell-text);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  font-size: 13px;
+}
+
+.nm-avatar-editor__header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.nm-avatar-editor__header h3 {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.25;
+  flex: 1;
+}
+
+.nm-avatar-editor__close {
+  background: transparent;
+  border: 0;
+  color: var(--nm-shell-muted);
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0 4px;
+}
+
+.nm-avatar-editor__close:hover {
+  color: var(--nm-shell-text);
+}
+
+.nm-avatar-editor__preview {
+  display: flex;
+  justify-content: center;
+  padding: 6px 0;
+  background: rgba(255, 255, 255, 0.04);
+  border-radius: 8px;
+}
+
+.nm-avatar-editor__field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.nm-avatar-editor__field label {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--nm-shell-muted);
+}
+
+.nm-avatar-editor__field select,
+.nm-avatar-editor__hex {
+  background: var(--nm-shell-bg);
+  border: 1px solid var(--nm-shell-border);
+  border-radius: 6px;
+  color: var(--nm-shell-text);
+  padding: 6px 8px;
+  font-size: 12px;
+  font-family: inherit;
+}
+
+.nm-avatar-editor__hex {
+  font-family: ui-monospace, SFMono-Regular, monospace;
+}
+
+.nm-avatar-editor__swatches {
+  display: grid;
+  grid-template-columns: repeat(11, 1fr);
+  gap: 4px;
+}
+
+.nm-avatar-editor__swatch {
+  width: 100%;
+  aspect-ratio: 1;
+  border-radius: 4px;
+  border: 1px solid rgba(0, 0, 0, 0.4);
+  cursor: pointer;
+  padding: 0;
+}
+
+.nm-avatar-editor__swatch.is-selected {
+  outline: 2px solid #ffffff;
+  outline-offset: 1px;
+}
+
+.nm-avatar-editor__error {
+  margin: 0;
+  font-size: 12px;
+  color: #ff7777;
+}
+
+.nm-avatar-editor__footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.nm-avatar-editor__open {
+  background: transparent;
+  border: 0;
+  color: var(--nm-shell-muted);
+  cursor: pointer;
+  font-size: 12px;
+  text-decoration: underline;
+  padding: 0;
+}
+
+.nm-avatar-editor__open:hover {
+  color: var(--nm-shell-text);
+}
+
+.nm-avatar-editor__actions {
+  display: flex;
+  gap: 6px;
+}
+
 .nm-graph-page__status {
   padding: 48px;
   color: var(--nm-shell-muted);

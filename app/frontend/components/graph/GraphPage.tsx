@@ -1,12 +1,14 @@
 import { useMemo, useState } from "react"
 import { useNavigate } from "react-router-dom"
 
+import { AvatarEditorPopover } from "~/components/graph/AvatarEditorPopover"
 import { GraphCanvas } from "~/components/graph/GraphCanvas"
 import { useGraphData } from "~/components/graph/useGraphData"
 import { useTentacleRuntime } from "~/components/graph/useTentacleRuntime"
 import { agentColorMap } from "~/components/graph/agentPalette"
+import type { GraphNode } from "~/components/graph/types"
 import {
-  AGENT_TEAM_TAG,
+  AGENT_TAG,
   agentNoteIds,
   awakeAgentIds,
   countByType,
@@ -15,10 +17,15 @@ import {
 } from "~/components/graph/graphFilters"
 
 export function GraphPage() {
-  const state = useGraphData()
+  const [refreshKey, setRefreshKey] = useState(0)
+  const state = useGraphData("/api/graph", refreshKey)
   const aliveTentacleIds = useTentacleRuntime()
   const navigate = useNavigate()
   const [selectedTagIds, setSelectedTagIds] = useState<Set<string>>(() => new Set())
+  const [editing, setEditing] = useState<{
+    node: GraphNode
+    anchor: { x: number; y: number }
+  } | null>(null)
 
   const toggleTag = (id: string) => {
     setSelectedTagIds((prev) => {
@@ -51,7 +58,7 @@ export function GraphPage() {
 
   const agentTagId = useMemo(() => {
     if (state.status !== "ready") return null
-    return state.dataset.tags.find((t) => t.name === AGENT_TEAM_TAG)?.id ?? null
+    return state.dataset.tags.find((t) => t.name === AGENT_TAG)?.id ?? null
   }, [state])
 
   const isAgentsPresetActive =
@@ -165,8 +172,18 @@ export function GraphPage() {
           agentColors={agentColors}
           awakeAgentIds={awakeAgents}
           onSelectNote={(slug) => navigate(`/notes/${slug}`)}
+          onAgentClick={(node, screen) => setEditing({ node, anchor: screen })}
         />
       </section>
+      {editing ? (
+        <AvatarEditorPopover
+          note={editing.node.note}
+          anchor={editing.anchor}
+          onClose={() => setEditing(null)}
+          onSaved={() => setRefreshKey((k) => k + 1)}
+          onOpenNote={(slug) => navigate(`/notes/${slug}`)}
+        />
+      ) : null}
     </div>
   )
 }

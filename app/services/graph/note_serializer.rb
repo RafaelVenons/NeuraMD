@@ -1,7 +1,7 @@
 module Graph
   class NoteSerializer
     EXCERPT_LIMIT = 180
-    AGENT_TAG = "agente-team".freeze
+    AGENT_TAG = "agente".freeze
     AGENT_TEMPLATE_TAG = "agente-team-template".freeze
     # Matches #rgb and #rrggbb, case-insensitive. Narrow on purpose — unknown
     # formats (names, hsl(), rgba(), #rrggbbaa) fall back to the role palette.

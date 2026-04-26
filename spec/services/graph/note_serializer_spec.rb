@@ -48,7 +48,7 @@ RSpec.describe Graph::NoteSerializer do
   describe "avatar" do
     let(:note) do
       n = create(:note, :with_head_revision, title: "Especialista NeuraMD")
-      tagged(n, "agente-team", "agente-especialista-neuramd")
+      tagged(n, "agente", "agente-team", "agente-especialista-neuramd")
     end
 
     context "when the note is not an agent" do
@@ -58,11 +58,40 @@ RSpec.describe Graph::NoteSerializer do
         expect(payload).not_to have_key(:avatar)
       end
 
+      # Regression: charters were identified by "agente-team" until this
+      # commit, but that tag is the umbrella for the whole agent domain
+      # (briefings, bugs, EPICs, plans). Identification moved to the
+      # dedicated "agente" tag — only carried by the 17 real charters.
+      it "omits avatar for notes tagged only with the umbrella agente-team" do
+        umbrella = create(:note, :with_head_revision, title: "Bug — about agents")
+        tagged(umbrella, "agente-team", "bug")
+        payload = described_class.call(umbrella)
+        expect(payload).not_to have_key(:avatar)
+      end
+
       it "omits avatar for agente-team-template (template is not a real agent)" do
         template = create(:note, :with_head_revision, title: "Template")
         tagged(template, "agente-team", "agente-team-template")
         payload = described_class.call(template)
         expect(payload).not_to have_key(:avatar)
+      end
+
+      # Defense-in-depth: even if a template note acquires the "agente"
+      # tag by mistake, the template exclusion keeps it from rendering.
+      it "omits avatar when both agente and agente-team-template are present" do
+        misflagged = create(:note, :with_head_revision, title: "Mis-tagged template")
+        tagged(misflagged, "agente", "agente-team-template")
+        payload = described_class.call(misflagged)
+        expect(payload).not_to have_key(:avatar)
+      end
+    end
+
+    context "when the note is a charter (carries the agente tag)" do
+      it "renders avatar without needing agente-team" do
+        charter = create(:note, :with_head_revision, title: "Lone charter")
+        tagged(charter, "agente", "agente-gerente")
+        payload = described_class.call(charter)
+        expect(payload[:avatar]).to include(variant: "clawd-v1", state: "sleeping")
       end
     end
 
@@ -80,7 +109,7 @@ RSpec.describe Graph::NoteSerializer do
 
       it "falls back to AvatarPalette::DEFAULT_COLOR when no role tag matches" do
         agent = create(:note, :with_head_revision, title: "Orphan agent")
-        tagged(agent, "agente-team")
+        tagged(agent, "agente")
         payload = described_class.call(agent)
         expect(payload[:avatar][:color]).to eq(Agents::AvatarPalette::DEFAULT_COLOR)
       end
