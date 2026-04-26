@@ -4,6 +4,21 @@ require "spec_helper"
 # shells; rspec then ran against the dev DB and DatabaseCleaner.clean_with(
 # :truncation) wiped the user's acervo.
 ENV["RAILS_ENV"] = "test"
+
+# Defense against spawn-env leak when rspec runs inside a live tentacle:
+# AGENT_S2S_TOKEN is inherited from the neuramd-web Puma unit, and
+# NEURAMD_AGENT_SLUG/UUID/NEURAMD_TENTACLE_ID are injected by
+# TentacleRuntime::Session#build_child_env. With those present, the
+# Api::S2S::BaseController#configured_token (and the matching MCP tool)
+# pick the env-first branch instead of the credentials fallback the S2S
+# specs stub, and tests fail under a populated production token. CI runs
+# without the spawn env so this is a no-op there; bin/rspec-airch ssh's
+# to AIrch which doesn't forward env. The breakage shows up only for
+# `bundle exec rspec` invoked from inside a tentacle session.
+%w[AGENT_S2S_TOKEN NEURAMD_AGENT_SLUG NEURAMD_AGENT_UUID NEURAMD_TENTACLE_ID].each do |k|
+  ENV.delete(k)
+end
+
 require_relative "../config/environment"
 abort("The Rails environment is running in production mode!") if Rails.env.production?
 unless Rails.env.test?
