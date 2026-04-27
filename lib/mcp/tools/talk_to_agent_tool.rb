@@ -56,14 +56,18 @@ module Mcp
 
         message = AgentMessages::Sender.call(from: sender, to: recipient, content: content)
 
+        wake_succeeded = nil
         wake_warning = nil
+        wake_session = nil
         if wake
           begin
-            ActivateTentacleSessionTool.call(
+            activate_response = ActivateTentacleSessionTool.call(
               slug: recipient_slug,
               initial_prompt: build_wake_prompt(sender_slug: sender.slug, recipient_slug: recipient_slug, content: content)
             )
+            wake_succeeded, wake_warning, wake_session = inspect_activate_response(activate_response)
           rescue StandardError => e
+            wake_succeeded = false
             wake_warning = "#{e.class}: #{e.message}"
           end
         end
@@ -75,11 +79,44 @@ module Mcp
           to_slug: recipient.slug,
           created_at: message.created_at.iso8601,
           wake_attempted: wake,
-          wake_warning: wake_warning
+          wake_succeeded: wake_succeeded,
+          wake_warning: wake_warning,
+          wake_session: wake_session
         }.compact
         MCP::Tool::Response.new([{type: "text", text: data.to_json}])
       rescue AgentMessages::Sender::InvalidRecipient, AgentMessages::Sender::EmptyContent => e
         error_response(e.message)
+      end
+
+      # `ActivateTentacleSessionTool.call` never raises — it returns an
+      # MCP::Tool::Response with `error: true` for non-2xx S2S, missing
+      # token, plaintext-refusal, and JSON parse errors. Returning the
+      # tuple `[succeeded?, warning, session_summary]` lets the caller
+      # populate wake_warning/wake_session honestly instead of relying
+      # on Ruby exception flow that the activator never enters.
+      def self.inspect_activate_response(response)
+        response_hash = response.to_h
+        text = response_hash.dig(:content, 0, :text) || response_hash.dig("content", 0, "text")
+
+        if response_hash[:isError] || response_hash["isError"]
+          [false, text.to_s.presence || "wake failed (no error text)", nil]
+        else
+          parsed = begin
+            JSON.parse(text.to_s)
+          rescue JSON::ParserError
+            nil
+          end
+          session = nil
+          if parsed.is_a?(Hash)
+            session = {
+              pid: parsed["pid"],
+              started_at: parsed["started_at"],
+              reused: parsed["reused"]
+            }.compact
+            session = nil if session.empty?
+          end
+          [true, nil, session]
+        end
       end
 
       def self.error_response(message)
