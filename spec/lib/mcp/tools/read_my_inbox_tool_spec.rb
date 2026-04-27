@@ -2,7 +2,7 @@
 
 require "rails_helper"
 
-RSpec.describe Mcp::Tools::ReadManagerRepliesTool do
+RSpec.describe Mcp::Tools::ReadMyInboxTool do
   def make_note(slug:, title:)
     n = Note.create!(slug: slug, title: title)
     rev = n.note_revisions.create!(content_markdown: "body", revision_kind: :checkpoint)

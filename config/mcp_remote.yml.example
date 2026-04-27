@@ -61,18 +61,18 @@ tools:
     class: Mcp::Tools::BulkRemoveTagTool
     scope: write
 
-  # Conversational bridge to the gerente (NeuraMD orchestrator). Both
-  # tools require the token to have an agent_note bound (issue with
-  # AGENT_SLUG=<note-slug>). Sender identity is locked to the token's
-  # agent_note; recipient is hardcoded to "gerente". This is the
-  # supported way for an external Claude Code (or any remote MCP
-  # client) to converse with the orchestrator without granting access
-  # to the raw agent fabric.
-  talk_to_manager:
-    class: Mcp::Tools::TalkToManagerTool
+  # Conversational bridge for remote agents. Both tools require the
+  # token to have an agent_note bound (issue with AGENT_SLUG=<slug>).
+  # Sender identity is locked to the token's agent_note (no spoofing);
+  # recipient must be a note carrying an `agente-*` tag (no broadcast
+  # to humans / arbitrary notes). This is the supported way for an
+  # external client to participate in the agent fabric without being
+  # granted the raw mesh tools below.
+  talk_to_agent:
+    class: Mcp::Tools::TalkToAgentTool
     scope: tentacle
-  read_manager_replies:
-    class: Mcp::Tools::ReadManagerRepliesTool
+  read_my_inbox:
+    class: Mcp::Tools::ReadMyInboxTool
     scope: tentacle
 
   # Raw agent-mesh tools — disabled by default. They accept arbitrary

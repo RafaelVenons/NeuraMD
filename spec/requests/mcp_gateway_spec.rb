@@ -144,17 +144,19 @@ RSpec.describe "MCP Gateway", type: :request do
     end
   end
 
-  describe "talk_to_manager / read_manager_replies via gateway" do
+  describe "talk_to_agent / read_my_inbox via gateway" do
     let!(:gerente) do
       n = Note.create!(slug: "gerente", title: "Gerente")
       rev = n.note_revisions.create!(content_markdown: "body", revision_kind: :checkpoint)
       n.update!(head_revision_id: rev.id)
+      Tag.find_or_create_by!(name: "agente-gerente", tag_scope: "note").tap { |t| NoteTag.find_or_create_by!(note: n, tag: t) }
       n
     end
     let!(:agent_note) do
       n = Note.create!(slug: "claude-code-remoto", title: "Claude Code Remoto")
       rev = n.note_revisions.create!(content_markdown: "body", revision_kind: :checkpoint)
       n.update!(head_revision_id: rev.id)
+      Tag.find_or_create_by!(name: "agente-remote", tag_scope: "note").tap { |t| NoteTag.find_or_create_by!(note: n, tag: t) }
       n
     end
     let(:bound_token) do
@@ -168,9 +170,9 @@ RSpec.describe "MCP Gateway", type: :request do
       )
     end
 
-    it "talk_to_manager persists a message scoped to the token identity" do
+    it "talk_to_agent persists a message scoped to the token identity" do
       expect {
-        post "/mcp", params: call_payload("talk_to_manager", content: "ola gerente"),
+        post "/mcp", params: call_payload("talk_to_agent", slug: "gerente", content: "ola gerente"),
              headers: bearer(bound_token.plaintext)
       }.to change { AgentMessage.count }.by(1)
       expect(response).to have_http_status(:ok)
@@ -179,8 +181,8 @@ RSpec.describe "MCP Gateway", type: :request do
       expect(msg.to_note).to eq(gerente)
     end
 
-    it "talk_to_manager errors when the token has no agent_note" do
-      post "/mcp", params: call_payload("talk_to_manager", content: "x"),
+    it "talk_to_agent errors when the token has no agent_note" do
+      post "/mcp", params: call_payload("talk_to_agent", slug: "gerente", content: "x"),
            headers: bearer(anon_token.plaintext)
       expect(response).to have_http_status(:ok) # JSON-RPC tool error rides 200
       body = JSON.parse(response.body)
@@ -188,7 +190,7 @@ RSpec.describe "MCP Gateway", type: :request do
       expect(body.dig("result", "content", 0, "text")).to match(/agent identity|agent_note|sem identidade/i)
     end
 
-    it "read_manager_replies returns only this token's inbox" do
+    it "read_my_inbox returns only this token's inbox" do
       AgentMessages::Sender.call(from: gerente, to: agent_note, content: "for you")
       other_note = Note.create!(slug: "other", title: "Other").tap do |n|
         rev = n.note_revisions.create!(content_markdown: "body", revision_kind: :checkpoint)
@@ -196,7 +198,7 @@ RSpec.describe "MCP Gateway", type: :request do
       end
       AgentMessages::Sender.call(from: gerente, to: other_note, content: "for someone else")
 
-      post "/mcp", params: call_payload("read_manager_replies"),
+      post "/mcp", params: call_payload("read_my_inbox"),
            headers: bearer(bound_token.plaintext)
       expect(response).to have_http_status(:ok)
       tool_text = JSON.parse(response.body).dig("result", "content", 0, "text")

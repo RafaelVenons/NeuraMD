@@ -4,12 +4,12 @@ require "mcp"
 
 module Mcp
   module Tools
-    # Counterpart to TalkToManagerTool: scoped read of the inbox of the
+    # Counterpart to TalkToAgentTool: scoped read of the inbox of the
     # token's bound agent_note. The slug isn't an argument — leak across
     # tokens is impossible by construction. Snapshot only; long-poll is
     # explicitly out of scope (would tie up a Puma worker).
-    class ReadManagerRepliesTool < MCP::Tool
-      tool_name "read_manager_replies"
+    class ReadMyInboxTool < MCP::Tool
+      tool_name "read_my_inbox"
       description <<~DESC.strip
         List messages in the inbox of your token's bound agent note.
         Newest first. Defaults to only_pending: true so each call sees

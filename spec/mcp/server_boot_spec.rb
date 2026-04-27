@@ -23,7 +23,7 @@ RSpec.describe "MCP Server boot" do
       "recent_changes", "create_note", "update_note", "patch_note", "manage_property",
       "import_markdown", "merge_notes", "find_anemic_notes", "bulk_remove_tag",
       "send_agent_message", "read_agent_inbox", "spawn_child_tentacle", "route_human_to",
-      "activate_tentacle_session", "talk_to_manager", "read_manager_replies",
+      "activate_tentacle_session", "talk_to_agent", "read_my_inbox",
       "acervo_snapshot", "agent_status"
     )
   end
