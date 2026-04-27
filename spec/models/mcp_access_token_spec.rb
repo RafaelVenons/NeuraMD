@@ -64,6 +64,33 @@ RSpec.describe McpAccessToken do
     end
   end
 
+  describe "agent identity" do
+    let(:note) do
+      n = Note.create!(slug: "agent-x", title: "Agent X")
+      rev = n.note_revisions.create!(content_markdown: "body", revision_kind: :checkpoint)
+      n.update!(head_revision_id: rev.id)
+      n
+    end
+
+    it "can be issued without an agent_note (back-compat)" do
+      issued = described_class.issue!(name: "anon", scopes: %w[read])
+      expect(issued.record.agent_note).to be_nil
+      expect(issued.record.agent_note?).to be false
+    end
+
+    it "can be bound to an existing note via agent_note_id" do
+      issued = described_class.issue!(name: "bound", scopes: %w[read tentacle], agent_note_id: note.id)
+      expect(issued.record.agent_note).to eq(note)
+      expect(issued.record.agent_note?).to be true
+    end
+
+    it "rejects an unknown agent_note_id" do
+      expect {
+        described_class.issue!(name: "bad", scopes: %w[read], agent_note_id: SecureRandom.uuid)
+      }.to raise_error(ActiveRecord::InvalidForeignKey)
+    end
+  end
+
   describe "#touch_used!" do
     let(:token) { described_class.issue!(name: "t", scopes: %w[read]).record }
 

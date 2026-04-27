@@ -52,10 +52,26 @@ tools:
     class: Mcp::Tools::BulkRemoveTagTool
     scope: write
 
-  # Tentacle/agent-mesh tools — disabled by default. The agent fabric
-  # is internal; expose remotely only if you understand the implications
-  # (a write-scope leak with these enabled lets external clients spawn
-  # tentacles and inject messages into the agent inbox).
+  # Conversational bridge to the gerente (NeuraMD orchestrator). Both
+  # tools require the token to have an agent_note bound (issue with
+  # AGENT_SLUG=<note-slug>). Sender identity is locked to the token's
+  # agent_note; recipient is hardcoded to "gerente". This is the
+  # supported way for an external Claude Code (or any remote MCP
+  # client) to converse with the orchestrator without granting access
+  # to the raw agent fabric.
+  talk_to_manager:
+    class: Mcp::Tools::TalkToManagerTool
+    scope: tentacle
+  read_manager_replies:
+    class: Mcp::Tools::ReadManagerRepliesTool
+    scope: tentacle
+
+  # Raw agent-mesh tools — disabled by default. They accept arbitrary
+  # from_slug / to_slug / parent_slug, so a write+tentacle leak with
+  # these enabled lets external clients spoof inbox messages, spawn
+  # tentacles, and route the human to any agent. Prefer the bounded
+  # talk_to_manager / read_manager_replies pair above unless you
+  # specifically need the unrestricted surface.
   # send_agent_message:
   #   class: Mcp::Tools::SendAgentMessageTool
   #   scope: tentacle
