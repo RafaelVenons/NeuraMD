@@ -170,11 +170,12 @@ RSpec.describe "API S2S tentacle sessions", type: :request do
         TentacleRuntime::Session,
         alive?: true, pid: 9, started_at: Time.current,
         cwd: existing_cwd, repo_root_fingerprint: fresh_fp,
-        pre_persistence_fingerprint?: false
+        pre_persistence_fingerprint?: false,
+        submit_sequence: "\e[13u"
       )
       TentacleRuntime::SESSIONS[note.id] = existing
 
-      expect(TentacleRuntime).to receive(:write).with(tentacle_id: note.id, data: "wake up\r")
+      expect(TentacleRuntime).to receive(:write).with(tentacle_id: note.id, data: "wake up\e[13u")
 
       post "/api/s2s/tentacles/#{note.slug}/activate",
         params: {command: "claude", initial_prompt: "wake up"}.to_json, headers: headers
