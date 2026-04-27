@@ -120,11 +120,13 @@ class TentacleRuntime
         )
         return
       end
-      # `\r` (CR, 0x0D) is what the TUI's keypress decoder maps to the
-      # Enter "submit" event in raw mode; `\n` would land in the input
-      # field as a literal newline and never trigger submit. See the
-      # SessionControl reuse path for the matching reason.
-      session.write("#{prompt}\r")
+      # `session.submit_sequence` returns the right Enter encoding for
+      # the spawned command — `\e[13u` (CSI Kitty keyboard) for claude,
+      # plain `\r` for bash. Sending the wrong one leaves the prompt
+      # visible but unsubmitted (claude TUI treats `\r` as literal
+      # newline text after enabling the Kitty protocol). Diagnosed
+      # empirically 2026-04-27 against a live gerente session.
+      session.write("#{prompt}#{session.submit_sequence}")
       session.mark_initial_prompt_delivered!
     rescue StandardError => e
       Rails.logger.error("TentacleRuntime initial_prompt failed: #{e.class}: #{e.message}")
@@ -474,6 +476,20 @@ class TentacleRuntime
       @writer.flush
     rescue Errno::EIO, IOError
       nil
+    end
+
+    # Bytes that act as "submit current input" for the spawned command's
+    # TUI. Claude Code enables the Kitty keyboard protocol on startup, so
+    # plain `\r`/`\n` written to its PTY land as literal newline text in
+    # the input field — only the CSI `13 u` sequence is decoded as Enter.
+    # Other commands (bash, etc.) keep the legacy `\r` behaviour.
+    # Empirically validated 2026-04-27: writing `\r` to claude's master
+    # left the prompt visible but unsubmitted; injecting `\e[13u` flushed
+    # the input and triggered the agent loop.
+    KITTY_ENTER = "\e[13u"
+
+    def submit_sequence
+      Array(@command).first.to_s == "claude" ? KITTY_ENTER : "\r"
     end
 
     def resize(cols:, rows:)

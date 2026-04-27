@@ -90,11 +90,12 @@ RSpec.describe Tentacles::SessionControl do
         TentacleRuntime::Session,
         alive?: true, pid: 1, started_at: Time.current,
         cwd: existing_cwd, repo_root_fingerprint: fresh_fp,
-        pre_persistence_fingerprint?: false
+        pre_persistence_fingerprint?: false,
+        submit_sequence: "\e[13u"
       )
       TentacleRuntime::SESSIONS[note.id] = existing
 
-      expect(TentacleRuntime).to receive(:write).with(tentacle_id: note.id, data: "hello\r")
+      expect(TentacleRuntime).to receive(:write).with(tentacle_id: note.id, data: "hello\e[13u")
 
       result = described_class.activate(note: note, command: ["claude"], initial_prompt: "hello")
       expect(result.routed_prompt_delivered).to be true

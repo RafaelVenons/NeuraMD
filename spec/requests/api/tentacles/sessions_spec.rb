@@ -428,12 +428,13 @@ RSpec.describe "API tentacle sessions", type: :request do
           TentacleRuntime::Session,
           alive?: true, pid: 5555, started_at: Time.utc(2026, 4, 20, 11),
           cwd: existing_cwd, repo_root_fingerprint: fresh_fp,
-          pre_persistence_fingerprint?: false
+          pre_persistence_fingerprint?: false,
+          submit_sequence: "\e[13u"
         )
         allow(existing).to receive(:instance_variable_get).with(:@command).and_return(%w[claude])
         TentacleRuntime::SESSIONS[note.id] = existing
 
-        expect(TentacleRuntime).to receive(:write).with(tentacle_id: note.id, data: "Implement OAuth Discord.\r")
+        expect(TentacleRuntime).to receive(:write).with(tentacle_id: note.id, data: "Implement OAuth Discord.\e[13u")
         expect(TentacleRuntime).not_to receive(:start)
 
         post "/api/notes/#{note.slug}/tentacle",
