@@ -59,7 +59,10 @@ module Mcp
         wake_warning = nil
         if wake
           begin
-            ActivateTentacleSessionTool.call(slug: recipient_slug)
+            ActivateTentacleSessionTool.call(
+              slug: recipient_slug,
+              initial_prompt: build_wake_prompt(sender_slug: sender.slug, recipient_slug: recipient_slug, content: content)
+            )
           rescue StandardError => e
             wake_warning = "#{e.class}: #{e.message}"
           end
@@ -81,6 +84,22 @@ module Mcp
 
       def self.error_response(message)
         MCP::Tool::Response.new([{type: "text", text: message}], error: true)
+      end
+
+      # Compact wake-up prompt fed to the recipient's first stdin so the
+      # spawned session knows it has fresh inbox work and the doctrinal
+      # "silence is a bug" rule from the Carta. Content is truncated to
+      # ~240 bytes — the full message stays in the inbox for proper
+      # consumption via read_agent_inbox.
+      WAKE_CONTENT_SNIPPET_BYTES = 240
+
+      def self.build_wake_prompt(sender_slug:, recipient_slug:, content:)
+        snippet = content.to_s.byteslice(0, WAKE_CONTENT_SNIPPET_BYTES).to_s.force_encoding(Encoding::UTF_8).scrub
+        snippet += "…" if content.to_s.bytesize > WAKE_CONTENT_SNIPPET_BYTES
+        <<~PROMPT.strip
+          Mensagem nova no seu inbox vinda de #{sender_slug}: "#{snippet}"
+          Rode `read_agent_inbox slug=#{recipient_slug} only_pending=true mark_delivered=true` pra ver íntegra (e outras pendentes), processe e responda via `send_agent_message` pro #{sender_slug} — regra da Carta comum: silêncio é defeito.
+        PROMPT
       end
     end
   end
