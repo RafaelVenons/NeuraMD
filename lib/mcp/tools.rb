@@ -24,7 +24,9 @@ module Mcp
         ActivateTentacleSessionTool,
         RouteHumanToTool,
         TalkToManagerTool,
-        ReadManagerRepliesTool
+        ReadManagerRepliesTool,
+        AcervoSnapshotTool,
+        AgentStatusTool
       ]
     end
   end
