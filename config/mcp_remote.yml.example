@@ -30,6 +30,15 @@ tools:
   find_anemic_notes:
     class: Mcp::Tools::FindAnemicNotesTool
     scope: read
+
+  # Aggregate read-only views composed from existing queries — cheaper
+  # than the multi-call dance an agent typically runs at session open.
+  acervo_snapshot:
+    class: Mcp::Tools::AcervoSnapshotTool
+    scope: read
+  agent_status:
+    class: Mcp::Tools::AgentStatusTool
+    scope: read
   create_note:
     class: Mcp::Tools::CreateNoteTool
     scope: write
