@@ -67,13 +67,13 @@ exposed tools and the scope each one requires is declarative.
 
 ```bash
 # 1. Copy the example config and adjust if needed (defaults expose
-#    read+write note tools + the talk_to_manager / read_manager_replies
-#    pair; raw agent-mesh tools are commented out).
+#    read+write note tools + the talk_to_agent / read_my_inbox pair;
+#    raw agent-mesh tools are commented out).
 cp config/mcp_remote.yml.example config/mcp_remote.yml
 
 # 2. Issue a token. Print-once — store it in your password manager.
 #    Add AGENT_SLUG=<slug> to bind the token to a note, which is
-#    required for the conversation tools (see "Talking to the gerente").
+#    required for the conversation tools (see "Talking to other agents").
 NAME=my-laptop SCOPES=read,write bin/rails mcp:tokens:issue
 NAME=remote-claude SCOPES=read,write,tentacle AGENT_SLUG=claude-code-remoto bin/rails mcp:tokens:issue
 
@@ -115,28 +115,30 @@ curl -sS -X POST "$BASE" \
   -d '{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"search_notes","arguments":{"query":"deploy"}}}'
 ```
 
-### Talking to the gerente
+### Talking to other agents
 
 A bounded conversation surface for remote agents (e.g. a Claude Code
 session running on a laptop). The token must have been issued with
 `AGENT_SLUG=<note-slug>`; the tools refuse to run otherwise. Sender
-identity is locked to the token's bound note, recipient is hardcoded
-to `gerente` — `from_slug`/`to_slug` arguments are silently ignored,
-so a stolen token can't spoof or broadcast.
+identity is locked to the token's bound note (`from_slug` arguments
+are silently ignored). Recipient must carry an `agente-*` tag — a
+stolen token can't message arbitrary humans / notes.
 
 ```bash
-# Send a message (auto-wakes the gerente tentacle session via S2S).
+# Send a message to any agent (auto-wakes the recipient's tentacle).
+# Pass slug="gerente" to address the orchestrator, or any other
+# agent slug for direct contact.
 curl -sS -X POST "$BASE" \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" -H "Accept: application/json" \
-  -d '{"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"talk_to_manager","arguments":{"content":"Subi os fixes de CI, posso rebatch dos PRs?"}}}'
+  -d '{"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"talk_to_agent","arguments":{"slug":"gerente","content":"Subi os fixes de CI, posso rebatch dos PRs?"}}}'
 
-# Read replies addressed to your token's agent note (snapshot, newest
-# first). Pass mark_delivered:true once you've actually consumed them.
+# Read your own inbox (newest first, only_pending by default). Pass
+# mark_delivered:true once you've actually consumed the messages.
 curl -sS -X POST "$BASE" \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" -H "Accept: application/json" \
-  -d '{"jsonrpc":"2.0","id":5,"method":"tools/call","params":{"name":"read_manager_replies","arguments":{"only_pending":true}}}'
+  -d '{"jsonrpc":"2.0","id":5,"method":"tools/call","params":{"name":"read_my_inbox","arguments":{"only_pending":true}}}'
 ```
 
 The raw mesh (`send_agent_message`, `spawn_child_tentacle`,
