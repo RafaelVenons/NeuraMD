@@ -120,7 +120,11 @@ class TentacleRuntime
         )
         return
       end
-      session.write("#{prompt}\n")
+      # `\r` (CR, 0x0D) is what the TUI's keypress decoder maps to the
+      # Enter "submit" event in raw mode; `\n` would land in the input
+      # field as a literal newline and never trigger submit. See the
+      # SessionControl reuse path for the matching reason.
+      session.write("#{prompt}\r")
       session.mark_initial_prompt_delivered!
     rescue StandardError => e
       Rails.logger.error("TentacleRuntime initial_prompt failed: #{e.class}: #{e.message}")

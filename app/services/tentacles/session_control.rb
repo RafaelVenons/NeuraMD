@@ -43,7 +43,14 @@ module Tentacles
         assert_session_fresh!(existing, repo_root: repo_root, worktree_root: worktree_root, current_fingerprint: current_fingerprint)
 
         if routed_prompt.present?
-          ::TentacleRuntime.write(tentacle_id: @note.id, data: "#{routed_prompt}\n")
+          # `\r` (CR, 0x0D) is what xterm-style terminals emit for the
+          # Enter key in raw mode — Claude Code's TUI (ink/React) reads
+          # stdin raw and maps CR to its "submit" event. Writing `\n`
+          # (LF) instead leaves the prompt sitting in the input field
+          # without ever being submitted; the spawned claude blocks in
+          # epoll_wait until a human clicks send. Diagnosed 2026-04-27
+          # while testing the BigBoss → gerente autonomous loop.
+          ::TentacleRuntime.write(tentacle_id: @note.id, data: "#{routed_prompt}\r")
         end
         return Result.new(
           session: existing,

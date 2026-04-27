@@ -94,7 +94,7 @@ RSpec.describe Tentacles::SessionControl do
       )
       TentacleRuntime::SESSIONS[note.id] = existing
 
-      expect(TentacleRuntime).to receive(:write).with(tentacle_id: note.id, data: "hello\n")
+      expect(TentacleRuntime).to receive(:write).with(tentacle_id: note.id, data: "hello\r")
 
       result = described_class.activate(note: note, command: ["claude"], initial_prompt: "hello")
       expect(result.routed_prompt_delivered).to be true

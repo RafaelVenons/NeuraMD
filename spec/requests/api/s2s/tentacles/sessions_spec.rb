@@ -174,7 +174,7 @@ RSpec.describe "API S2S tentacle sessions", type: :request do
       )
       TentacleRuntime::SESSIONS[note.id] = existing
 
-      expect(TentacleRuntime).to receive(:write).with(tentacle_id: note.id, data: "wake up\n")
+      expect(TentacleRuntime).to receive(:write).with(tentacle_id: note.id, data: "wake up\r")
 
       post "/api/s2s/tentacles/#{note.slug}/activate",
         params: {command: "claude", initial_prompt: "wake up"}.to_json, headers: headers

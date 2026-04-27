@@ -433,7 +433,7 @@ RSpec.describe "API tentacle sessions", type: :request do
         allow(existing).to receive(:instance_variable_get).with(:@command).and_return(%w[claude])
         TentacleRuntime::SESSIONS[note.id] = existing
 
-        expect(TentacleRuntime).to receive(:write).with(tentacle_id: note.id, data: "Implement OAuth Discord.\n")
+        expect(TentacleRuntime).to receive(:write).with(tentacle_id: note.id, data: "Implement OAuth Discord.\r")
         expect(TentacleRuntime).not_to receive(:start)
 
         post "/api/notes/#{note.slug}/tentacle",
