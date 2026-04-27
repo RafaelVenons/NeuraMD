@@ -100,12 +100,33 @@ RSpec.describe Mcp::Tools::TalkToAgentTool do
     end
 
     context "with wake: true (default)" do
-      it "calls the activator with the recipient's slug" do
-        expect(Mcp::Tools::ActivateTentacleSessionTool).to receive(:call) do |slug:, **_|
-          expect(slug).to eq("uxui")
+      it "calls the activator with the recipient's slug + initial_prompt mentioning sender, content, and inbox tool" do
+        captured = {}
+        expect(Mcp::Tools::ActivateTentacleSessionTool).to receive(:call) do |**kwargs|
+          captured = kwargs
           MCP::Tool::Response.new([{type: "text", text: "{}"}])
         end
-        described_class.call(slug: "uxui", content: "wake!", server_context: context)
+        described_class.call(slug: "uxui", content: "audita PR #50 e me responde", server_context: context)
+
+        expect(captured[:slug]).to eq("uxui")
+        prompt = captured[:initial_prompt]
+        expect(prompt).to be_a(String)
+        expect(prompt).to include("claude-code-remoto") # sender slug
+        expect(prompt).to include("audita PR #50")      # content snippet
+        expect(prompt).to include("read_agent_inbox")   # tool ponteiro
+        expect(prompt).to include("uxui")               # recipient slug (pra slug= no comando)
+      end
+
+      it "truncates long content in the prompt to stay under the 2KB BootConfig cap" do
+        big_content = "x" * 5_000
+        captured = {}
+        allow(Mcp::Tools::ActivateTentacleSessionTool).to receive(:call) do |**kwargs|
+          captured = kwargs
+          MCP::Tool::Response.new([{type: "text", text: "{}"}])
+        end
+        described_class.call(slug: "uxui", content: big_content, server_context: context)
+
+        expect(captured[:initial_prompt].bytesize).to be <= ::Tentacles::BootConfig::INITIAL_PROMPT_MAX_BYTES
       end
 
       it "still persists the message even if the activator raises" do
