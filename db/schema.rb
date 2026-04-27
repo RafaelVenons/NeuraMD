@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_04_26_170000) do
+ActiveRecord::Schema[8.1].define(version: 2026_04_26_180000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
   enable_extension "pg_trgm"
@@ -138,6 +138,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_04_26_170000) do
   end
 
   create_table "mcp_access_tokens", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.uuid "agent_note_id"
     t.datetime "created_at", null: false
     t.datetime "last_used_at"
     t.string "name", null: false
@@ -145,6 +146,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_04_26_170000) do
     t.string "scopes", default: [], null: false, array: true
     t.string "token_hash", null: false
     t.datetime "updated_at", null: false
+    t.index ["agent_note_id"], name: "index_mcp_access_tokens_on_agent_note_id"
     t.index ["revoked_at"], name: "index_mcp_access_tokens_on_revoked_at"
     t.index ["token_hash"], name: "index_mcp_access_tokens_on_token_hash", unique: true
   end
@@ -218,7 +220,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_04_26_170000) do
     t.index ["src_note_id"], name: "index_note_links_on_src_note_id"
   end
 
-  add_check_constraint "note_links", "hier_role IS NULL OR (hier_role::text = ANY (ARRAY['target_is_parent'::character varying, 'target_is_child'::character varying, 'same_level'::character varying, 'next_in_sequence'::character varying, 'delegation_pending'::character varying, 'delegation_directive'::character varying, 'delegation_verify'::character varying, 'delegation_block'::character varying]::text[]))", name: "check_note_links_hier_role_allow_list", validate: false
+  add_check_constraint "note_links", "hier_role IS NULL OR (hier_role::text = ANY (ARRAY['target_is_parent'::character varying::text, 'target_is_child'::character varying::text, 'same_level'::character varying::text, 'next_in_sequence'::character varying::text, 'delegation_pending'::character varying::text, 'delegation_directive'::character varying::text, 'delegation_verify'::character varying::text, 'delegation_block'::character varying::text]))", name: "check_note_links_hier_role_allow_list", validate: false
 
   create_table "note_revisions", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
     t.boolean "ai_generated", default: false, null: false
@@ -388,6 +390,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_04_26_170000) do
   add_foreign_key "file_imports", "users"
   add_foreign_key "link_tags", "note_links"
   add_foreign_key "link_tags", "tags"
+  add_foreign_key "mcp_access_tokens", "notes", column: "agent_note_id", on_delete: :nullify
   add_foreign_key "mention_exclusions", "notes", column: "source_note_id", on_delete: :cascade
   add_foreign_key "mention_exclusions", "notes", on_delete: :cascade
   add_foreign_key "note_aliases", "notes"

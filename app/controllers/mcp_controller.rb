@@ -22,7 +22,7 @@ class McpController < ActionController::API
     status, headers, body = nil
 
     Timeout.timeout(timeout, McpCallTimeout) do
-      status, headers, body = RemoteMcpGateway.transport.call(request.env)
+      status, headers, body = RemoteMcpGateway.build_for(current_mcp_token).call(request.env)
     end
 
     log_call(status: status, started: started, error: nil)

@@ -130,7 +130,7 @@ RSpec.describe "MCP Gateway", type: :request do
     end
 
     it "responds with -32603 when the call times out" do
-      allow(RemoteMcpGateway.transport).to receive(:call) { sleep 0.5 }
+      allow_any_instance_of(MCP::Server::Transports::StreamableHTTPTransport).to receive(:call) { sleep 0.5 }
       post "/mcp", params: jsonrpc("tools/list"), headers: bearer(read_token_issued.plaintext)
       expect(response).to have_http_status(:gateway_timeout)
       expect(JSON.parse(response.body).dig("error", "code")).to eq(-32_603)
@@ -141,6 +141,75 @@ RSpec.describe "MCP Gateway", type: :request do
     it "is allowed (stateless transport returns 200)" do
       delete "/mcp", headers: bearer(read_token_issued.plaintext)
       expect(response).to have_http_status(:ok)
+    end
+  end
+
+  describe "talk_to_manager / read_manager_replies via gateway" do
+    let!(:gerente) do
+      n = Note.create!(slug: "gerente", title: "Gerente")
+      rev = n.note_revisions.create!(content_markdown: "body", revision_kind: :checkpoint)
+      n.update!(head_revision_id: rev.id)
+      n
+    end
+    let!(:agent_note) do
+      n = Note.create!(slug: "claude-code-remoto", title: "Claude Code Remoto")
+      rev = n.note_revisions.create!(content_markdown: "body", revision_kind: :checkpoint)
+      n.update!(head_revision_id: rev.id)
+      n
+    end
+    let(:bound_token) do
+      McpAccessToken.issue!(name: "remote", scopes: %w[read write tentacle], agent_note_id: agent_note.id)
+    end
+    let(:anon_token) { McpAccessToken.issue!(name: "anon", scopes: %w[read write tentacle]) }
+
+    before do
+      allow(Mcp::Tools::ActivateTentacleSessionTool).to receive(:call).and_return(
+        MCP::Tool::Response.new([{type: "text", text: "{}"}])
+      )
+    end
+
+    it "talk_to_manager persists a message scoped to the token identity" do
+      expect {
+        post "/mcp", params: call_payload("talk_to_manager", content: "ola gerente"),
+             headers: bearer(bound_token.plaintext)
+      }.to change { AgentMessage.count }.by(1)
+      expect(response).to have_http_status(:ok)
+      msg = AgentMessage.last
+      expect(msg.from_note).to eq(agent_note)
+      expect(msg.to_note).to eq(gerente)
+    end
+
+    it "talk_to_manager errors when the token has no agent_note" do
+      post "/mcp", params: call_payload("talk_to_manager", content: "x"),
+           headers: bearer(anon_token.plaintext)
+      expect(response).to have_http_status(:ok) # JSON-RPC tool error rides 200
+      body = JSON.parse(response.body)
+      expect(body.dig("result", "isError")).to be true
+      expect(body.dig("result", "content", 0, "text")).to match(/agent identity|agent_note|sem identidade/i)
+    end
+
+    it "read_manager_replies returns only this token's inbox" do
+      AgentMessages::Sender.call(from: gerente, to: agent_note, content: "for you")
+      other_note = Note.create!(slug: "other", title: "Other").tap do |n|
+        rev = n.note_revisions.create!(content_markdown: "body", revision_kind: :checkpoint)
+        n.update!(head_revision_id: rev.id)
+      end
+      AgentMessages::Sender.call(from: gerente, to: other_note, content: "for someone else")
+
+      post "/mcp", params: call_payload("read_manager_replies"),
+           headers: bearer(bound_token.plaintext)
+      expect(response).to have_http_status(:ok)
+      tool_text = JSON.parse(response.body).dig("result", "content", 0, "text")
+      payload = JSON.parse(tool_text)
+      expect(payload["count"]).to eq(1)
+      expect(payload["messages"].first["content"]).to eq("for you")
+    end
+
+    it "send_agent_message stays blocked by whitelist" do
+      post "/mcp", params: call_payload("send_agent_message", from_slug: agent_note.slug, to_slug: gerente.slug, content: "raw"),
+           headers: bearer(bound_token.plaintext)
+      expect(response).to have_http_status(:forbidden)
+      expect(JSON.parse(response.body).dig("error", "code")).to eq(-32_601)
     end
   end
 end

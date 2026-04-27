@@ -68,12 +68,21 @@ module RemoteMcpGateway
 
     def reset!
       @config = nil
-      @transport = nil
     end
 
-    def transport
-      @transport ||= MCP::Server::Transports::StreamableHTTPTransport.new(
-        MCP::Server.new(name: "neuramd-remote", version: "1.0.0", tools: config.tools),
+    # Builds a fresh MCP::Server + StreamableHTTPTransport per request.
+    # Per-request avoids races on `Server#server_context` between Puma
+    # threads — the token identity must travel with the call. Stateless
+    # mode means there's no session state to lose between requests.
+    def build_for(mcp_token)
+      server = MCP::Server.new(
+        name: "neuramd-remote",
+        version: "1.0.0",
+        tools: config.tools,
+        server_context: { mcp_token: mcp_token }
+      )
+      MCP::Server::Transports::StreamableHTTPTransport.new(
+        server,
         stateless: true,
         enable_json_response: true
       )
