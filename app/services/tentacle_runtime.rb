@@ -142,9 +142,16 @@ class TentacleRuntime
       SESSIONS[tentacle_id]&.resize(cols: cols, rows: rows)
     end
 
-    def stop(tentacle_id:)
+    # Stops a tentacle session and removes it from the in-memory map.
+    # `grace` is forwarded to Session#stop and bounds the SIGTERM window
+    # before SIGKILL escalation. Default preserves the legacy 0.5s
+    # behaviour; SessionControl.terminate(force: true) passes 0 to skip
+    # the wait and go straight to KILL. Returns the Session that was
+    # stopped (or nil when the map had no entry).
+    def stop(tentacle_id:, grace: 0.5)
       session = SESSIONS.delete(tentacle_id)
-      session&.stop
+      session&.stop(grace: grace)
+      session
     end
 
     def get(tentacle_id)
@@ -459,6 +466,16 @@ class TentacleRuntime
     # the session as unverifiable on the first reattach after deploy.
     def pre_persistence_fingerprint?
       @pre_persistence_fingerprint
+    end
+
+    # True when stop() escalated to SIGKILL because the child ignored
+    # SIGTERM within the grace window (or grace was 0). Set in both
+    # PTY mode (line that flips @force_killed after Process.kill("KILL"))
+    # and dtach mode (when DtachWrapper#stop returns :forced). Read by
+    # SessionControl.terminate to surface escalated_to_kill in the API
+    # response.
+    def force_killed?
+      @force_killed == true
     end
 
     def transcript

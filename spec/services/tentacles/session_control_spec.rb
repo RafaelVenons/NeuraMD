@@ -235,4 +235,74 @@ RSpec.describe Tentacles::SessionControl do
       end
     end
   end
+
+  describe ".terminate" do
+    it "terminates a live session with default grace and reports pid + escalated_to_kill" do
+      existing = instance_double(
+        TentacleRuntime::Session,
+        alive?: true, pid: 4242, started_at: Time.current,
+        cwd: "/tmp/wt-#{note.id}", repo_root_fingerprint: nil,
+        pre_persistence_fingerprint?: false,
+        force_killed?: false
+      )
+      TentacleRuntime::SESSIONS[note.id] = existing
+      expect(TentacleRuntime).to receive(:stop).with(tentacle_id: note.id, grace: described_class::DEFAULT_TERMINATE_GRACE) do
+        TentacleRuntime::SESSIONS.delete(note.id)
+      end
+
+      result = described_class.terminate(note: note)
+
+      expect(result.terminated).to be true
+      expect(result.pid).to eq(4242)
+      expect(result.escalated_to_kill).to be false
+      expect(result.ended_at).to be_a(Time)
+      expect(result.reason).to be_nil
+    end
+
+    it "passes grace: 0 when force: true" do
+      existing = instance_double(
+        TentacleRuntime::Session,
+        alive?: true, pid: 7, started_at: Time.current,
+        cwd: "/tmp/wt-#{note.id}", repo_root_fingerprint: nil,
+        pre_persistence_fingerprint?: false,
+        force_killed?: true
+      )
+      TentacleRuntime::SESSIONS[note.id] = existing
+      expect(TentacleRuntime).to receive(:stop).with(tentacle_id: note.id, grace: 0) do
+        TentacleRuntime::SESSIONS.delete(note.id)
+      end
+
+      result = described_class.terminate(note: note, force: true)
+
+      expect(result.terminated).to be true
+      expect(result.escalated_to_kill).to be true
+    end
+
+    it "is idempotent when no session exists: terminated=false, reason=no_session" do
+      expect(TentacleRuntime::SESSIONS[note.id]).to be_nil
+      expect(TentacleRuntime).not_to receive(:stop)
+
+      result = described_class.terminate(note: note)
+
+      expect(result.terminated).to be false
+      expect(result.reason).to eq("no_session")
+      expect(result.pid).to be_nil
+      expect(result.escalated_to_kill).to be false
+    end
+
+    it "treats a session that lacks force_killed? as not-escalated (back-compat)" do
+      stub_session = double("LegacySession", pid: 99)
+      allow(stub_session).to receive(:force_killed?).and_raise(NoMethodError)
+      TentacleRuntime::SESSIONS[note.id] = stub_session
+      expect(TentacleRuntime).to receive(:stop) do
+        TentacleRuntime::SESSIONS.delete(note.id)
+      end
+
+      result = described_class.terminate(note: note)
+
+      expect(result.terminated).to be true
+      expect(result.pid).to eq(99)
+      expect(result.escalated_to_kill).to be false
+    end
+  end
 end

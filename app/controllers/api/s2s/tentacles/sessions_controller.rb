@@ -52,8 +52,25 @@ module Api
         end
 
         def destroy
-          ::TentacleRuntime.stop(tentacle_id: @note.id)
-          render json: {stopped: true, slug: @note.slug, tentacle_id: @note.id}
+          force = ActiveModel::Type::Boolean.new.cast(params[:force])
+          result = ::Tentacles::SessionControl.terminate(note: @note, force: force)
+
+          payload = {
+            # `stopped` is the legacy field; preserved so existing
+            # callers (web UI delete button, prior MCP integrations)
+            # keep working. New callers should prefer `terminated`,
+            # which distinguishes the no-session idempotent path.
+            stopped: true,
+            terminated: result.terminated,
+            slug: @note.slug,
+            tentacle_id: @note.id,
+            pid: result.pid,
+            escalated_to_kill: result.escalated_to_kill,
+            ended_at: result.ended_at&.utc&.iso8601
+          }
+          payload[:reason] = result.reason if result.reason
+
+          render json: payload
         end
 
         private
