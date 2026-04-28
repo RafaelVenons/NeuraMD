@@ -325,14 +325,15 @@ RSpec.describe "API S2S tentacle sessions", type: :request do
         TentacleRuntime::Session,
         alive?: true, pid: 9, started_at: Time.current,
         cwd: stale_cwd, repo_root_fingerprint: nil,
-        pre_persistence_fingerprint?: false
+        pre_persistence_fingerprint?: false,
+        force_killed?: false
       )
       TentacleRuntime::SESSIONS[note.id] = existing
 
       post "/api/s2s/tentacles/#{note.slug}/activate", params: {}.to_json, headers: headers
       expect(response).to have_http_status(:conflict)
 
-      allow(TentacleRuntime).to receive(:stop).with(tentacle_id: note.id) do
+      allow(TentacleRuntime).to receive(:stop).with(hash_including(tentacle_id: note.id)) do
         TentacleRuntime::SESSIONS.delete(note.id)
       end
       delete "/api/s2s/tentacles/#{note.slug}", headers: headers
