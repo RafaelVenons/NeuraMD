@@ -135,8 +135,53 @@ RSpec.describe Mcp::Tools::TalkToAgentTool do
           resp = described_class.call(slug: "uxui", content: "durable", server_context: context)
           body = parse_response(resp)
           expect(body["sent"]).to be true
+          expect(body["wake_succeeded"]).to be false
           expect(body["wake_warning"]).to match(/S2S down/)
         }.to change { AgentMessage.count }.by(1)
+      end
+
+      it "reports wake_succeeded:false + wake_warning when activator returns an error response (false-positive fix)" do
+        # ActivateTentacleSessionTool returns MCP::Tool::Response with error:true
+        # for non-2xx S2S, missing token, plaintext-refusal, etc. — never raises.
+        # Previous code's `rescue StandardError` missed these and silently reported
+        # success. This is the regression bug being fixed.
+        error_resp = MCP::Tool::Response.new(
+          [{type: "text", text: "activate failed (HTTP 401): missing X-NeuraMD-Agent-Token"}],
+          error: true
+        )
+        allow(Mcp::Tools::ActivateTentacleSessionTool).to receive(:call).and_return(error_resp)
+
+        resp = described_class.call(slug: "uxui", content: "no fanfare", server_context: context)
+        body = parse_response(resp)
+        expect(body["sent"]).to be true
+        expect(body["wake_succeeded"]).to be false
+        expect(body["wake_warning"]).to match(/HTTP 401|X-NeuraMD-Agent-Token/)
+      end
+
+      it "reports wake_succeeded:true + wake_session when activator succeeds with a session payload" do
+        success_payload = {
+          activated: true,
+          reused: false,
+          pid: 12345,
+          started_at: "2026-04-27T17:00:00-03:00",
+          command: "claude",
+          slug: "uxui"
+        }
+        success_resp = MCP::Tool::Response.new(
+          [{type: "text", text: success_payload.to_json}]
+        )
+        allow(Mcp::Tools::ActivateTentacleSessionTool).to receive(:call).and_return(success_resp)
+
+        resp = described_class.call(slug: "uxui", content: "wake me", server_context: context)
+        body = parse_response(resp)
+        expect(body["sent"]).to be true
+        expect(body["wake_succeeded"]).to be true
+        expect(body["wake_warning"]).to be_nil
+        expect(body["wake_session"]).to include(
+          "pid" => 12345,
+          "started_at" => "2026-04-27T17:00:00-03:00",
+          "reused" => false
+        )
       end
     end
   end
