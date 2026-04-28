@@ -19,9 +19,61 @@ module Tentacles
     end
 
     Result = Struct.new(:session, :reused, :command, :routed_prompt_delivered, keyword_init: true)
+    TerminateResult = Struct.new(:terminated, :pid, :escalated_to_kill, :ended_at, :reason, keyword_init: true)
+
+    # Default grace window for the graceful TERM→KILL escalation in
+    # SessionControl.terminate. Matches the historical default in
+    # TentacleRuntime#stop (0.5s) but kept explicit here so the
+    # symmetric activate/terminate surface has a single tunable.
+    DEFAULT_TERMINATE_GRACE = 0.5
 
     def self.activate(note:, command:, initial_prompt: nil, persistence: {})
       new(note: note, command: command, initial_prompt: initial_prompt, persistence: persistence).activate
+    end
+
+    # Symmetric counterpart to .activate. Stops the in-memory session
+    # for `note` (if any) and returns a TerminateResult with the pid
+    # that was running, whether stop escalated to SIGKILL, the
+    # ended_at timestamp, and a reason when no session existed.
+    #
+    # Idempotent: callers can issue terminate without checking liveness
+    # first. When SESSIONS has no entry for the note, returns
+    # `terminated: false, reason: "no_session"` instead of raising.
+    #
+    # `force: true` passes grace: 0 to TentacleRuntime.stop so SIGKILL
+    # is reached immediately after SIGTERM (vs. waiting the default
+    # grace window). Use when a child is known stuck and graceful exit
+    # is futile — e.g., a TUI deadlocked on a permission prompt.
+    def self.terminate(note:, force: false)
+      existing = ::TentacleRuntime.get(note.id)
+      unless existing
+        return TerminateResult.new(
+          terminated: false,
+          pid: nil,
+          escalated_to_kill: false,
+          ended_at: Time.current,
+          reason: "no_session"
+        )
+      end
+
+      pid_before = existing.pid
+      grace = force ? 0 : DEFAULT_TERMINATE_GRACE
+      ::TentacleRuntime.stop(tentacle_id: note.id, grace: grace)
+
+      escalated =
+        begin
+          existing.force_killed?
+        rescue NoMethodError
+          false
+        end
+
+      TerminateResult.new(
+        terminated: true,
+        pid: pid_before,
+        escalated_to_kill: escalated,
+        ended_at: Time.current,
+        reason: nil
+      )
     end
 
     def initialize(note:, command:, initial_prompt:, persistence:)

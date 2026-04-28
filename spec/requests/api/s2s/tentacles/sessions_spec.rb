@@ -245,17 +245,69 @@ RSpec.describe "API S2S tentacle sessions", type: :request do
       expect(response).to have_http_status(:unauthorized)
     end
 
-    it "stops the session and returns stopped: true" do
+    it "stops the session and returns rich response (stopped + terminated + pid + escalated_to_kill + ended_at)" do
       note = make_agent_note
-      expect(TentacleRuntime).to receive(:stop).with(tentacle_id: note.id)
+      existing = instance_double(
+        TentacleRuntime::Session,
+        alive?: true, pid: 4242, started_at: Time.current,
+        cwd: "/tmp/wt-#{note.id}", repo_root_fingerprint: nil,
+        pre_persistence_fingerprint?: false,
+        force_killed?: false
+      )
+      TentacleRuntime::SESSIONS[note.id] = existing
+      expect(TentacleRuntime).to receive(:stop).with(hash_including(tentacle_id: note.id)) do
+        TentacleRuntime::SESSIONS.delete(note.id)
+      end
 
       delete "/api/s2s/tentacles/#{note.slug}", headers: headers
 
       expect(response).to have_http_status(:ok)
       body = response.parsed_body
-      expect(body["stopped"]).to eq(true)
+      expect(body["stopped"]).to eq(true) # back-compat field preserved
+      expect(body["terminated"]).to eq(true)
       expect(body["slug"]).to eq(note.slug)
       expect(body["tentacle_id"]).to eq(note.id)
+      expect(body["pid"]).to eq(4242)
+      expect(body["escalated_to_kill"]).to eq(false)
+      expect(body["ended_at"]).to be_a(String)
+    end
+
+    it "is idempotent on no-session: returns 200 with terminated: false and reason: no_session" do
+      note = make_agent_note
+      # SESSIONS map is empty for this note id
+      expect(TentacleRuntime).not_to receive(:stop)
+
+      delete "/api/s2s/tentacles/#{note.slug}", headers: headers
+
+      expect(response).to have_http_status(:ok)
+      body = response.parsed_body
+      expect(body["stopped"]).to eq(true) # back-compat
+      expect(body["terminated"]).to eq(false)
+      expect(body["reason"]).to eq("no_session")
+      expect(body["slug"]).to eq(note.slug)
+    end
+
+    it "honors force: true by passing grace: 0 through to TentacleRuntime.stop" do
+      note = make_agent_note
+      existing = instance_double(
+        TentacleRuntime::Session,
+        alive?: true, pid: 7, started_at: Time.current,
+        cwd: "/tmp/wt-#{note.id}", repo_root_fingerprint: nil,
+        pre_persistence_fingerprint?: false,
+        force_killed?: true
+      )
+      TentacleRuntime::SESSIONS[note.id] = existing
+      expect(TentacleRuntime).to receive(:stop).with(tentacle_id: note.id, grace: 0) do
+        TentacleRuntime::SESSIONS.delete(note.id)
+      end
+
+      delete "/api/s2s/tentacles/#{note.slug}",
+        params: {force: true}.to_json, headers: headers
+
+      expect(response).to have_http_status(:ok)
+      body = response.parsed_body
+      expect(body["terminated"]).to eq(true)
+      expect(body["escalated_to_kill"]).to eq(true)
     end
 
     it "refuses non-agent notes (tag gate still applies)" do

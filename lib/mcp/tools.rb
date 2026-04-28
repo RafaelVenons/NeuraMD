@@ -22,6 +22,7 @@ module Mcp
         ReadAgentInboxTool,
         SpawnChildTentacleTool,
         ActivateTentacleSessionTool,
+        TerminateTentacleSessionTool,
         RouteHumanToTool,
         TalkToAgentTool,
         ReadMyInboxTool,
