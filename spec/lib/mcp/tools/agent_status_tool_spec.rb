@@ -78,5 +78,60 @@ RSpec.describe Mcp::Tools::AgentStatusTool do
       resp = described_class.call(slug: "  ")
       expect(resp.to_h[:isError] || resp.to_h["isError"]).to be true
     end
+
+    context "with a runtime in-memory session (PTY mode — no DB record)" do
+      around do |example|
+        example.run
+      ensure
+        TentacleRuntime::SESSIONS.delete(agent.id)
+      end
+
+      it "reports alive_sessions=1 + last_started_at from the runtime when no DB row exists" do
+        # PTY-mode spawns never call persist_tentacle_session_record!, so
+        # TentacleRuntime::SESSIONS is the only source of truth. Without
+        # this fallback, agent_status was reporting 0/null for live agents.
+        started = 30.seconds.ago
+        runtime_session = instance_double(
+          TentacleRuntime::Session,
+          alive?: true,
+          started_at: started
+        )
+        TentacleRuntime::SESSIONS[agent.id] = runtime_session
+
+        payload = parse(described_class.call(slug: "gerente"))
+        expect(payload["alive_sessions"]).to eq(1)
+        expect(payload["last_started_at"]).to be_a(String)
+        expect(Time.iso8601(payload["last_started_at"])).to be_within(1).of(started)
+        expect(payload["last_seen_at"]).to be_a(String)
+      end
+
+      it "still falls back to DB when no runtime entry but DB has alive row (dtach reattach scenario)" do
+        TentacleSession.create!(
+          tentacle_note_id: agent.id,
+          command: "claude",
+          dtach_socket: "/tmp/sock-#{SecureRandom.hex(4)}",
+          started_at: 5.minutes.ago,
+          last_seen_at: 10.seconds.ago,
+          status: "alive"
+        )
+
+        payload = parse(described_class.call(slug: "gerente"))
+        expect(payload["alive_sessions"]).to eq(1)
+        expect(payload["last_seen_at"]).to be_a(String)
+        expect(payload["last_started_at"]).to be_a(String)
+      end
+
+      it "returns 0 alive when runtime entry exists but Session#alive? is false" do
+        runtime_session = instance_double(
+          TentacleRuntime::Session,
+          alive?: false,
+          started_at: 1.hour.ago
+        )
+        TentacleRuntime::SESSIONS[agent.id] = runtime_session
+
+        payload = parse(described_class.call(slug: "gerente"))
+        expect(payload["alive_sessions"]).to eq(0)
+      end
+    end
   end
 end
