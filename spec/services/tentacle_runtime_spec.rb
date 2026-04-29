@@ -279,6 +279,55 @@ RSpec.describe TentacleRuntime do
       end
     end
 
+    describe "Session#alive_for_reuse?" do
+      after { described_class::SESSIONS.clear }
+
+      def build_alive_session
+        create(:tentacle_session,
+          tentacle_note_id: tentacle_id,
+          dtach_socket: wrapper.socket_path,
+          pid_file: wrapper.pid_path,
+          pid: 7777,
+          command: "sleep 30",
+          status: "alive")
+        allow(wrapper).to receive(:alive?).and_return(true)
+        described_class.start(tentacle_id: tentacle_id, command: ["sleep", "30"])
+      end
+
+      it "returns true when wrapper alive + socket exists + writer healthy" do
+        allow(wrapper).to receive(:socket_exists?).and_return(true)
+        session = build_alive_session
+
+        expect(session.alive_for_reuse?).to be true
+      end
+
+      it "returns false when alive? is false (short-circuit, never asks socket)" do
+        # Build under wrapper.alive?=true so the session constructs, then
+        # flip to false to simulate the child dying after attach.
+        allow(wrapper).to receive(:socket_exists?).and_return(true)
+        session = build_alive_session
+        allow(wrapper).to receive(:alive?).and_return(false)
+
+        expect(session.alive_for_reuse?).to be false
+        expect(wrapper).not_to have_received(:socket_exists?)
+      end
+
+      it "returns false when dtach socket no longer exists (abrupt-kill / systemd-restart scenario)" do
+        allow(wrapper).to receive(:socket_exists?).and_return(false)
+        session = build_alive_session
+
+        expect(session.alive_for_reuse?).to be false
+      end
+
+      it "returns false when local attach proxy writer is closed (proxy died after dtach session ended)" do
+        allow(wrapper).to receive(:socket_exists?).and_return(true)
+        session = build_alive_session
+        session.instance_variable_get(:@writer).close
+
+        expect(session.alive_for_reuse?).to be false
+      end
+    end
+
     describe "#stop when the child survives SIGKILL" do
       after { described_class::SESSIONS.clear }
 

@@ -15,7 +15,7 @@ RSpec.describe Tentacles::SessionControl do
     it "spawns a fresh session when none exists" do
       fake = instance_double(
         TentacleRuntime::Session,
-        alive?: true, pid: 9991, started_at: Time.current,
+        alive?: true, alive_for_reuse?: true, pid: 9991, started_at: Time.current,
         cwd: "/tmp/worktree-#{note.id}", repo_root_fingerprint: "fp:1",
         pre_persistence_fingerprint?: false,
         initial_prompt_delivered?: false
@@ -33,7 +33,7 @@ RSpec.describe Tentacles::SessionControl do
     it "reports routed_prompt_delivered: true on fresh session when the runtime confirms delivery" do
       fake = instance_double(
         TentacleRuntime::Session,
-        alive?: true, pid: 9991, started_at: Time.current,
+        alive?: true, alive_for_reuse?: true, pid: 9991, started_at: Time.current,
         cwd: "/tmp/worktree-#{note.id}", repo_root_fingerprint: "fp:1",
         pre_persistence_fingerprint?: false,
         initial_prompt_delivered?: true
@@ -51,7 +51,7 @@ RSpec.describe Tentacles::SessionControl do
     it "reports routed_prompt_delivered: false on fresh session when the runtime could not confirm delivery" do
       fake = instance_double(
         TentacleRuntime::Session,
-        alive?: true, pid: 9991, started_at: Time.current,
+        alive?: true, alive_for_reuse?: true, pid: 9991, started_at: Time.current,
         cwd: "/tmp/worktree-#{note.id}", repo_root_fingerprint: "fp:1",
         pre_persistence_fingerprint?: false,
         initial_prompt_delivered?: false
@@ -69,7 +69,7 @@ RSpec.describe Tentacles::SessionControl do
       fresh_fp = Tentacles::BootConfig.repo_root_fingerprint(Rails.root)
       existing = instance_double(
         TentacleRuntime::Session,
-        alive?: true, pid: 1, started_at: Time.current,
+        alive?: true, alive_for_reuse?: true, pid: 1, started_at: Time.current,
         cwd: existing_cwd, repo_root_fingerprint: fresh_fp,
         pre_persistence_fingerprint?: false
       )
@@ -88,7 +88,7 @@ RSpec.describe Tentacles::SessionControl do
       fresh_fp = Tentacles::BootConfig.repo_root_fingerprint(Rails.root)
       existing = instance_double(
         TentacleRuntime::Session,
-        alive?: true, pid: 1, started_at: Time.current,
+        alive?: true, alive_for_reuse?: true, pid: 1, started_at: Time.current,
         cwd: existing_cwd, repo_root_fingerprint: fresh_fp,
         pre_persistence_fingerprint?: false,
         submit_sequence: "\e[13u"
@@ -105,7 +105,7 @@ RSpec.describe Tentacles::SessionControl do
       stale_cwd = "/tmp/stale-#{SecureRandom.hex(4)}"
       existing = instance_double(
         TentacleRuntime::Session,
-        alive?: true, pid: 1, started_at: Time.current,
+        alive?: true, alive_for_reuse?: true, pid: 1, started_at: Time.current,
         cwd: stale_cwd, repo_root_fingerprint: nil,
         pre_persistence_fingerprint?: false
       )
@@ -124,7 +124,7 @@ RSpec.describe Tentacles::SessionControl do
       stale_fp = "#{File.realpath(Rails.root)}:777777"
       existing = instance_double(
         TentacleRuntime::Session,
-        alive?: true, pid: 1, started_at: Time.current,
+        alive?: true, alive_for_reuse?: true, pid: 1, started_at: Time.current,
         cwd: existing_cwd, repo_root_fingerprint: stale_fp,
         pre_persistence_fingerprint?: false
       )
@@ -144,7 +144,7 @@ RSpec.describe Tentacles::SessionControl do
       existing_cwd = WorktreeService.path_for(tentacle_id: note.id, repo_root: Rails.root)
       existing = instance_double(
         TentacleRuntime::Session,
-        alive?: true, pid: 1, started_at: Time.current,
+        alive?: true, alive_for_reuse?: true, pid: 1, started_at: Time.current,
         cwd: existing_cwd, repo_root_fingerprint: nil,
         pre_persistence_fingerprint?: false
       )
@@ -165,7 +165,7 @@ RSpec.describe Tentacles::SessionControl do
       existing_cwd = WorktreeService.path_for(tentacle_id: note.id, repo_root: Rails.root)
       existing = instance_double(
         TentacleRuntime::Session,
-        alive?: true, pid: 1, started_at: Time.current,
+        alive?: true, alive_for_reuse?: true, pid: 1, started_at: Time.current,
         cwd: existing_cwd, repo_root_fingerprint: nil,
         pre_persistence_fingerprint?: true
       )
@@ -176,6 +176,62 @@ RSpec.describe Tentacles::SessionControl do
       result = described_class.activate(note: note, command: ["claude"])
       expect(result.reused).to be(true)
       expect(result.session).to eq(existing)
+    end
+
+    describe "probe-fail invalidation (zombie SESSIONS entry)" do
+      it "invalidates the SESSIONS entry, finalizes the alive TentacleSession record, and falls through to a fresh spawn in one cycle" do
+        existing_cwd = WorktreeService.path_for(tentacle_id: note.id, repo_root: Rails.root)
+        zombie = instance_double(
+          TentacleRuntime::Session,
+          alive?: true,
+          alive_for_reuse?: false,    # PTY/dtach probe says channel is dead
+          pid: 4242,
+          cwd: existing_cwd,
+          dtach: nil
+        )
+        TentacleRuntime::SESSIONS[note.id] = zombie
+        record = create(:tentacle_session,
+          tentacle_note_id: note.id,
+          dtach_socket: "/run/nm-tentacles/#{note.id}.sock",
+          pid_file: "/run/nm-tentacles/#{note.id}.pid",
+          pid: 4242,
+          command: "claude",
+          status: "alive")
+
+        fresh = instance_double(
+          TentacleRuntime::Session,
+          alive?: true, alive_for_reuse?: true, pid: 9999, started_at: Time.current,
+          cwd: existing_cwd, repo_root_fingerprint: "fp:fresh",
+          pre_persistence_fingerprint?: false,
+          initial_prompt_delivered?: false
+        )
+        allow(WorktreeService).to receive(:ensure).and_return(existing_cwd)
+        expect(TentacleRuntime).to receive(:start).and_return(fresh)
+
+        result = described_class.activate(note: note, command: ["claude"])
+
+        expect(result.reused).to be false
+        expect(result.session).to eq(fresh)
+        expect(record.reload.status).to eq("exited")
+        expect(record.reload.ended_at).to be_present
+      end
+
+      it "does not finalize the record when no zombie session is present (cold-start path is unaffected)" do
+        # No SESSIONS entry, no DB record, no probe — just a fresh spawn.
+        existing_cwd = WorktreeService.path_for(tentacle_id: note.id, repo_root: Rails.root)
+        fresh = instance_double(
+          TentacleRuntime::Session,
+          alive?: true, alive_for_reuse?: true, pid: 1, started_at: Time.current,
+          cwd: existing_cwd, repo_root_fingerprint: "fp:fresh",
+          pre_persistence_fingerprint?: false,
+          initial_prompt_delivered?: false
+        )
+        allow(WorktreeService).to receive(:ensure).and_return(existing_cwd)
+        expect(TentacleRuntime).to receive(:start).and_return(fresh)
+        expect(TentacleSession).not_to receive(:where)
+
+        described_class.activate(note: note, command: ["claude"])
+      end
     end
 
     it "raises InvalidBootConfig when tentacle_workspace cannot resolve" do
@@ -200,7 +256,7 @@ RSpec.describe Tentacles::SessionControl do
       let(:fake_session) do
         instance_double(
           TentacleRuntime::Session,
-          alive?: true, pid: 9991, started_at: Time.current,
+          alive?: true, alive_for_reuse?: true, pid: 9991, started_at: Time.current,
           cwd: "/tmp/worktree-#{note.id}", repo_root_fingerprint: "fp:1",
           pre_persistence_fingerprint?: false,
           initial_prompt_delivered?: false
