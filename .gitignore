@@ -217,6 +217,10 @@ spec/fixtures/files/*.pdf
 # State local do Codex CLI
 .codex
 
+# Local MCP client config (may carry bearer tokens / machine-specific paths).
+# Use .mcp.json.example as the tracked template.
+/.mcp.json
+
 # Vite Ruby
 /public/vite*
 node_modules

@@ -614,6 +614,44 @@ class TentacleRuntime
       @pid ? process_alive? : false
     end
 
+    # Strict liveness probe for the activate reuse path. The shallow
+    # `alive?` check (Process.kill 0 only) returns true for zombies and
+    # for PIDs that were reused by an unrelated process — both real
+    # post-`systemctl restart` failure modes that left agents wedged
+    # against dead PTYs and triggered a 4×-retry storm in 2026-04-29.
+    #
+    # On top of `alive?` this verifies the channel itself is usable:
+    #   - in dtach mode: the runtime socket file must still exist (an
+    #     abrupt SIGKILL of the dtach process leaves the FD slot empty
+    #     even if the child PID was reused, so socket_exists? false is
+    #     the unambiguous "respawn me" signal)
+    #   - in either mode: the local writer must be open and accept a
+    #     non-blocking probe (NUL byte in PTY mode — ignored by claude
+    #     and bash TUIs; closed?-only check in dtach mode since the
+    #     local writer is the attach proxy's PTY, not the child's)
+    #
+    # Returns false on any signal that the channel is dead, true only
+    # when every layer says healthy. Callers that get false MUST
+    # invalidate this Session entry instead of trying to write into it.
+    def alive_for_reuse?
+      return false unless alive?
+
+      writer = @writer
+      return false if writer.nil? || writer.closed?
+
+      if dtach_mode?
+        return false unless @dtach&.socket_exists?
+      else
+        writer.write_nonblock("\x00")
+      end
+      true
+    rescue Errno::EPIPE, Errno::EIO, IOError, Errno::EBADF
+      false
+    rescue IO::WaitWritable
+      # Buffer pressure but channel still open — alive.
+      true
+    end
+
     private
 
     def process_alive?

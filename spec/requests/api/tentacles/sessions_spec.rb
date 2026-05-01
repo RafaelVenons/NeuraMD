@@ -45,7 +45,7 @@ RSpec.describe "API tentacle sessions", type: :request do
       note = make_note("Alive")
       session = instance_double(
         TentacleRuntime::Session,
-        alive?: true,
+        alive?: true, alive_for_reuse?: true,
         pid: 4242,
         started_at: Time.utc(2026, 4, 20, 12),
         tentacle_id: note.id
@@ -89,7 +89,7 @@ RSpec.describe "API tentacle sessions", type: :request do
       note = make_note("Start")
       fake = instance_double(
         TentacleRuntime::Session,
-        alive?: true,
+        alive?: true, alive_for_reuse?: true,
         pid: 9001,
         started_at: Time.utc(2026, 4, 20, 13)
       )
@@ -113,7 +113,7 @@ RSpec.describe "API tentacle sessions", type: :request do
     it "falls back to bash when command is unknown" do
       sign_in user
       note = make_note("Fallback")
-      fake = instance_double(TentacleRuntime::Session, alive?: true, pid: 1, started_at: Time.current)
+      fake = instance_double(TentacleRuntime::Session, alive?: true, alive_for_reuse?: true, pid: 1, started_at: Time.current)
       expect(TentacleRuntime).to receive(:start).with(
         hash_including(command: %w[bash -l])
       ).and_return(fake)
@@ -154,7 +154,7 @@ RSpec.describe "API tentacle sessions", type: :request do
 
         fake = instance_double(
           TentacleRuntime::Session,
-          alive?: true, pid: 9001, started_at: Time.utc(2026, 4, 20, 14)
+          alive?: true, alive_for_reuse?: true, pid: 9001, started_at: Time.utc(2026, 4, 20, 14)
         )
         expect(WorktreeService).to receive(:ensure).with(
           hash_including(tentacle_id: note.id, repo_root: cwd)
@@ -179,7 +179,7 @@ RSpec.describe "API tentacle sessions", type: :request do
         sign_in user
         note = make_note("NoCwd")
 
-        fake = instance_double(TentacleRuntime::Session, alive?: true, pid: 1, started_at: Time.current)
+        fake = instance_double(TentacleRuntime::Session, alive?: true, alive_for_reuse?: true, pid: 1, started_at: Time.current)
         expect(WorktreeService).to receive(:ensure) do |**kwargs|
           expect(kwargs[:tentacle_id]).to eq(note.id)
           expect([nil, Rails.root]).to include(kwargs[:repo_root])
@@ -207,7 +207,7 @@ RSpec.describe "API tentacle sessions", type: :request do
           changes: {"tentacle_cwd" => cwd}
         )
 
-        fake = instance_double(TentacleRuntime::Session, alive?: true, pid: 1, started_at: Time.current)
+        fake = instance_double(TentacleRuntime::Session, alive?: true, alive_for_reuse?: true, pid: 1, started_at: Time.current)
         allow(WorktreeService).to receive(:ensure).and_return("/stub/worktree")
         expect(TentacleRuntime).to receive(:start) do |**kwargs|
           expect(kwargs[:initial_prompt]).to be_nil
@@ -270,7 +270,7 @@ RSpec.describe "API tentacle sessions", type: :request do
         fresh_fp = Tentacles::BootConfig.repo_root_fingerprint(Rails.root)
         existing = instance_double(
           TentacleRuntime::Session,
-          alive?: true, pid: 4242, started_at: Time.utc(2026, 4, 20, 10),
+          alive?: true, alive_for_reuse?: true, pid: 4242, started_at: Time.utc(2026, 4, 20, 10),
           cwd: existing_cwd, repo_root_fingerprint: fresh_fp,
           pre_persistence_fingerprint?: false
         )
@@ -303,7 +303,7 @@ RSpec.describe "API tentacle sessions", type: :request do
         stale_cwd = "/tmp/stale-worktree-#{SecureRandom.hex(4)}"
         existing = instance_double(
           TentacleRuntime::Session,
-          alive?: true, pid: 9999, started_at: Time.current,
+          alive?: true, alive_for_reuse?: true, pid: 9999, started_at: Time.current,
           cwd: stale_cwd, repo_root_fingerprint: nil,
           pre_persistence_fingerprint?: false
         )
@@ -336,7 +336,7 @@ RSpec.describe "API tentacle sessions", type: :request do
         stale_fp = "#{File.realpath(Rails.root)}:999999999"
         existing = instance_double(
           TentacleRuntime::Session,
-          alive?: true, pid: 1234, started_at: Time.current,
+          alive?: true, alive_for_reuse?: true, pid: 1234, started_at: Time.current,
           cwd: existing_cwd, repo_root_fingerprint: stale_fp,
           pre_persistence_fingerprint?: false
         )
@@ -381,7 +381,7 @@ RSpec.describe "API tentacle sessions", type: :request do
         sign_in user
         note = make_note("Routed")
 
-        fake = instance_double(TentacleRuntime::Session, alive?: true, pid: 1, started_at: Time.current, initial_prompt_delivered?: true)
+        fake = instance_double(TentacleRuntime::Session, alive?: true, alive_for_reuse?: true, pid: 1, started_at: Time.current, initial_prompt_delivered?: true)
         allow(WorktreeService).to receive(:ensure).and_return("/stub/worktree")
         expect(TentacleRuntime).to receive(:start) do |**kwargs|
           expect(kwargs[:initial_prompt]).to eq("Implement OAuth Discord.")
@@ -405,7 +405,7 @@ RSpec.describe "API tentacle sessions", type: :request do
           changes: {"tentacle_initial_prompt" => "You are the Especialista."}
         )
 
-        fake = instance_double(TentacleRuntime::Session, alive?: true, pid: 1, started_at: Time.current, initial_prompt_delivered?: true)
+        fake = instance_double(TentacleRuntime::Session, alive?: true, alive_for_reuse?: true, pid: 1, started_at: Time.current, initial_prompt_delivered?: true)
         allow(WorktreeService).to receive(:ensure).and_return("/stub/worktree")
         expect(TentacleRuntime).to receive(:start) do |**kwargs|
           expect(kwargs[:initial_prompt]).to eq("You are the Especialista.\n\nImplement OAuth Discord.")
@@ -426,7 +426,7 @@ RSpec.describe "API tentacle sessions", type: :request do
         fresh_fp = Tentacles::BootConfig.repo_root_fingerprint(Rails.root)
         existing = instance_double(
           TentacleRuntime::Session,
-          alive?: true, pid: 5555, started_at: Time.utc(2026, 4, 20, 11),
+          alive?: true, alive_for_reuse?: true, pid: 5555, started_at: Time.utc(2026, 4, 20, 11),
           cwd: existing_cwd, repo_root_fingerprint: fresh_fp,
           pre_persistence_fingerprint?: false,
           submit_sequence: "\e[13u"
@@ -470,7 +470,7 @@ RSpec.describe "API tentacle sessions", type: :request do
           changes: {"tentacle_initial_prompt" => "x" * 2049}
         )
 
-        fake = instance_double(TentacleRuntime::Session, alive?: true, pid: 1, started_at: Time.current)
+        fake = instance_double(TentacleRuntime::Session, alive?: true, alive_for_reuse?: true, pid: 1, started_at: Time.current)
         allow(WorktreeService).to receive(:ensure).and_return("/stub/worktree")
         expect(TentacleRuntime).to receive(:start) do |**kwargs|
           expect(kwargs[:initial_prompt]).to be_nil
@@ -519,7 +519,7 @@ RSpec.describe "API tentacle sessions", type: :request do
         note = make_note("InWorkspace")
         Properties::SetService.call(note: note, changes: {"tentacle_workspace" => "neuramd"})
 
-        fake = instance_double(TentacleRuntime::Session, alive?: true, pid: 1, started_at: Time.current)
+        fake = instance_double(TentacleRuntime::Session, alive?: true, alive_for_reuse?: true, pid: 1, started_at: Time.current)
         expect(WorktreeService).to receive(:ensure) do |**kwargs|
           expect(kwargs[:tentacle_id]).to eq(note.id)
           expect(kwargs[:repo_root]).to eq(workspace_path)
@@ -549,7 +549,7 @@ RSpec.describe "API tentacle sessions", type: :request do
           }
         )
 
-        fake = instance_double(TentacleRuntime::Session, alive?: true, pid: 1, started_at: Time.current)
+        fake = instance_double(TentacleRuntime::Session, alive?: true, alive_for_reuse?: true, pid: 1, started_at: Time.current)
         expect(WorktreeService).to receive(:ensure) do |**kwargs|
           expect(kwargs[:repo_root]).to eq(workspace_path)
           expect(kwargs[:worktree_root]).to include(".tentacle-worktrees/neuramd")

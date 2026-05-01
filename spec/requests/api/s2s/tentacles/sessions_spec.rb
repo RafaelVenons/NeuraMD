@@ -147,7 +147,7 @@ RSpec.describe "API S2S tentacle sessions", type: :request do
       fresh_fp = Tentacles::BootConfig.repo_root_fingerprint(Rails.root)
       existing = instance_double(
         TentacleRuntime::Session,
-        alive?: true, pid: 9, started_at: Time.current,
+        alive?: true, alive_for_reuse?: true, pid: 9, started_at: Time.current,
         cwd: existing_cwd, repo_root_fingerprint: fresh_fp,
         pre_persistence_fingerprint?: false
       )
@@ -168,7 +168,7 @@ RSpec.describe "API S2S tentacle sessions", type: :request do
       fresh_fp = Tentacles::BootConfig.repo_root_fingerprint(Rails.root)
       existing = instance_double(
         TentacleRuntime::Session,
-        alive?: true, pid: 9, started_at: Time.current,
+        alive?: true, alive_for_reuse?: true, pid: 9, started_at: Time.current,
         cwd: existing_cwd, repo_root_fingerprint: fresh_fp,
         pre_persistence_fingerprint?: false,
         submit_sequence: "\e[13u"
@@ -189,7 +189,7 @@ RSpec.describe "API S2S tentacle sessions", type: :request do
       stale_cwd = "/tmp/stale-#{SecureRandom.hex(4)}"
       existing = instance_double(
         TentacleRuntime::Session,
-        alive?: true, pid: 9, started_at: Time.current,
+        alive?: true, alive_for_reuse?: true, pid: 9, started_at: Time.current,
         cwd: stale_cwd, repo_root_fingerprint: nil,
         pre_persistence_fingerprint?: false
       )
@@ -323,7 +323,7 @@ RSpec.describe "API S2S tentacle sessions", type: :request do
       stale_cwd = "/tmp/stale-#{SecureRandom.hex(4)}"
       existing = instance_double(
         TentacleRuntime::Session,
-        alive?: true, pid: 9, started_at: Time.current,
+        alive?: true, alive_for_reuse?: true, pid: 9, started_at: Time.current,
         cwd: stale_cwd, repo_root_fingerprint: nil,
         pre_persistence_fingerprint?: false,
         force_killed?: false

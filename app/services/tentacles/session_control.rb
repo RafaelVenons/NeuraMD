@@ -91,7 +91,7 @@ module Tentacles
       current_fingerprint = ::Tentacles::BootConfig.repo_root_fingerprint(repo_root)
 
       existing = ::TentacleRuntime.get(@note.id)
-      if existing&.alive?
+      if existing&.alive_for_reuse?
         assert_session_fresh!(existing, repo_root: repo_root, worktree_root: worktree_root, current_fingerprint: current_fingerprint)
 
         if routed_prompt.present?
@@ -108,6 +108,15 @@ module Tentacles
           command: @command,
           routed_prompt_delivered: routed_prompt.present?
         )
+      elsif existing
+        # alive_for_reuse? said the SESSIONS entry is a zombie — child
+        # PID looked alive (kill -0) but the channel is dead (writer
+        # closed in dtach mode after attach proxy died, or PTY master
+        # got EPIPE). Tear down the in-memory entry + DB record so the
+        # fresh-spawn path below produces a clean session in one cycle
+        # instead of the 4×-retry storm observed pre-fix on
+        # post-`systemctl restart` wakes.
+        invalidate_stale_session!(existing)
       end
 
       final_prompt = merge_prompts(boot_prompt, routed_prompt)
@@ -142,6 +151,54 @@ module Tentacles
     end
 
     private
+
+    # Tear down a SESSIONS map entry that the alive_for_reuse? probe
+    # rejected as a zombie (channel dead even though kill -0 still
+    # claims the pid is up). Three steps, each idempotent so this is
+    # safe under concurrent activate calls and against the reader
+    # thread's own delete-on-EOF path:
+    #
+    #   1. Drop the in-memory map entry — Concurrent::Map.delete is
+    #      thread-safe and a no-op if another path already removed it.
+    #   2. Mark every still-alive TentacleSession DB record for this
+    #      note as ended with reason "missing_pid" (closest existing
+    #      EXIT_REASON to "shallow kill -0 lied"). Without this,
+    #      `agent_status` would keep reporting alive_sessions:1
+    #      pointing at the just-invalidated zombie.
+    #   3. Best-effort cleanup of the dtach socket/pidfile so the next
+    #      bootstrap_sessions! sweep does not pick the corpse back up.
+    #
+    # Errors at any step are swallowed (logged) — the caller is about
+    # to fall through to fresh spawn, which is the recovery; raising
+    # here would defeat the whole point of the invalidation.
+    def invalidate_stale_session!(existing)
+      ::TentacleRuntime::SESSIONS.delete(@note.id)
+
+      ::TentacleSession.alive.where(tentacle_note_id: @note.id).find_each do |record|
+        record.mark_ended!(reason: "missing_pid")
+      rescue StandardError => e
+        Rails.logger.warn(
+          "[session_control] invalidate_stale_session! failed to finalize record " \
+          "#{record.id} for tentacle #{@note.id}: #{e.class}: #{e.message}"
+        )
+      end
+
+      cleanup_stale_dtach_artifacts(existing)
+    rescue StandardError => e
+      Rails.logger.warn(
+        "[session_control] invalidate_stale_session! raised " \
+        "#{e.class} for tentacle #{@note.id}: #{e.message}"
+      )
+    end
+
+    def cleanup_stale_dtach_artifacts(existing)
+      wrapper = existing.respond_to?(:dtach) ? existing.dtach : nil
+      return unless wrapper
+      wrapper.cleanup
+    rescue StandardError
+      # Best-effort: socket/pidfile removal is supervised by
+      # SupervisorJob.cleanup_orphaned_sockets as a backstop.
+    end
 
     # Guards session reuse: refuse to reuse a live session whose
     # worktree path or repo identity diverged from the current boot

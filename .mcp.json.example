@@ -4,12 +4,12 @@
       "command": "bin/mcp-server",
       "args": []
     },
-    "neuramd-homelab": {
-      "command": "ssh",
-      "args": [
-        "venom@HomeLab",
-        "cd /home/venom/projects/NeuraMD && bin/mcp-server"
-      ]
+    "neuramd-gateway": {
+      "type": "http",
+      "url": "http://AIrch.local:3000/mcp",
+      "headers": {
+        "Authorization": "Bearer REPLACE_WITH_GATEWAY_TOKEN"
+      }
     },
     "chrome-devtools": {
       "command": "npx",
