@@ -46,6 +46,30 @@ RSpec.describe TentacleSession, type: :model do
       expect(dup).not_to be_valid
       expect(dup.errors[:dtach_socket]).to be_present
     end
+
+    # Codex P1 from PR #55: when invalidate_stale_session! marks an alive
+    # record exited but leaves dtach_socket untouched, the immediately-following
+    # fresh spawn would hit the unique constraint on the same socket path and
+    # the one-cycle recovery would fail. The semantic invariant is "only one
+    # ALIVE session per socket"; exited records can keep their forensic socket
+    # value without blocking the new lifecycle.
+    it "allows reusing the dtach_socket of an already-exited record (alive-only uniqueness)" do
+      socket = "/run/nm-tentacles/recover-#{SecureRandom.hex(4)}.sock"
+      old = create(:tentacle_session, dtach_socket: socket, status: "alive")
+      old.mark_ended!(reason: "missing_pid")
+
+      fresh = build(:tentacle_session, dtach_socket: socket)
+      expect(fresh).to be_valid, fresh.errors.full_messages.to_sentence
+      expect { fresh.save! }.not_to raise_error
+    end
+
+    it "still rejects two ALIVE records sharing the same dtach_socket" do
+      socket = "/run/nm-tentacles/conflict-#{SecureRandom.hex(4)}.sock"
+      create(:tentacle_session, dtach_socket: socket, status: "alive")
+      dup = build(:tentacle_session, dtach_socket: socket, status: "alive")
+      expect(dup).not_to be_valid
+      expect(dup.errors[:dtach_socket]).to be_present
+    end
   end
 
   describe "scopes" do

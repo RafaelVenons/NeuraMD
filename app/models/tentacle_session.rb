@@ -4,7 +4,13 @@ class TentacleSession < ApplicationRecord
 
   belongs_to :note, foreign_key: :tentacle_note_id, inverse_of: false
 
-  validates :dtach_socket, presence: true, uniqueness: {case_sensitive: true}
+  # Uniqueness is scoped to ALIVE sessions only. Exited records keep their
+  # socket as forensic state — they don't compete for the path with the next
+  # lifecycle. Mirrors the partial unique index in
+  # `index_tentacle_sessions_on_dtach_socket_alive`. See the migration's
+  # comment for the Codex P1 from PR #55 that motivated this.
+  validates :dtach_socket, presence: true,
+    uniqueness: {case_sensitive: true, conditions: -> { where(status: "alive") }}
   validates :command, presence: true
   validates :started_at, presence: true
   validates :status, inclusion: {in: STATUSES}
