@@ -7,7 +7,7 @@ module Tentacles
 
     Result = Struct.new(:child, :revision, :body, keyword_init: true)
 
-    def self.call(parent:, title:, description: nil, extra_tags: nil, cwd: nil, initial_prompt: nil, workspace: nil)
+    def self.call(parent:, title:, description: nil, extra_tags: nil, cwd: nil, initial_prompt: nil, workspace: nil, tentacle_yolo: true)
       new(
         parent: parent,
         title: title,
@@ -15,11 +15,12 @@ module Tentacles
         extra_tags: extra_tags,
         cwd: cwd,
         initial_prompt: initial_prompt,
-        workspace: workspace
+        workspace: workspace,
+        tentacle_yolo: tentacle_yolo
       ).call
     end
 
-    def initialize(parent:, title:, description:, extra_tags:, cwd:, initial_prompt:, workspace:)
+    def initialize(parent:, title:, description:, extra_tags:, cwd:, initial_prompt:, workspace:, tentacle_yolo:)
       @parent         = parent
       @title          = title.to_s.strip
       @description    = description.to_s.strip
@@ -27,6 +28,11 @@ module Tentacles
       @cwd            = cwd.presence
       @initial_prompt = initial_prompt.presence
       @workspace      = workspace.presence
+      # Workers default to YOLO per Carta comum policy: tentáculo headless
+      # sem bypassPermissions trava na primeira tool call por falta de
+      # confirmação humana no PTY. Charters interativos (Gerente, externos)
+      # passam tentacle_yolo: false explicitamente.
+      @tentacle_yolo  = tentacle_yolo
     end
 
     def call
@@ -80,6 +86,7 @@ module Tentacles
       changes["tentacle_cwd"] = @cwd if @cwd
       changes["tentacle_initial_prompt"] = @initial_prompt if @initial_prompt
       changes["tentacle_workspace"] = @workspace if @workspace
+      changes["tentacle_yolo"] = @tentacle_yolo unless @tentacle_yolo.nil?
       return nil if changes.empty?
 
       Properties::SetService.call(note: note, changes: changes)

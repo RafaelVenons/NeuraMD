@@ -4,6 +4,16 @@ RSpec.describe "API tentacle children", type: :request do
   let(:user)    { create(:user) }
   let!(:parent) { create(:note, :with_head_revision, title: "Parent") }
 
+  # ChildSpawner always writes tentacle_yolo (default true since the
+  # default-yolo fix; this controller opts out by passing false). Either
+  # way the PropertyDefinition must exist or the write blows up.
+  before do
+    PropertyDefinition.find_or_create_by!(key: "tentacle_yolo") do |d|
+      d.value_type = "boolean"
+      d.system = true
+    end
+  end
+
   describe "POST /api/notes/:slug/tentacle/children" do
     it "returns 401 envelope when signed out" do
       post "/api/notes/#{parent.slug}/tentacle/children",
@@ -28,6 +38,21 @@ RSpec.describe "API tentacle children", type: :request do
       expect(body["slug"]).to match(/runner/)
       expect(body["tentacle_url"]).to eq("/app/notes/#{body["slug"]}/tentacle")
       expect(body["tags"]).to include("tentacle")
+    end
+
+    it "does NOT default tentacle_yolo:true on the interactive web/API path (humans drive permission prompts)" do
+      PropertyDefinition.find_or_create_by!(key: "tentacle_yolo") do |d|
+        d.value_type = "boolean"
+        d.system = true
+      end
+      sign_in user
+
+      post "/api/notes/#{parent.slug}/tentacle/children",
+        params: {title: "Interactive Child"}.to_json,
+        headers: {"CONTENT_TYPE" => "application/json", "ACCEPT" => "application/json"}
+
+      child = Note.find_by(slug: response.parsed_body["slug"])
+      expect(child.head_revision.properties_data["tentacle_yolo"]).to eq(false)
     end
 
     it "rejects blank title with unprocessable envelope" do

@@ -3,6 +3,17 @@ require "rails_helper"
 RSpec.describe Tentacles::ChildSpawner do
   let!(:parent) { create(:note, :with_head_revision, title: "Parent Hub") }
 
+  # ChildSpawner always writes tentacle_yolo (default true) since the
+  # default-yolo fix — every nested example needs the PropertyDefinition,
+  # not just the explicit boot-config context. DatabaseCleaner truncates
+  # PropertyDefinitions at suite start, so re-seed it per example.
+  before do
+    PropertyDefinition.find_or_create_by!(key: "tentacle_yolo") do |d|
+      d.value_type = "boolean"
+      d.system = true
+    end
+  end
+
   describe ".call" do
     it "creates a child note with a checkpoint and the tentacle tag" do
       result = described_class.call(parent: parent, title: "First Child")
@@ -59,6 +70,10 @@ RSpec.describe Tentacles::ChildSpawner do
           d.value_type = "text"
           d.system = true
         end
+        PropertyDefinition.find_or_create_by!(key: "tentacle_yolo") do |d|
+          d.value_type = "boolean"
+          d.system = true
+        end
       end
 
       it "sets tentacle_cwd and tentacle_initial_prompt on the head revision when provided" do
@@ -75,13 +90,19 @@ RSpec.describe Tentacles::ChildSpawner do
           .to eq("boot me")
       end
 
-      it "leaves properties empty when cwd and initial_prompt are nil" do
+      it "defaults tentacle_yolo: true on bare spawn (workers run YOLO by default per Carta comum)" do
         result = described_class.call(parent: parent, title: "Bare")
 
-        expect(result.child.head_revision.properties_data).to eq({})
+        expect(result.child.head_revision.properties_data).to eq("tentacle_yolo" => true)
       end
 
-      it "only sets the keys that were provided" do
+      it "respects explicit tentacle_yolo: false (opt-out for non-worker children)" do
+        result = described_class.call(parent: parent, title: "No Yolo", tentacle_yolo: false)
+
+        expect(result.child.head_revision.properties_data["tentacle_yolo"]).to eq(false)
+      end
+
+      it "only sets the keys that were provided (plus the tentacle_yolo default)" do
         result = described_class.call(
           parent: parent,
           title: "Prompt Only",
@@ -89,7 +110,8 @@ RSpec.describe Tentacles::ChildSpawner do
         )
 
         expect(result.child.head_revision.properties_data).to eq(
-          "tentacle_initial_prompt" => "only prompt"
+          "tentacle_initial_prompt" => "only prompt",
+          "tentacle_yolo" => true
         )
       end
 
@@ -104,7 +126,7 @@ RSpec.describe Tentacles::ChildSpawner do
           .to eq("neuramd")
       end
 
-      it "persists workspace alongside initial_prompt" do
+      it "persists workspace alongside initial_prompt (plus the tentacle_yolo default)" do
         result = described_class.call(
           parent: parent,
           title: "WS + Prompt",
@@ -114,7 +136,8 @@ RSpec.describe Tentacles::ChildSpawner do
 
         expect(result.child.head_revision.properties_data).to eq(
           "tentacle_initial_prompt" => "boot",
-          "tentacle_workspace" => "neuramd"
+          "tentacle_workspace" => "neuramd",
+          "tentacle_yolo" => true
         )
       end
 

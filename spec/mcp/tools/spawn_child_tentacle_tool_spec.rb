@@ -10,6 +10,16 @@ RSpec.describe Mcp::Tools::SpawnChildTentacleTool do
   describe ".call" do
     let!(:parent) { create(:note, :with_head_revision, title: "Parent Tentacle") }
 
+    # ChildSpawner always writes tentacle_yolo (default true) since the
+    # default-yolo fix — the PropertyDefinition must exist for every example,
+    # not just the explicit boot-config contexts.
+    before do
+      PropertyDefinition.find_or_create_by!(key: "tentacle_yolo") do |d|
+        d.value_type = "boolean"
+        d.system = true
+      end
+    end
+
     it "creates a child note linked to the parent and returns metadata" do
       response = described_class.call(parent_slug: parent.slug, title: "New Child")
       data = JSON.parse(response.content.first[:text])
