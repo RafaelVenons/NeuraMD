@@ -10,8 +10,14 @@ module Api
         description = params[:description]
         extra_tags  = params[:extra_tags]
 
+        # Interactive web/API path — a human is on the other side of the
+        # browser tentacle UI to confirm permission prompts. Opt out of the
+        # ChildSpawner default (workers run YOLO) so this route preserves
+        # the prior opt-in behavior. Programmatic spawns via the MCP tool
+        # keep the YOLO default (headless, no human to click "y").
         result = ::Tentacles::ChildSpawner.call(
-          parent: @parent, title: title, description: description, extra_tags: extra_tags
+          parent: @parent, title: title, description: description, extra_tags: extra_tags,
+          tentacle_yolo: false
         )
         child = result.child
 
