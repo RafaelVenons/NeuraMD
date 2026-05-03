@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_04_26_180000) do
+ActiveRecord::Schema[8.1].define(version: 2026_05_02_170000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
   enable_extension "pg_trgm"
@@ -358,7 +358,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_04_26_180000) do
     t.uuid "tentacle_note_id", null: false
     t.string "transcript_tail_path"
     t.datetime "updated_at", null: false
-    t.index ["dtach_socket"], name: "index_tentacle_sessions_on_dtach_socket", unique: true
+    t.index ["dtach_socket"], name: "index_tentacle_sessions_on_dtach_socket_alive", unique: true, where: "((status)::text = 'alive'::text)"
     t.index ["pid"], name: "index_tentacle_sessions_on_pid"
     t.index ["status"], name: "index_tentacle_sessions_on_status"
     t.index ["tentacle_note_id", "status"], name: "index_tentacle_sessions_on_tentacle_note_id_and_status"
