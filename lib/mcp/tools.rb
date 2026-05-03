@@ -6,6 +6,7 @@ module Mcp
       [
         SearchNotesTool,
         ReadNoteTool,
+        ResolveNoteByIdTool,
         ListTagsTool,
         NotesByTagTool,
         NoteGraphTool,
