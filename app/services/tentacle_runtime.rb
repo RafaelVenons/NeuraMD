@@ -17,14 +17,17 @@ class TentacleRuntime
   # reaching the agent. 3/3 ocorrências do bug initial_prompt
   # observadas em 17h de campo (2026-04-23/24) seguiam esse padrão.
   INITIAL_PROMPT_QUIET_GRACE = 0.8
-  # Bumped 3.0 → 15.0 (2026-05-09) — Claude Code TUI splash + welcome
-  # screen + tip + input box can paint continuously for 5-10s on fresh
-  # spawns under load, never hitting 0.8s of quiet within the original
-  # 3s budget. Symptom: talk_to_agent wakes a session (reused:false)
-  # but the recipient sits idle indefinitely without consuming the
-  # routed_prompt — round-trip never closes. 15s gives the TUI room to
-  # finish painting and still fail-closed on a truly stuck PTY.
   INITIAL_PROMPT_QUIET_MAX_WAIT = 15.0
+  # Best-effort fallback when wait_for_quiet times out but boot succeeded.
+  # Empirically (2026-05-09 sentinela wake at 23:02:00) Claude Code TUI
+  # never settles into 0.8s of contiguous quiet within 15s — splash,
+  # animations, and cursor blink keep the stream warm. Bumping max_wait
+  # higher just postpones the same false. After the first output is
+  # observed, the readline buffer is up; sleeping a bounded extra delay
+  # then writing best-effort is reliable in practice (matches what a
+  # human typing into the TUI does at any moment). Original quiet gate
+  # is preserved as the happy path; this only fires when it gives up.
+  INITIAL_PROMPT_BEST_EFFORT_DELAY = 5.0
   # Marker file written under NEURAMD_TENTACLE_RUNTIME_DIR once
   # bootstrap_sessions! has finished a pass. SupervisorJob only sweeps
   # orphan sockets after this file exists so a tick that fires before
@@ -122,10 +125,12 @@ class TentacleRuntime
       end
       unless session.wait_for_quiet(grace: INITIAL_PROMPT_QUIET_GRACE, max_wait: INITIAL_PROMPT_QUIET_MAX_WAIT)
         Rails.logger.warn(
-          "TentacleRuntime initial_prompt skipped for #{session.tentacle_id}: " \
-          "PTY output never quieted within #{INITIAL_PROMPT_QUIET_MAX_WAIT}s; leaving routed_prompt_delivered=false"
+          "TentacleRuntime initial_prompt best-effort fallback for #{session.tentacle_id}: " \
+          "PTY output never quieted within #{INITIAL_PROMPT_QUIET_MAX_WAIT}s; " \
+          "sleeping #{INITIAL_PROMPT_BEST_EFFORT_DELAY}s then writing anyway " \
+          "(boot succeeded, readline assumed up)"
         )
-        return
+        sleep INITIAL_PROMPT_BEST_EFFORT_DELAY
       end
       # `session.submit_sequence` returns the right Enter encoding for
       # the spawned command — `\e[13u` (CSI Kitty keyboard) for claude,

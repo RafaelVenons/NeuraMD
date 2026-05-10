@@ -715,23 +715,29 @@ RSpec.describe TentacleRuntime do
       expect(writer_double.string).to be_empty
     end
 
-    it "leaves initial_prompt_delivered=false when output booted but never quieted within max_wait" do
-      # Even when the PTY emits something, a TUI that keeps drawing past
-      # QUIET_MAX_WAIT means the readline buffer is still racing the splash;
-      # writing now would lose bytes. Caller must see false and retry.
+    it "best-effort delivers the prompt when boot succeeded but quiet never settled" do
+      # Empirically Claude Code TUI never hits 0.8s of quiet within
+      # QUIET_MAX_WAIT — splash + cursor blink keep the stream warm. The
+      # original strict gate left the routed prompt undelivered forever,
+      # which is what made talk_to_agent wakes appear silent in the
+      # field (sentinela 2026-05-09 23:02). When boot succeeded the
+      # readline buffer is up, so after a bounded extra delay we write
+      # anyway and mark delivered. Stub the delay to 0 so the spec stays
+      # fast; the real value is INITIAL_PROMPT_BEST_EFFORT_DELAY.
       writer_double = StringIO.new
       allow_any_instance_of(described_class::Session).to receive(:wait_for_first_output).and_return(true)
       allow_any_instance_of(described_class::Session).to receive(:wait_for_quiet).and_return(false)
       allow_any_instance_of(described_class::Session).to receive(:write) { |_, data| writer_double << data }
+      stub_const("#{described_class}::INITIAL_PROMPT_BEST_EFFORT_DELAY", 0.0)
 
       session = described_class.start(
         tentacle_id: tentacle_id,
         command: ["sleep", "5"],
-        initial_prompt: "this should never reach the child"
+        initial_prompt: "best-effort delivery"
       )
 
-      expect(session.initial_prompt_delivered?).to be false
-      expect(writer_double.string).to be_empty
+      expect(session.initial_prompt_delivered?).to be true
+      expect(writer_double.string).to start_with("best-effort delivery")
     end
 
     it "exports NEURAMD_TENTACLE_ID in the child process env" do
