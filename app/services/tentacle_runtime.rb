@@ -17,7 +17,14 @@ class TentacleRuntime
   # reaching the agent. 3/3 ocorrências do bug initial_prompt
   # observadas em 17h de campo (2026-04-23/24) seguiam esse padrão.
   INITIAL_PROMPT_QUIET_GRACE = 0.8
-  INITIAL_PROMPT_QUIET_MAX_WAIT = 3.0
+  # Bumped 3.0 → 15.0 (2026-05-09) — Claude Code TUI splash + welcome
+  # screen + tip + input box can paint continuously for 5-10s on fresh
+  # spawns under load, never hitting 0.8s of quiet within the original
+  # 3s budget. Symptom: talk_to_agent wakes a session (reused:false)
+  # but the recipient sits idle indefinitely without consuming the
+  # routed_prompt — round-trip never closes. 15s gives the TUI room to
+  # finish painting and still fail-closed on a truly stuck PTY.
+  INITIAL_PROMPT_QUIET_MAX_WAIT = 15.0
   # Marker file written under NEURAMD_TENTACLE_RUNTIME_DIR once
   # bootstrap_sessions! has finished a pass. SupervisorJob only sweeps
   # orphan sockets after this file exists so a tick that fires before
