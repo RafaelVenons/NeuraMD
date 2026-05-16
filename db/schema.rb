@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_05_02_170000) do
+ActiveRecord::Schema[8.1].define(version: 2026_05_15_000000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
   enable_extension "pg_trgm"
@@ -58,6 +58,12 @@ ActiveRecord::Schema[8.1].define(version: 2026_05_02_170000) do
     t.datetime "updated_at", null: false
     t.index ["from_note_id", "created_at"], name: "idx_agent_messages_outbox"
     t.index ["to_note_id", "delivered_at", "created_at"], name: "idx_agent_messages_inbox"
+  end
+
+  create_table "agent_wake_states", primary_key: "note_id", id: :uuid, default: nil, force: :cascade do |t|
+    t.datetime "created_at", null: false
+    t.datetime "last_wake_attempt_at"
+    t.datetime "updated_at", null: false
   end
 
   create_table "ai_providers", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
@@ -345,11 +351,14 @@ ActiveRecord::Schema[8.1].define(version: 2026_05_02_170000) do
     t.string "command", null: false
     t.datetime "created_at", null: false
     t.string "cwd"
-    t.string "dtach_socket", null: false
+    t.string "dtach_socket"
     t.datetime "ended_at"
     t.integer "exit_code"
     t.string "exit_reason"
+    t.string "host"
     t.datetime "last_seen_at"
+    t.datetime "lease_expires_at"
+    t.string "lease_token"
     t.jsonb "metadata", default: {}, null: false
     t.integer "pid"
     t.string "pid_file"
@@ -359,9 +368,11 @@ ActiveRecord::Schema[8.1].define(version: 2026_05_02_170000) do
     t.string "transcript_tail_path"
     t.datetime "updated_at", null: false
     t.index ["dtach_socket"], name: "index_tentacle_sessions_on_dtach_socket_alive", unique: true, where: "((status)::text = 'alive'::text)"
+    t.index ["lease_expires_at"], name: "index_tentacle_sessions_on_lease_expiry_alive", where: "((status)::text = 'alive'::text)"
     t.index ["pid"], name: "index_tentacle_sessions_on_pid"
     t.index ["status"], name: "index_tentacle_sessions_on_status"
     t.index ["tentacle_note_id", "status"], name: "index_tentacle_sessions_on_tentacle_note_id_and_status"
+    t.index ["tentacle_note_id"], name: "index_tentacle_sessions_on_note_alive", unique: true, where: "((status)::text = 'alive'::text)"
     t.index ["tentacle_note_id"], name: "index_tentacle_sessions_on_tentacle_note_id"
   end
 
@@ -386,6 +397,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_05_02_170000) do
   add_foreign_key "active_storage_variant_records", "active_storage_blobs", column: "blob_id"
   add_foreign_key "agent_messages", "notes", column: "from_note_id", on_delete: :cascade
   add_foreign_key "agent_messages", "notes", column: "to_note_id", on_delete: :cascade
+  add_foreign_key "agent_wake_states", "notes", on_delete: :cascade
   add_foreign_key "ai_requests", "note_revisions"
   add_foreign_key "file_imports", "users"
   add_foreign_key "link_tags", "note_links"

@@ -175,7 +175,7 @@ RSpec.describe "API S2S tentacle sessions", type: :request do
       )
       TentacleRuntime::SESSIONS[note.id] = existing
 
-      expect(TentacleRuntime).to receive(:write).with(tentacle_id: note.id, data: "wake up\e[13u")
+      expect(TentacleRuntime).to receive(:write).with(tentacle_id: note.id, data: "wake up\e[13u").and_return(true)
 
       post "/api/s2s/tentacles/#{note.slug}/activate",
         params: {command: "claude", initial_prompt: "wake up"}.to_json, headers: headers
@@ -233,6 +233,46 @@ RSpec.describe "API S2S tentacle sessions", type: :request do
 
       expect(response).to have_http_status(:unprocessable_entity)
       expect(response.parsed_body["error"]).to include("tentacle_workspace")
+    end
+
+    it "returns 409 foreign_owned_session when another web process owns the live session" do
+      note = make_agent_note
+      allow(WorktreeService).to receive(:ensure).and_return("/stub/worktree")
+      allow(TentacleRuntime).to receive(:start)
+        .and_raise(TentacleRuntime::ForeignOwnedSession, "owned by another web process")
+
+      post "/api/s2s/tentacles/#{note.slug}/activate",
+        params: {command: "claude"}.to_json, headers: headers
+
+      expect(response).to have_http_status(:conflict)
+      expect(response.parsed_body["foreign_owned_session"]).to eq(true)
+    end
+
+    it "passes coalesce_wake through and surfaces wake_coalesced when a recent nudge is skipped" do
+      note = make_agent_note
+      existing_cwd = WorktreeService.path_for(tentacle_id: note.id, repo_root: Rails.root)
+      fresh_fp = Tentacles::BootConfig.repo_root_fingerprint(Rails.root)
+      existing = instance_double(
+        TentacleRuntime::Session,
+        alive?: true, alive_for_reuse?: true, pid: 9, started_at: Time.current,
+        cwd: existing_cwd, repo_root_fingerprint: fresh_fp,
+        pre_persistence_fingerprint?: false,
+        submit_sequence: "\e[13u",
+        recently_wake_nudged?: true
+      )
+      allow(existing).to receive(:mark_wake_nudged!)
+      TentacleRuntime::SESSIONS[note.id] = existing
+
+      # Recently nudged + coalesce_wake → SessionControl skips the write.
+      expect(TentacleRuntime).not_to receive(:write)
+
+      post "/api/s2s/tentacles/#{note.slug}/activate",
+        params: {command: "claude", initial_prompt: "wake up", coalesce_wake: true}.to_json,
+        headers: headers
+
+      expect(response).to have_http_status(:ok)
+      expect(response.parsed_body["wake_coalesced"]).to eq(true)
+      expect(response.parsed_body["routed_prompt_delivered"]).to eq(false)
     end
   end
 

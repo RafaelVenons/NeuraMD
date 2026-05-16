@@ -9,8 +9,15 @@ class TentacleSession < ApplicationRecord
   # lifecycle. Mirrors the partial unique index in
   # `index_tentacle_sessions_on_dtach_socket_alive`. See the migration's
   # comment for the Codex P1 from PR #55 that motivated this.
-  validates :dtach_socket, presence: true,
-    uniqueness: {case_sensitive: true, conditions: -> { where(status: "alive") }}
+  #
+  # `dtach_socket` is allow_nil: PTY-mode sessions carry no socket. They
+  # are de-duped instead by the per-note alive partial unique index
+  # (`index_tentacle_sessions_on_note_alive`) — the atomic cross-process
+  # duplicate-spawn guard. That guard lives in the DB index, not a model
+  # validation, so the check stays race-free.
+  validates :dtach_socket,
+    uniqueness: {case_sensitive: true, conditions: -> { where(status: "alive") }},
+    allow_nil: true
   validates :command, presence: true
   validates :started_at, presence: true
   validates :status, inclusion: {in: STATUSES}

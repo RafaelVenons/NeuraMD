@@ -73,4 +73,28 @@ RSpec.describe AgentMessage do
       expect { child.destroy! }.to change(described_class, :count).by(-1)
     end
   end
+
+  describe "wake-on-inbox callback" do
+    it "enqueues WakeRecipientJob for the recipient after create commits" do
+      expect do
+        described_class.create!(from_note: parent, to_note: child, content: "hi")
+      end.to have_enqueued_job(AgentMessages::WakeRecipientJob).with(child.id)
+    end
+
+    it "does not enqueue a wake on update" do
+      msg = described_class.create!(from_note: parent, to_note: child, content: "hi")
+
+      expect do
+        msg.mark_delivered!
+      end.not_to have_enqueued_job(AgentMessages::WakeRecipientJob)
+    end
+
+    it "does not enqueue a wake when tentacle operations are not authorized" do
+      allow(Tentacles::Authorization).to receive(:enabled?).and_return(false)
+
+      expect do
+        described_class.create!(from_note: parent, to_note: child, content: "hi")
+      end.not_to have_enqueued_job(AgentMessages::WakeRecipientJob)
+    end
+  end
 end

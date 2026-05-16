@@ -8,10 +8,9 @@ RSpec.describe TentacleSession, type: :model do
       expect(session).to be_valid
     end
 
-    it "requires a dtach_socket" do
+    it "allows a nil dtach_socket (PTY-mode sessions carry no socket)" do
       session.dtach_socket = nil
-      expect(session).not_to be_valid
-      expect(session.errors[:dtach_socket]).to be_present
+      expect(session).to be_valid
     end
 
     it "requires a command" do
@@ -88,7 +87,9 @@ RSpec.describe TentacleSession, type: :model do
 
     it ".for_note scopes to a given tentacle_note_id" do
       note1 = create(:tentacle_session).note
-      create(:tentacle_session, note: note1)
+      # Only one ALIVE session per note is allowed (the per-note alive
+      # partial unique index), so the second record for note1 is exited.
+      create(:tentacle_session, :exited, note: note1)
       other = create(:tentacle_session)
       expect(described_class.for_note(note1.id).pluck(:tentacle_note_id).uniq).to eq([note1.id])
       expect(described_class.for_note(note1.id)).not_to include(other)

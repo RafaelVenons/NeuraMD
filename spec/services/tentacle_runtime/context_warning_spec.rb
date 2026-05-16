@@ -1,7 +1,7 @@
 require "rails_helper"
 
 RSpec.describe TentacleRuntime, "context-warning" do
-  let(:tentacle_id) { SecureRandom.uuid }
+  let(:tentacle_id) { create(:note).id }
 
   before do
     allow(TentacleChannel).to receive(:broadcast_output)

@@ -1,4 +1,5 @@
 require "pty"
+require "socket"
 require "concurrent/map"
 require "neuramd/metrics"
 
@@ -28,6 +29,20 @@ class TentacleRuntime
   # human typing into the TUI does at any moment). Original quiet gate
   # is preserved as the happy path; this only fires when it gives up.
   INITIAL_PROMPT_BEST_EFFORT_DELAY = 5.0
+  # Heartbeat that touches TentacleSession#last_seen_at while a session
+  # is alive, so a stale owner (host crashed or never returned) can be
+  # reaped cross-host instead of wedging the per-note alive uniqueness
+  # index forever. Interval ~30s; reap threshold a few intervals out.
+  HEARTBEAT_INTERVAL = 30.0
+  # Fencing lease for the session row. Heartbeat renews lease_expires_at
+  # via CAS on lease_token; cross-host reap is also CAS-conditioned on
+  # the observed token+expiry, so an owner that renews between read
+  # and update wins the race. 5min keeps failover prompt — with the
+  # CAS guard on both renew and reap, a brief owner stall just hits
+  # one missed heartbeat (resumes cleanly on next tick); a host that
+  # actually died is reclaimed in bounded time.
+  LEASE_DURATION = 5.minutes
+  HEARTBEAT_STALE_TTL = 5.minutes
   # Marker file written under NEURAMD_TENTACLE_RUNTIME_DIR once
   # bootstrap_sessions! has finished a pass. SupervisorJob only sweeps
   # orphan sockets after this file exists so a tick that fires before
@@ -46,6 +61,14 @@ class TentacleRuntime
   # asking for command B does not end up steering (and later killing)
   # a process that was spawned for command A.
   class OwnershipMismatchError < StandardError; end
+
+  # Raised when a PTY-mode spawn loses the per-note alive uniqueness
+  # race — another web process already owns a live session for this
+  # note. The session map is process-local, so this process cannot
+  # see or steer that session; it refuses to spawn a duplicate (which
+  # would run two runtimes against the same inbox/worktree) and the
+  # orphan child from the lost race is killed before raising.
+  class ForeignOwnedSession < StandardError; end
 
   class << self
     # Whether the detached (dtach) backend is enabled. When false the
@@ -138,8 +161,17 @@ class TentacleRuntime
       # visible but unsubmitted (claude TUI treats `\r` as literal
       # newline text after enabling the Kitty protocol). Diagnosed
       # empirically 2026-04-27 against a live gerente session.
-      session.write("#{prompt}#{session.submit_sequence}")
-      session.mark_initial_prompt_delivered!
+      # Session#write returns false on EIO/IOError — a fresh PTY that
+      # dies between spawn and this write must not be reported as a
+      # successful delivery. Only mark when the write confirmed.
+      if session.write("#{prompt}#{session.submit_sequence}")
+        session.mark_initial_prompt_delivered!
+      else
+        Rails.logger.warn(
+          "TentacleRuntime initial_prompt write failed for #{session.tentacle_id}: " \
+          "PTY channel closed before delivery; leaving initial_prompt_delivered=false"
+        )
+      end
     rescue StandardError => e
       Rails.logger.error("TentacleRuntime initial_prompt failed: #{e.class}: #{e.message}")
     end
@@ -168,6 +200,38 @@ class TentacleRuntime
 
     def get(tentacle_id)
       SESSIONS[tentacle_id]
+    end
+
+    # Cross-process session lookup. On a local SESSIONS miss, a session
+    # spawned by another web process is invisible to this one — but a
+    # dtach-backed session is reachable through its shared runtime
+    # socket. When dtach is enabled and an alive TentacleSession record
+    # for this note carries a socket, reattach to it so this process can
+    # reuse/control it (the cross-process path SessionControl needs for
+    # activate + terminate under multiple web workers).
+    #
+    # Returns nil — leaving the caller to fall through to spawn — for a
+    # local miss with no record, a PTY-mode record (no socket, genuinely
+    # unreachable from another process), or when dtach is disabled.
+    def get_or_reattach(tentacle_id)
+      existing = SESSIONS[tentacle_id]
+      return existing if existing
+      return nil unless dtach_enabled?
+
+      record = TentacleSession.alive.find_by(tentacle_note_id: tentacle_id)
+      return nil if record.nil? || record.dtach_socket.blank?
+
+      START_MUTEXES.compute_if_absent(tentacle_id) { Mutex.new }.synchronize do
+        already = SESSIONS[tentacle_id]
+        next already if already
+
+        reattach_record(record)
+      end
+    rescue StandardError => e
+      Rails.logger.error(
+        "[tentacle_runtime] get_or_reattach failed for #{tentacle_id}: #{e.class}: #{e.message}"
+      )
+      nil
     end
 
     # Graceful group stop used by shutdown hooks and the drain endpoint.
@@ -234,12 +298,18 @@ class TentacleRuntime
     # SupervisorJob#cleanup_orphaned_sockets knows it can safely sweep.
     #
     # Called from config/initializers/tentacle_runtime_bootstrap.rb on
-    # Rails boot. No-op unless dtach is enabled.
+    # Rails boot. Always reaps orphaned PTY-mode records for this host;
+    # dtach reattach runs only when the dtach backend is enabled.
     def bootstrap_sessions!
-      return 0 unless dtach_enabled?
+      reaped = reap_orphaned_pty_records!
+      return reaped unless dtach_enabled?
 
       reattached = 0
       TentacleSession.alive.find_each do |record|
+        # PTY-mode records (no socket) are handled by the reap pass
+        # above — they cannot be reattached, only finalized.
+        next if record.dtach_socket.blank?
+
         begin
           if reattach_record(record)
             reattached += 1
@@ -281,6 +351,79 @@ class TentacleRuntime
     end
 
     private
+
+    # Finalizes PTY-mode TentacleSession records this host owns whose
+    # process is gone. A PTY child dies with its Puma worker (PTY master
+    # close → SIGHUP), so on a fresh boot any alive PTY record for this
+    # host with a dead pid is an orphan from a crashed/restarted worker
+    # whose reader-thread on_exit never ran. dtach-backed records carry
+    # a socket and are reattached separately, so they are skipped here.
+    # Scoped by host because a pid is only meaningful on its own host.
+    def reap_orphaned_pty_records!
+      host = Socket.gethostname
+      reaped = 0
+      TentacleSession.alive.where(dtach_socket: nil).find_each do |record|
+        if record.host == host
+          # Same host: bootstrap only runs at process boot, and at that
+          # point SESSIONS is empty — any alive record for this host
+          # predates this worker by definition. The previous PID check
+          # was unsafe under PID reuse (kill(0, pid) can find an
+          # unrelated process that happens to have the same id), which
+          # would leave the row alive forever and wedge the per-note
+          # unique index. Reap unconditionally on same-host bootstrap.
+        else
+          # Different host: we cannot probe a foreign pid, so use the
+          # fencing lease. Only an EXPIRED lease is unambiguous evidence
+          # of a dead owner — a stale timestamp alone could mis-fence a
+          # briefly stalled-but-alive owner. Records without a lease
+          # (legacy or pre-this-PR) are left alone for operator review.
+          next unless record.lease_expires_at && record.lease_expires_at < Time.current
+
+          # CAS reclaim: the conditional UPDATE must still see the same
+          # token AND an expired lease. If the owner renewed between our
+          # read above and this write, the WHERE matches 0 rows and we
+          # leave the live session alone (Codex finding: reap was not
+          # CAS-safe and could false-fence a live owner).
+          rows = TentacleSession
+            .where(id: record.id, lease_token: record.lease_token)
+            .where("lease_expires_at < ?", Time.current)
+            .update_all(
+              status: "exited",
+              ended_at: Time.current,
+              exit_reason: "missing_pid",
+              lease_token: SecureRandom.uuid,
+              updated_at: Time.current
+            )
+          reaped += 1 if rows.positive?
+          next
+        end
+
+        # Same-host reap path (pid dead): no CAS needed — we own the
+        # host and no foreign owner can renew. Rotate the token so any
+        # late-waking stale owner self-fences on its next heartbeat.
+        record.update!(
+          status: "exited",
+          ended_at: Time.current,
+          exit_reason: "missing_pid",
+          lease_token: SecureRandom.uuid
+        )
+        reaped += 1
+      rescue StandardError => e
+        Rails.logger.error(
+          "[tentacle_runtime] failed to reap orphaned PTY record #{record.id}: #{e.class}: #{e.message}"
+        )
+      end
+      reaped
+    end
+
+    def process_pid_alive?(pid)
+      Process.kill(0, pid)
+      true
+    rescue Errno::ESRCH
+      false
+    rescue Errno::EPERM
+      true
+    end
 
     # Transition a known-dead session record out of `alive`: stamp
     # status=exited with the matching reason (socket_exists → "crash",
@@ -394,12 +537,16 @@ class TentacleRuntime
       @context_window_tokens = (context_window_tokens || DEFAULT_CONTEXT_WINDOW_TOKENS).to_i
       @context_warning_fired = false
       @context_warning_mutex = Mutex.new
+      @last_wake_nudge_at = nil
+      @wake_nudge_mutex = Mutex.new
       @started_at = session_record&.started_at || Time.current
       @dtach = nil
       @attach_pid = nil
       @session_record = session_record
+      @heartbeat_thread = nil
       spawn_process
       start_reader
+      start_heartbeat
     end
 
     # Identity grounding for the spawned tentacle — env vars an agent
@@ -472,6 +619,27 @@ class TentacleRuntime
       @initial_prompt_delivered = true
     end
 
+    # Records that an auto-wake nudge was just delivered to this live
+    # session (or that a fresh spawn carried the wake prompt). Read by
+    # SessionControl to coalesce near-simultaneous auto-wakes — see
+    # recently_wake_nudged?.
+    def mark_wake_nudged!(at: Time.current)
+      @wake_nudge_mutex.synchronize { @last_wake_nudge_at = at }
+    end
+
+    # True when an auto-wake nudge was delivered within `within` seconds.
+    # SessionControl uses this (only when called with coalesce_wake) to
+    # skip a redundant submit_sequence write to a session that was just
+    # told to read its inbox.
+    def recently_wake_nudged?(within:)
+      @wake_nudge_mutex.synchronize do
+        last = @last_wake_nudge_at
+        next false if last.nil?
+
+        (Time.current - last) <= within
+      end
+    end
+
     # True when this Session was reattached from a TentacleSession record
     # whose metadata predates the always-write of `repo_root_fingerprint`.
     # SessionControl uses this to log + allow reuse instead of rejecting
@@ -499,12 +667,19 @@ class TentacleRuntime
       end
     end
 
+    # Returns true on a successful write, false when the channel is
+    # dead (EIO/IOError swallowed) or no writer is available. Callers
+    # that need delivery confirmation — SessionControl's reuse-path
+    # routed_prompt write, in particular — must check the return value;
+    # silently dropping a write would let a stale-session race report
+    # the prompt as delivered when it never reached the agent.
     def write(data)
-      return unless @writer && alive?
+      return false unless @writer && alive?
       @writer.write(data)
       @writer.flush
+      true
     rescue Errno::EIO, IOError
-      nil
+      false
     end
 
     # Bytes that act as "submit current input" for the spawned command's
@@ -581,6 +756,7 @@ class TentacleRuntime
         reader_join_timeout = [grace, 0.3].min
         @reader_thread&.join(reader_join_timeout)
         @reader_thread&.kill if @reader_thread&.alive?
+        @heartbeat_thread&.kill if @heartbeat_thread&.alive?
         close_streams
         mark_session_record_unknown
         return
@@ -589,6 +765,7 @@ class TentacleRuntime
       reader_join_timeout = [grace, 0.3].min
       @reader_thread&.join(reader_join_timeout)
       @reader_thread&.kill if @reader_thread&.alive?
+      @heartbeat_thread&.kill if @heartbeat_thread&.alive?
       close_streams
       fire_on_exit(exit_status: exit_status)
     end
@@ -601,6 +778,7 @@ class TentacleRuntime
     def detach_without_killing
       close_streams
       @reader_thread&.kill if @reader_thread&.alive?
+      @heartbeat_thread&.kill if @heartbeat_thread&.alive?
       # reap the local attach proxy so no zombie is left behind
       reap_attach(timeout: 1.0)
       @session_record&.touch_seen!
@@ -687,6 +865,60 @@ class TentacleRuntime
       spawn_opts[:chdir] = @cwd.to_s if @cwd
       args << spawn_opts unless spawn_opts.empty?
       @reader, @writer, @pid = PTY.spawn(*args)
+
+      # Persist a cross-process trace of this PTY session. The per-note
+      # alive partial unique index makes a concurrent duplicate spawn
+      # from another web process fail atomically — the loser kills its
+      # just-spawned child and raises ForeignOwnedSession instead of
+      # running a second runtime against the same inbox/worktree.
+      begin
+        @session_record = persist_pty_session_record!
+      rescue ActiveRecord::RecordNotUnique
+        cleanup_orphan_pty_child
+        raise ForeignOwnedSession,
+          "tentacle #{@tentacle_id} already has a live session owned by another web process"
+      rescue StandardError
+        # Post-spawn persistence failed for some other reason — do not
+        # leave the child untracked; kill it and surface the failure.
+        cleanup_orphan_pty_child
+        raise
+      end
+    end
+
+    def persist_pty_session_record!
+      metadata = {}
+      metadata["persistence"] = @persistence_descriptor if @persistence_descriptor
+      metadata["repo_root_fingerprint"] = @repo_root_fingerprint
+      TentacleSession.create!(
+        tentacle_note_id: @tentacle_id,
+        pid: @pid,
+        host: Socket.gethostname,
+        dtach_socket: nil,
+        command: Array(@command).join(" "),
+        cwd: @cwd&.to_s,
+        started_at: @started_at,
+        status: "alive",
+        metadata: metadata,
+        lease_token: SecureRandom.uuid,
+        lease_expires_at: Time.current + LEASE_DURATION
+      )
+    end
+
+    # Kills and reaps the PTY child spawned moments ago and closes its
+    # streams — used when post-spawn persistence loses the cross-process
+    # race, so no orphaned child or fd is left behind.
+    def cleanup_orphan_pty_child
+      Process.kill("KILL", @pid) if @pid
+    rescue Errno::ESRCH, Errno::ECHILD
+      # already gone
+    ensure
+      begin
+        Process.waitpid(@pid, Process::WNOHANG) if @pid
+      rescue Errno::ECHILD, Errno::ESRCH
+        nil
+      end
+      close_streams
+      @pid = nil
     end
 
     # dtach mode: the command runs under `dtach -n` in its own detached
@@ -768,13 +1000,16 @@ class TentacleRuntime
       TentacleSession.create!(
         tentacle_note_id: @tentacle_id,
         pid: @dtach.pid,
+        host: Socket.gethostname,
         dtach_socket: @dtach.socket_path,
         pid_file: @dtach.pid_path,
         command: Array(@command).join(" "),
         cwd: @cwd&.to_s,
         started_at: @started_at,
         status: "alive",
-        metadata: metadata
+        metadata: metadata,
+        lease_token: SecureRandom.uuid,
+        lease_expires_at: Time.current + LEASE_DURATION
       )
     end
 
@@ -819,6 +1054,63 @@ class TentacleRuntime
             )
             session.fire_on_exit(exit_status: status&.exitstatus)
             SESSIONS.delete(tentacle_id)
+          end
+        end
+      end
+    end
+
+    # Single iteration of the lease renewal: CAS-update the row's
+    # lease_expires_at while the lease_token still matches. Returns
+    # :renewed on success, :fenced when the lease was reclaimed (a
+    # foreign reaper rotated the token), :no_record when this session
+    # has no persisted row. On :fenced this session self-fences —
+    # the OS process is killed in a detached thread so it cannot
+    # continue processing the same inbox/worktree as the replacement
+    # spawn on the reclaiming host (Codex finding: OS-level split-brain
+    # after lease reclamation).
+    def renew_lease!
+      return :no_record unless @session_record
+
+      rows = TentacleSession.where(id: @session_record.id, lease_token: @session_record.lease_token)
+        .update_all(
+          lease_expires_at: Time.current + ::TentacleRuntime::LEASE_DURATION,
+          last_seen_at: Time.current,
+          updated_at: Time.current
+        )
+      return :renewed if rows.positive?
+
+      Rails.logger.warn(
+        "[tentacle_runtime] lease lost for #{@tentacle_id}: row was reaped by a foreign " \
+        "reclaimer; self-fencing the local session to avoid OS-level split-brain"
+      )
+      # Dispatch stop in a fresh thread so the heartbeat thread (which
+      # is the typical caller) does not deadlock when stop kills it.
+      tentacle_id = @tentacle_id
+      Thread.new { ::TentacleRuntime.stop(tentacle_id: tentacle_id) }
+      :fenced
+    end
+
+    # Periodic heartbeat that renews the fencing lease on this session's
+    # TentacleSession row via renew_lease!. The thread exits when the
+    # session has fired on_exit (graceful), when the lease is reclaimed
+    # by a foreign host (renew_lease! returns :fenced and self-fences),
+    # or when there is no record to renew.
+    def start_heartbeat
+      return unless @session_record
+
+      tentacle_id = @tentacle_id
+      @heartbeat_thread = Thread.new do
+        loop do
+          sleep ::TentacleRuntime::HEARTBEAT_INTERVAL
+          break if @on_exit_fired
+          begin
+            outcome = Rails.application.executor.wrap { renew_lease! }
+            break if outcome == :fenced || outcome == :no_record
+          rescue StandardError => e
+            Rails.logger.warn(
+              "[tentacle_runtime] heartbeat renewal failed for #{tentacle_id}: " \
+              "#{e.class}: #{e.message}"
+            )
           end
         end
       end
@@ -888,6 +1180,10 @@ class TentacleRuntime
       end
       return unless should_fire
 
+      # Stop the heartbeat eagerly: the loop checks @on_exit_fired
+      # between sleeps, but we don't want to wait up to HEARTBEAT_INTERVAL.
+      @heartbeat_thread&.kill if @heartbeat_thread&.alive?
+
       emit_exit_metric(exit_status)
       mark_session_record_ended(exit_status)
 
@@ -904,7 +1200,10 @@ class TentacleRuntime
     end
 
     def mark_session_record_ended(exit_status)
-      return unless dtach_mode?
+      # Both backends persist a TentacleSession record now — dtach via
+      # persist_tentacle_session_record!, PTY via persist_pty_session_record!.
+      # The record must be finalized on exit either way, or the per-note
+      # alive uniqueness index would block the next spawn forever.
       record = @session_record || TentacleSession.alive.find_by(tentacle_note_id: @tentacle_id)
       return unless record
 

@@ -83,6 +83,31 @@ RSpec.describe Tentacles::SessionControl do
       expect(result.session).to eq(existing)
     end
 
+    it "reports routed_prompt_delivered: false on reuse when the PTY write fails (stale session race)" do
+      # Session passed alive_for_reuse? but died (EIO/IOError swallowed)
+      # before the routed_prompt write landed. Without honoring the
+      # write result, the wake job would treat this as a real delivery
+      # and strand the message (Codex finding: stale-session race).
+      existing_cwd = WorktreeService.path_for(tentacle_id: note.id, repo_root: Rails.root)
+      fresh_fp = Tentacles::BootConfig.repo_root_fingerprint(Rails.root)
+      existing = instance_double(
+        TentacleRuntime::Session,
+        alive?: true, alive_for_reuse?: true, pid: 1, started_at: Time.current,
+        cwd: existing_cwd, repo_root_fingerprint: fresh_fp,
+        pre_persistence_fingerprint?: false,
+        submit_sequence: "\e[13u"
+      )
+      TentacleRuntime::SESSIONS[note.id] = existing
+
+      expect(TentacleRuntime).to receive(:write)
+        .with(tentacle_id: note.id, data: "hello\e[13u")
+        .and_return(false)
+
+      result = described_class.activate(note: note, command: ["claude"], initial_prompt: "hello")
+
+      expect(result.routed_prompt_delivered).to be false
+    end
+
     it "delivers routed_prompt to the PTY on reuse" do
       existing_cwd = WorktreeService.path_for(tentacle_id: note.id, repo_root: Rails.root)
       fresh_fp = Tentacles::BootConfig.repo_root_fingerprint(Rails.root)
@@ -95,7 +120,7 @@ RSpec.describe Tentacles::SessionControl do
       )
       TentacleRuntime::SESSIONS[note.id] = existing
 
-      expect(TentacleRuntime).to receive(:write).with(tentacle_id: note.id, data: "hello\e[13u")
+      expect(TentacleRuntime).to receive(:write).with(tentacle_id: note.id, data: "hello\e[13u").and_return(true)
 
       result = described_class.activate(note: note, command: ["claude"], initial_prompt: "hello")
       expect(result.routed_prompt_delivered).to be true
@@ -288,6 +313,85 @@ RSpec.describe Tentacles::SessionControl do
         Properties::SetService.call(note: note, changes: {"tentacle_yolo" => false})
         expect(WorktreeService).not_to receive(:write_yolo_settings!)
         described_class.activate(note: note.reload, command: ["claude"])
+      end
+    end
+
+    describe "coalesce_wake (auto-wake dedup)" do
+      def live_session(recently_nudged:)
+        existing_cwd = WorktreeService.path_for(tentacle_id: note.id, repo_root: Rails.root)
+        fresh_fp = Tentacles::BootConfig.repo_root_fingerprint(Rails.root)
+        session = instance_double(
+          TentacleRuntime::Session,
+          alive?: true, alive_for_reuse?: true, pid: 1, started_at: Time.current,
+          cwd: existing_cwd, repo_root_fingerprint: fresh_fp,
+          pre_persistence_fingerprint?: false,
+          submit_sequence: "\e[13u",
+          recently_wake_nudged?: recently_nudged
+        )
+        allow(session).to receive(:mark_wake_nudged!)
+        TentacleRuntime::SESSIONS[note.id] = session
+        session
+      end
+
+      it "skips the redundant nudge to a live session nudged within the window" do
+        session = live_session(recently_nudged: true)
+        expect(TentacleRuntime).not_to receive(:write)
+
+        result = described_class.activate(
+          note: note, command: ["claude"], initial_prompt: "hi", coalesce_wake: true
+        )
+
+        expect(result.wake_coalesced).to be true
+        expect(result.routed_prompt_delivered).to be false
+        expect(session).not_to have_received(:mark_wake_nudged!)
+      end
+
+      it "delivers and marks the nudge when the live session was not recently nudged" do
+        session = live_session(recently_nudged: false)
+        expect(TentacleRuntime).to receive(:write).with(tentacle_id: note.id, data: "hi\e[13u").and_return(true)
+
+        result = described_class.activate(
+          note: note, command: ["claude"], initial_prompt: "hi", coalesce_wake: true
+        )
+
+        expect(result.wake_coalesced).to be false
+        expect(result.routed_prompt_delivered).to be true
+        expect(session).to have_received(:mark_wake_nudged!)
+      end
+
+      it "does NOT mark wake_nudged on a fresh spawn when initial_prompt_delivered? is false" do
+        # PTY readiness race: the spawn happened but the initial_prompt
+        # never confirmed it landed. Marking would coalesce a follow-up
+        # message into a wake that never actually reached the agent
+        # (Codex finding: mark_wake_nudged! must reflect delivery only).
+        fake = instance_double(
+          TentacleRuntime::Session,
+          alive?: true, alive_for_reuse?: true, pid: 9991, started_at: Time.current,
+          cwd: "/tmp/worktree-#{note.id}", repo_root_fingerprint: "fp:1",
+          pre_persistence_fingerprint?: false,
+          initial_prompt_delivered?: false
+        )
+        allow(fake).to receive(:mark_wake_nudged!)
+        allow(WorktreeService).to receive(:ensure).and_return("/tmp/worktree-#{note.id}")
+        expect(TentacleRuntime).to receive(:start).and_return(fake)
+
+        result = described_class.activate(
+          note: note, command: ["claude"], initial_prompt: "hi", coalesce_wake: true
+        )
+
+        expect(result.routed_prompt_delivered).to be(false)
+        expect(fake).not_to have_received(:mark_wake_nudged!)
+      end
+
+      it "never coalesces a manual activation (coalesce_wake omitted)" do
+        session = live_session(recently_nudged: true)
+        expect(TentacleRuntime).to receive(:write).with(tentacle_id: note.id, data: "hi\e[13u").and_return(true)
+
+        result = described_class.activate(note: note, command: ["claude"], initial_prompt: "hi")
+
+        expect(result.wake_coalesced).to be false
+        expect(session).not_to have_received(:recently_wake_nudged?)
+        expect(session).not_to have_received(:mark_wake_nudged!)
       end
     end
   end

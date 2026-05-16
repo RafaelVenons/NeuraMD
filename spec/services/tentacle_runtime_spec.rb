@@ -1,7 +1,7 @@
 require "rails_helper"
 
 RSpec.describe TentacleRuntime do
-  let(:tentacle_id) { SecureRandom.uuid }
+  let(:tentacle_id) { create(:note).id }
 
   before do
     allow(TentacleChannel).to receive(:broadcast_output)
@@ -247,7 +247,9 @@ RSpec.describe TentacleRuntime do
         # reaches spawn/create!/PTY.spawn — the others find the SESSIONS
         # entry on their post-mutex re-check and return it unchanged.
         record_stub = instance_double(TentacleSession,
-          tentacle_note_id: tentacle_id, mark_ended!: true, touch_seen!: true)
+          id: SecureRandom.uuid, tentacle_note_id: tentacle_id,
+          lease_token: SecureRandom.uuid,
+          mark_ended!: true, touch_seen!: true)
         relation_stub = instance_double("ActiveRecord::Relation", find_by: nil)
         allow(TentacleSession).to receive(:alive).and_return(relation_stub)
         create_calls = Concurrent::AtomicFixnum.new(0)
@@ -781,12 +783,15 @@ RSpec.describe TentacleRuntime do
       expect(received.join).to include("slug=empty")
     end
 
-    it "isolates NEURAMD_AGENT_SLUG between concurrent sessions for different agents" do
+    # :dtach_integration → :truncation strategy: the two start() calls run
+    # in their own threads (separate DB connections) and must see the
+    # notes created here, which the default :transaction strategy hides.
+    it "isolates NEURAMD_AGENT_SLUG between concurrent sessions for different agents", :dtach_integration do
       # Cross-slug regression: two sessions spawned in parallel must each
       # carry their own NEURAMD_AGENT_SLUG so an agent that boots without
       # an initial_prompt cannot accidentally read another slug's inbox.
-      tentacle_a = SecureRandom.uuid
-      tentacle_b = SecureRandom.uuid
+      tentacle_a = create(:note).id
+      tentacle_b = create(:note).id
       received_a = []
       received_b = []
       allow(TentacleChannel).to receive(:broadcast_output) do |tentacle_id:, data:, **|
@@ -998,8 +1003,8 @@ RSpec.describe TentacleRuntime do
 
     it "stops each alive session, fires on_exit once per session, and clears SESSIONS" do
       transcripts = Concurrent::Array.new
-      id1 = SecureRandom.uuid
-      id2 = SecureRandom.uuid
+      id1 = create(:note).id
+      id2 = create(:note).id
 
       described_class.start(
         tentacle_id: id1,
@@ -1024,7 +1029,7 @@ RSpec.describe TentacleRuntime do
     end
 
     it "escalates to SIGKILL when the child ignores SIGTERM" do
-      id = SecureRandom.uuid
+      id = create(:note).id
       exits = Concurrent::Array.new
 
       described_class.start(
