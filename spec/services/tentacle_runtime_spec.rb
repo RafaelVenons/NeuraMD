@@ -238,7 +238,7 @@ RSpec.describe TentacleRuntime do
     end
 
     describe "concurrent start for the same tentacle_id" do
-      after { described_class::SESSIONS.clear }
+      after { described_class.reset! }
 
       it "serializes starts so only one child spawns and every caller receives the same Session" do
         # Stub AR completely: multiple threads cannot share a transactional
@@ -282,7 +282,7 @@ RSpec.describe TentacleRuntime do
     end
 
     describe "Session#alive_for_reuse?" do
-      after { described_class::SESSIONS.clear }
+      after { described_class.reset! }
 
       def build_alive_session
         create(:tentacle_session,
@@ -331,7 +331,7 @@ RSpec.describe TentacleRuntime do
     end
 
     describe "#stop when the child survives SIGKILL" do
-      after { described_class::SESSIONS.clear }
+      after { described_class.reset! }
 
       it "does not fire on_exit and marks the TentacleSession unknown when wrapper.stop returns :still_alive" do
         on_exit_called = false
