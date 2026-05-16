@@ -18,7 +18,7 @@ module Tentacles
       end
     end
 
-    Result = Struct.new(:session, :reused, :command, :routed_prompt_delivered, keyword_init: true)
+    Result = Struct.new(:session, :reused, :command, :routed_prompt_delivered, :wake_coalesced, keyword_init: true)
     TerminateResult = Struct.new(:terminated, :pid, :escalated_to_kill, :ended_at, :reason, keyword_init: true)
 
     # Default grace window for the graceful TERM→KILL escalation in
@@ -27,8 +27,18 @@ module Tentacles
     # symmetric activate/terminate surface has a single tunable.
     DEFAULT_TERMINATE_GRACE = 0.5
 
-    def self.activate(note:, command:, initial_prompt: nil, persistence: {})
-      new(note: note, command: command, initial_prompt: initial_prompt, persistence: persistence).activate
+    # When activate is called with coalesce_wake (the auto-wake path),
+    # a reused live session that was nudged within this window skips the
+    # redundant submit_sequence write — it was just told to read its
+    # inbox. Manual activations (coalesce_wake: false) are never
+    # coalesced.
+    WAKE_COALESCE_WINDOW = 8.seconds
+
+    def self.activate(note:, command:, initial_prompt: nil, persistence: {}, coalesce_wake: false)
+      new(
+        note: note, command: command, initial_prompt: initial_prompt,
+        persistence: persistence, coalesce_wake: coalesce_wake
+      ).activate
     end
 
     # Symmetric counterpart to .activate. Stops the in-memory session
@@ -45,7 +55,10 @@ module Tentacles
     # grace window). Use when a child is known stuck and graceful exit
     # is futile — e.g., a TUI deadlocked on a permission prompt.
     def self.terminate(note:, force: false)
-      existing = ::TentacleRuntime.get(note.id)
+      # get_or_reattach, not get: a dtach session owned by another web
+      # process must still be stoppable from here — otherwise terminate
+      # would report no_session while the child runs on elsewhere.
+      existing = ::TentacleRuntime.get_or_reattach(note.id)
       unless existing
         return TerminateResult.new(
           terminated: false,
@@ -76,11 +89,12 @@ module Tentacles
       )
     end
 
-    def initialize(note:, command:, initial_prompt:, persistence:)
+    def initialize(note:, command:, initial_prompt:, persistence:, coalesce_wake: false)
       @note = note
       @command = command
       @initial_prompt = initial_prompt
       @persistence = persistence
+      @coalesce_wake = coalesce_wake
     end
 
     def activate
@@ -90,23 +104,58 @@ module Tentacles
       repo_root, worktree_root, link_shared, boot_prompt = sanitized_boot_config(@note)
       current_fingerprint = ::Tentacles::BootConfig.repo_root_fingerprint(repo_root)
 
-      existing = ::TentacleRuntime.get(@note.id)
+      # get_or_reattach, not get: when dtach is enabled, a session
+      # spawned by another web process is reattached here through its
+      # shared socket so it can be reused/nudged instead of triggering
+      # a duplicate spawn.
+      existing = ::TentacleRuntime.get_or_reattach(@note.id)
       if existing&.alive_for_reuse?
         assert_session_fresh!(existing, repo_root: repo_root, worktree_root: worktree_root, current_fingerprint: current_fingerprint)
 
-        if routed_prompt.present?
-          # The submit sequence depends on the command — claude sessions
-          # need `\e[13u` (CSI Kitty keyboard Enter); other shells take
-          # plain `\r`. Sending the wrong one leaves the prompt sitting
-          # in the input field without ever being submitted. Existing
-          # session knows its command, so delegate to it.
-          ::TentacleRuntime.write(tentacle_id: @note.id, data: "#{routed_prompt}#{existing.submit_sequence}")
+        # Auto-wake coalescing: a live session nudged moments ago was
+        # already told to read its inbox — a second submit_sequence
+        # write is noise. Only applies when the caller opted in
+        # (coalesce_wake); manual activations always deliver the prompt.
+        if @coalesce_wake && routed_prompt.present? &&
+            existing.recently_wake_nudged?(within: WAKE_COALESCE_WINDOW)
+          return Result.new(
+            session: existing,
+            reused: true,
+            command: @command,
+            routed_prompt_delivered: false,
+            wake_coalesced: true
+          )
         end
+
+        delivered =
+          if routed_prompt.present?
+            # The submit sequence depends on the command — claude sessions
+            # need `\e[13u` (CSI Kitty keyboard Enter); other shells take
+            # plain `\r`. Sending the wrong one leaves the prompt sitting
+            # in the input field without ever being submitted. Existing
+            # session knows its command, so delegate to it.
+            #
+            # The write can race a session that dies between
+            # alive_for_reuse? and the write — Session#write returns
+            # false in that case, and we must reflect that in
+            # routed_prompt_delivered (and skip mark_wake_nudged!), or
+            # the wake job would treat a dropped write as a real
+            # delivery and strand the inbox message.
+            written = ::TentacleRuntime.write(
+              tentacle_id: @note.id,
+              data: "#{routed_prompt}#{existing.submit_sequence}"
+            )
+            existing.mark_wake_nudged! if @coalesce_wake && written == true
+            written == true
+          else
+            false
+          end
         return Result.new(
           session: existing,
           reused: true,
           command: @command,
-          routed_prompt_delivered: routed_prompt.present?
+          routed_prompt_delivered: delivered,
+          wake_coalesced: false
         )
       elsif existing
         # alive_for_reuse? said the SESSIONS entry is a zombie — child
@@ -147,7 +196,16 @@ module Tentacles
         else
           false
         end
-      Result.new(session: session, reused: false, command: @command, routed_prompt_delivered: delivered)
+      # Only mark the session as recently wake-nudged when the spawn
+      # CONFIRMED the prompt landed. If initial_prompt_delivered? is
+      # false (PTY readiness race), marking would falsely coalesce a
+      # follow-up message into a wake that never actually reached the
+      # agent (Codex finding: failed delivery still treated as nudge).
+      session.mark_wake_nudged! if @coalesce_wake && delivered && session.respond_to?(:mark_wake_nudged!)
+      Result.new(
+        session: session, reused: false, command: @command,
+        routed_prompt_delivered: delivered, wake_coalesced: false
+      )
     end
 
     private

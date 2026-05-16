@@ -27,7 +27,12 @@ module Api
             note: @note,
             command: command,
             initial_prompt: params[:initial_prompt],
-            persistence: {kind: "s2s"}
+            persistence: {kind: "s2s"},
+            # Opt-in: the auto-wake job sets this so a live session
+            # nudged moments ago is not re-nudged. Manual callers (the
+            # activate_tentacle_session MCP tool) omit it and always
+            # deliver the prompt.
+            coalesce_wake: ActiveModel::Type::Boolean.new.cast(params[:coalesce_wake])
           )
 
           status = result.reused ? :ok : :created
@@ -48,6 +53,15 @@ module Api
                    "commit, stash, or push the branch from the worktree, then retry.",
             dirty_worktree: true,
             detail: e.message
+          }, status: :conflict
+        rescue ::TentacleRuntime::ForeignOwnedSession => e
+          # Another web process already owns a live session for this
+          # note. This process cannot see or steer it, and refused to
+          # spawn a duplicate. 409 so the caller retries (a retry may
+          # land on the owning process).
+          render json: {
+            error: e.message,
+            foreign_owned_session: true
           }, status: :conflict
         end
 
@@ -105,7 +119,8 @@ module Api
             pid: session&.pid,
             started_at: session&.started_at&.utc&.iso8601,
             command: command,
-            routed_prompt_delivered: result.routed_prompt_delivered
+            routed_prompt_delivered: result.routed_prompt_delivered,
+            wake_coalesced: result.wake_coalesced || false
           }
         end
       end
